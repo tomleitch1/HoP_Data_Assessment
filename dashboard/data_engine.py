@@ -1,0 +1,393 @@
+"""
+Parliament Finance Systems Programme
+DQ Engine & Data Processing
+"""
+
+import pandas as pd
+import numpy as np
+import os
+from datetime import date
+from dashboard.core.rules.gl_rules import get_gl_checks
+from dashboard.core.rules.ap_rules import get_ap_checks
+from dashboard.core.rules.ar_rules import get_ar_checks
+
+DATA_DIR = 'data'
+CLIENTS = ['HOC', 'HOL']
+SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Invoices'}
+
+def load_data():
+    """Loads all CSV files from the data directory and combines HOC/HOL."""
+    frames = {}
+    
+    # Mapping of filename to table name
+    file_map = {
+        'supplier_master.csv': 'asuheader',
+        'supplier_open_trans.csv': 'asutrans',
+        'supplier_history.csv': 'asuhistr',
+        'gl_chart_of_accounts.csv': 'aglaccounts',
+        'gl_dimension_values.csv': 'agldimvalue',
+        'gl_opening_balances.csv': 'aglyearend',
+        'gl_transact_dimensions.csv': 'agltransact'
+    }
+    
+    for filename, table in file_map.items():
+        path = os.path.join(DATA_DIR, filename)
+        if os.path.exists(path):
+            df = pd.read_csv(path, low_memory=False)
+            if 'client' in df.columns:
+                df['house'] = df['client']
+            frames[table] = df
+
+    # Load split files
+    split_files = {
+        'customer_master': 'acuheader',
+        'customer_open_trans': 'acutrans',
+        'customer_history': 'acuhistr'
+    }
+    for base_name, table in split_files.items():
+        dfs = []
+        for house in ['HOC', 'HOL']:
+            path = os.path.join(DATA_DIR, f"{base_name}_{house}.csv")
+            if os.path.exists(path):
+                df = pd.read_csv(path, low_memory=False)
+                if 'client' in df.columns:
+                    df['house'] = df['client']
+                else:
+                    df['house'] = house
+                dfs.append(df)
+        if dfs:
+            frames[table] = pd.concat(dfs, ignore_index=True)
+
+    # Process all frames for strings and dates
+    for table, df in frames.items():
+        # Force ID and registration columns to string to prevent DQ test errors
+        string_cols = ['apar_id', 'vat_reg_no', 'comp_reg_no', 'bank_account', 'clearing_code', 'swift', 'iban', 'ext_inv_ref', 'voucher_no', 'account', 'dim_value', 'rel_value']
+        for col in string_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
+        
+        # GL specific dimensions should be strings
+        for i in range(1, 8):
+            col = f'dim_{i}'
+            if col in df.columns:
+                df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
+        
+        # Basic date parsing
+        date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
+        for col in date_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        frames[table] = df
+
+    return frames
+
+def get_dq_checks():
+    """Returns a list of DQ check definitions based on SQL requirements."""
+    checks = []
+    checks.extend(get_gl_checks())
+    checks.extend(get_ap_checks())
+    checks.extend(get_ar_checks())
+    return checks
+
+def run_dq_analysis(frames):
+    """Executes all DQ checks and returns a summary DataFrame."""
+    results = []
+    checks = get_dq_checks()
+    
+    for check_id, scope_id, obj, dim, sev, desc, intent, rem, table, joined_table, logic, filter_func in checks:
+        if table not in frames:
+            continue
+            
+        df_table = frames[table]
+        
+        for house in CLIENTS:
+            # Determine population based on table and check type
+            if table in ['asuheader', 'acuheader']:
+                if check_id in ['SUP_EXPIRED_ACTIVE', 'SUP_WF_STUCK']:
+                    h_df = df_table[df_table['house'] == house]
+                else:
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            elif table in ['asutrans', 'acutrans']:
+                h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+            elif table in ['asuhistr', 'acuhistr']:
+                h_df = df_table[df_table['house'] == house]
+            elif table == 'aglaccounts':
+                if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
+                    h_df = df_table[df_table['house'] == house]
+                else:
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            elif table == 'agldimvalue':
+                if check_id in ['GL_DIM_DUP']:
+                    h_df = df_table[df_table['house'] == house]
+                else:
+                    # Precision: only run stuck/orphan checks on active records
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            else:
+                h_df = df_table[df_table['house'] == house]
+            
+            total = len(h_df)
+            if total == 0:
+                continue
+            
+            # Run check
+            try:
+                import inspect
+                sig = inspect.signature(filter_func)
+                if 'frames' in sig.parameters:
+                    mask = filter_func(h_df, frames)
+                else:
+                    mask = filter_func(h_df)
+                
+                failing_df = h_df[mask]
+                failing = len(failing_df)
+            except Exception as e:
+                print(f"Error running check {check_id} for {house}: {e}")
+                failing = 0
+            
+            passing = total - failing
+            error_rate = round((failing / total * 100), 1) if total > 0 else 0.0
+            pass_rate = round(100.0 - error_rate, 1)
+            rag = 'Green' if error_rate <= 2 else ('Amber' if error_rate <= 10 else 'Red')
+            
+            results.append({
+                'check_id': check_id,
+                'scope_id': scope_id,
+                'object': obj,
+                'house': house,
+                'dimension': dim,
+                'severity': sev,
+                'description': desc,
+                'intent': intent,
+                'total': int(total),
+                'failing': int(failing),
+                'passing': int(passing),
+                'error_rate': error_rate,
+                'pass_rate': pass_rate,
+                'rag': rag,
+                'remediation': rem,
+                'table': table,
+                'joined_table': joined_table,
+                'technical_logic': logic
+            })
+            
+    return pd.DataFrame(results)
+
+def get_check_columns():
+    """Returns a map of check_id to the columns relevant for that check."""
+    return {
+        # GL Accounts
+        'GL_ACC_DESC_MISSING': ['description', 'status'],
+        'GL_ACC_GRP_MISSING': ['account_grp', 'status'],
+        'GL_ACC_RESBAL_MISSING': ['res_bal'],
+        'GL_ACC_RULE_MISSING': ['account_rule'],
+        'GL_ACC_PERIOD_MISSING': ['period_from'],
+        'GL_ACC_RESBAL_INVALID': ['res_bal'],
+        'GL_ACC_TYPE_INVALID': ['account_type'],
+        'GL_ACC_PERIOD_INV': ['period_from', 'period_to'],
+        'GL_ACC_STALE_N': ['period_to', 'status'],
+        'GL_ACC_BFLAG_CON': ['bflag', 'account_type'],
+        'GL_ACC_DUP_CODE': ['account', 'client'],
+        'GL_ACC_STALE_MOD': ['last_update'],
+
+        # GL Dimensions
+        'GL_DIM_DESC_MISSING': ['description', 'status'],
+        'GL_DIM_PERIOD_MISSING': ['period_from'],
+        'GL_DIM_PERIOD_INV': ['period_from', 'period_to'],
+        'GL_DIM_WF_STUCK': ['wf_state'],
+        'GL_DIM_ORPHAN_REL': ['rel_value', 'attribute_id', 'status'],
+        'GL_DIM_DUP': ['dim_value', 'attribute_id', 'client'],
+
+        # GL Balances
+        'GL_BAL_AMT_MISSING': ['amount'],
+        'GL_BAL_FX_MISSING': ['currency', 'cur_amount'],
+        'GL_BAL_PL_NONZERO': ['amount', 'account', 'res_bal'],
+        'GL_BAL_TOTAL_NET': ['amount', 'dc_flag', 'client'],
+        'GL_BAL_ORPHAN_ACC': ['account'],
+
+        # GL Transactions
+        'GL_TRA_ORPHAN_DIM1': ['dim_1', 'dim_value', 'status'],
+
+        # Suppliers
+        'SUP_VAT_MISSING': ['vat_reg_no', 'status'],
+        'SUP_COMP_REG_MISSING': ['comp_reg_no', 'status'],
+        'SUP_TERMS_MISSING': ['terms_id'],
+        'SUP_PAY_METHOD_MISSING': ['pay_method'],
+        'SUP_CURRENCY_MISSING': ['currency'],
+        'SUP_BANK_MISSING': ['bank_account'],
+        'SUP_SORT_IBAN_MISSING': ['clearing_code', 'iban'],
+        'SUP_SWIFT_MISSING': ['swift', 'iban'],
+        'SUP_VAT_FORMAT': ['vat_reg_no'],
+        'SUP_COMP_REG_FORMAT': ['comp_reg_no'],
+        'SUP_SORT_FORMAT': ['clearing_code'],
+        'SUP_BANK_FORMAT': ['bank_account'],
+        'SUP_SWIFT_FORMAT': ['swift'],
+        'SUP_EXPIRED_ACTIVE': ['expired_date', 'status'],
+        'SUP_WF_STUCK': ['wf_state'],
+        'SUP_BACS_NO_BANK': ['pay_method', 'bank_account', 'clearing_code'],
+        'SUP_INT_NO_IBAN': ['pay_method', 'iban'],
+        'SUP_NAME_DUP': ['apar_name', 'client'],
+        'SUP_VAT_DUP': ['vat_reg_no', 'client'],
+        'SUP_STALE': ['last_update'],
+        'SUP_SUNDRY': ['apar_once'],
+        
+        # AP Invoices
+        'AP_DUE_DATE_MISSING': ['due_date'],
+        'AP_EXT_REF_MISSING': ['ext_inv_ref'],
+        'AP_AMOUNT_MISSING': ['amount'],
+        'AP_PO_CONTRACT_MISSING': ['order_id', 'contract_id'],
+        'AP_FX_NO_RATE': ['currency', 'exch_rate'],
+        'AP_CN_NO_REF': ['voucher_type', 'orig_reference'],
+        'AP_NEG_INV': ['amount', 'voucher_type'],
+        'AP_FX_NO_CUR_AMT': ['currency', 'cur_amount'],
+        'AP_REST_ZERO': ['rest_amount'],
+        'AP_REST_OVER_AMT': ['rest_amount', 'amount'],
+        'AP_OVERDUE': ['due_date'],
+        'AP_WF_STUCK': ['wf_state'],
+        'AP_EXT_REF_DUP': ['ext_inv_ref', 'apar_id'],
+        'AP_NET_NEGATIVE_SUP': ['rest_amount', 'apar_id'],
+        'AP_ORPHANED_CREDITS': ['voucher_type', 'orig_reference', 'voucher_no'],
+        'AP_ORPHANED_TRANS': ['apar_id'],
+        'AP_TRANS_SUP_CLOSED': ['apar_id', 'status'],
+        
+        # AP History
+        'HIS_REST_NOT_ZERO': ['rest_amount'],
+        'HIS_DATE_MISSING': ['trans_date'],
+        'HIS_CN_NO_REF': ['voucher_type', 'orig_reference'],
+        'HIS_DUP': ['voucher_no', 'sequence_no', 'client'],
+        'HIS_ORPHANED': ['apar_id'],
+
+        # Customers
+        'CUS_VAT_MISSING': ['vat_reg_no', 'status'],
+        'CUS_COMP_REG_MISSING': ['comp_reg_no', 'status'],
+        'CUS_TERMS_MISSING': ['terms_id'],
+        'CUS_PAY_METHOD_MISSING': ['pay_method'],
+        'CUS_CURRENCY_MISSING': ['currency'],
+        'CUS_CREDIT_LIMIT_MISSING': ['credit_limit'],
+        'CUS_BANK_MISSING': ['pay_method', 'bank_account', 'iban'],
+        'CUS_VAT_FORMAT': ['vat_reg_no'],
+        'CUS_COMP_REG_FORMAT': ['comp_reg_no'],
+        'CUS_NAME_DUP': ['apar_name', 'client'],
+        'CUS_VAT_DUP': ['vat_reg_no', 'client'],
+
+        # AR Invoices
+        'AR_DUE_DATE_MISSING': ['due_date'],
+        'AR_EXT_REF_MISSING': ['ext_inv_ref'],
+        'AR_AMOUNT_MISSING': ['amount'],
+        'AR_NEG_INV': ['amount', 'voucher_type'],
+        'AR_REST_ZERO': ['rest_amount'],
+        'AR_REST_OVER_AMT': ['rest_amount', 'amount'],
+        'AR_OVERDUE': ['due_date'],
+        'AR_WF_STUCK': ['wf_state'],
+        'AR_ORPHANED_TRANS': ['apar_id'],
+        'AR_TRANS_CUS_CLOSED': ['apar_id', 'status'],
+
+        # AR History
+        'AR_HIS_REST_NOT_ZERO': ['rest_amount'],
+        'AR_HIS_DATE_MISSING': ['trans_date']
+    }
+
+def get_failing_records(check_id, house, frames):
+    """Retrieves the actual failing records for a specific check and house with enriched context."""
+    checks = get_dq_checks()
+    check = next((c for c in checks if c[0] == check_id), None)
+    if not check:
+        return pd.DataFrame()
+    
+    # Extract based on new Format: (id, scope, object, dimension, severity, desc, intent, remediation, table, joined_table, logic_desc, filter_func)
+    _, _, _, _, _, _, _, _, table, _, _, filter_func = check
+    if table not in frames:
+        return pd.DataFrame()
+        
+    df_table = frames[table].copy()
+    
+    # Apply standard population filters
+    if table in ['asuheader', 'acuheader']:
+        if check_id in ['SUP_EXPIRED_ACTIVE', 'SUP_WF_STUCK']:
+            h_df = df_table[df_table['house'] == house]
+        else:
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table in ['asutrans', 'acutrans']:
+        h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+    elif table in ['asuhistr', 'acuhistr']:
+        h_df = df_table[df_table['house'] == house]
+    elif table == 'aglaccounts':
+        if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
+            h_df = df_table[df_table['house'] == house]
+        else:
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table == 'agldimvalue':
+        if check_id in ['GL_DIM_DUP']:
+            h_df = df_table[df_table['house'] == house]
+        else:
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    else:
+        h_df = df_table[df_table['house'] == house]
+
+    # Run filter
+    import inspect
+    sig = inspect.signature(filter_func)
+    if 'frames' in sig.parameters:
+        mask = filter_func(h_df, frames)
+    else:
+        mask = filter_func(h_df)
+        
+    failing = h_df[mask].copy()
+    if failing.empty:
+        return failing
+
+    # Enrich with context for better inspection
+    if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
+        # Join to master to get supplier name for transaction errors
+        master = frames['asuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
+        master.columns = ['house', 'apar_id', 'Master_Supplier_Name', 'Master_Status']
+        failing = failing.merge(master, on=['house', 'apar_id'], how='left')
+    
+    if table in ['acutrans', 'acuhistr'] and 'acuheader' in frames:
+        # Join to master to get customer name for transaction errors
+        master = frames['acuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
+        master.columns = ['house', 'apar_id', 'Master_Customer_Name', 'Master_Status']
+        failing = failing.merge(master, on=['house', 'apar_id'], how='left')
+    
+    if table == 'aglyearend' and 'aglaccounts' in frames:
+        acc = frames['aglaccounts'][['house', 'account', 'description', 'res_bal', 'status']].copy()
+        acc.columns = ['house', 'account', 'Account_Description', 'Res_Bal', 'Account_Status']
+        failing = failing.merge(acc, on=['house', 'account'], how='left')
+
+    # Add source indicator to columns for clarity in joins
+    cols = []
+    for c in failing.columns:
+        if c in df_table.columns:
+            cols.append(f"{table}.{c}")
+        else:
+            cols.append(c) # Already prefixed or calculated
+    failing.columns = cols
+
+    return failing
+
+def build_aging_analysis(frames):
+    """Builds AP/AR aging summaries."""
+    today = pd.Timestamp(date.today())
+    results = {}
+
+    for module, table, label in [('ap', 'asutrans', 'AP'), ('ar', 'acutrans', 'AR')]:
+        if table not in frames:
+            continue
+        df = frames[table].copy()
+        # Open items only
+        df = df[df['status'].isin(['N','R','I']) & df['due_date'].notna()].copy()
+        df['days_overdue'] = (today - df['due_date']).dt.days
+        df['aging_bucket'] = pd.cut(
+            df['days_overdue'],
+            bins=[-9999, 0, 30, 60, 90, 180, 999999],
+            labels=['Not Yet Due', '0-30 Days', '31-60 Days', '61-90 Days', '91-180 Days', '180+ Days']
+        )
+        df['rest_amount'] = pd.to_numeric(df['rest_amount'], errors='coerce').fillna(0).abs()
+        
+        agg = df.groupby(['house', 'aging_bucket'], observed=True).agg(
+            count=('voucher_no', 'count'),
+            balance=('rest_amount', 'sum')
+        ).reset_index()
+        results[label] = agg
+        results[f'{label}_raw'] = df # Store raw for drill-down
+        
+    return results
