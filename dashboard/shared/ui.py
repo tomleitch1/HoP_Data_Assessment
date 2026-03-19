@@ -510,3 +510,110 @@ def render_gl_volumetrics_card(house_data: dict):
     ])
 
     return [coa_card, dim_card, ob_card]
+
+# ── ADDITION TO ui.py for assets ────────────────────────────────────────────────────────
+
+
+def render_asset_volumetrics_card(house_data: dict):
+    """
+    Renders Asset Register volumetrics as a single card for a given house.
+    Shows total/active/inactive counts, asset group breakdown bar chart,
+    and key scope flags (grant-funded, stale, WIP).
+    """
+    house = house_data['house']
+    reg   = house_data['register']
+    house_color = HOUSE_HEX.get(house, '#00703c')
+
+    colors = ['#00703c', '#28a367', '#d4820a', '#c0392b', '#5c5470', '#3498DB', '#9B59B6', '#F1C40F']
+
+    # ── Asset Group Breakdown bar chart ──────────────────────────────────────
+    group_types = sorted(reg.get('group_breakdown', {}).items(), key=lambda x: x[1], reverse=True)
+
+    group_fig = go.Figure()
+    for i, (grp, count) in enumerate(group_types):
+        if count == 0:
+            continue
+        group_fig.add_trace(go.Bar(
+            name=str(grp), y=['Group'], x=[count], orientation='h',
+            marker_color=colors[i % len(colors)], marker_line_width=0,
+            hovertemplate=f"<b>{grp}</b>: {count:,}<extra></extra>"
+        ))
+    group_fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        height=40, margin=dict(t=0, b=0, l=0, r=0), showlegend=False, barmode='stack',
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False)
+    )
+
+    group_legend = []
+    for i, (grp, count) in enumerate(group_types):
+        group_legend.append(html.Div([
+            html.Span('●', style={'color': colors[i % len(colors)], 'marginRight': '6px'}),
+            html.Span(f"{grp}: {count:,}", style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B'})
+        ], style={'marginRight': '12px', 'display': 'inline-block'}))
+
+    register_card = html.Div(style={
+        'background': 'white', 'border': '1px solid #D0CCE0', 'borderRadius': '12px',
+        'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'overflow': 'hidden',
+        'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.05)'
+    }, children=[
+        # ── Header ───────────────────────────────────────────────────────────
+        html.Div(style={
+            'background': '#F8FAFC', 'padding': '14px 20px', 'borderBottom': '1px solid #E2E8F0',
+            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'
+        }, children=[
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
+                html.Div(style={'width': '3px', 'height': '16px', 'background': house_color, 'borderRadius': '2px'}),
+                html.Div(f"{house} — Asset Register", style={
+                    'fontSize': '13px', 'fontWeight': '600', 'color': '#475569',
+                    'textTransform': 'uppercase', 'letterSpacing': '0.5px'
+                }),
+            ]),
+            html.Div(reg.get('extract_date', '—'), style={'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '600'})
+        ]),
+        # ── Body ─────────────────────────────────────────────────────────────
+        html.Div(style={'padding': '20px'}, children=[
+            # Count row
+            html.Div(style={'display': 'grid', 'gridTemplateColumns': 'repeat(5, 1fr)', 'gap': '16px', 'marginBottom': '20px'}, children=[
+                html.Div([
+                    html.Div(f"{reg['total']:,}", style={'fontSize': '22px', 'fontWeight': '800', 'color': '#1E293B', 'fontFamily': DISPLAY_FONT}),
+                    html.Div('Total Assets', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
+                ]),
+                html.Div([
+                    html.Div(f"{reg['active']:,}", style={'fontSize': '22px', 'fontWeight': '800', 'color': '#00703c', 'fontFamily': DISPLAY_FONT}),
+                    html.Div('Active', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
+                ]),
+                html.Div([
+                    html.Div(f"{reg['inactive']:,}", style={'fontSize': '22px', 'fontWeight': '800', 'color': '#c0392b', 'fontFamily': DISPLAY_FONT}),
+                    html.Div('Inactive', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
+                ]),
+                html.Div([
+                    html.Div(f"{reg['grant_count']:,}", style={'fontSize': '22px', 'fontWeight': '800', 'color': '#d4820a', 'fontFamily': DISPLAY_FONT}),
+                    html.Div('Grant Funded', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
+                ]),
+                html.Div([
+                    html.Div(f"{reg['wip_count']:,}", style={'fontSize': '22px', 'fontWeight': '800', 'color': '#3498DB', 'fontFamily': DISPLAY_FONT}),
+                    html.Div('No Cap Date', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
+                ]),
+            ]),
+            # Group breakdown chart
+            html.Div([
+                html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '8px'}, children=[
+                    html.Div('Asset Group Distribution', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase'}),
+                    html.Div(f"Total: {reg['total']:,} assets", style={'fontSize': '9px', 'color': '#94A3B8'})
+                ]),
+                dcc.Graph(figure=group_fig, config={'displayModeBar': False}),
+                html.Div(group_legend, style={'marginTop': '8px', 'display': 'flex', 'flexWrap': 'wrap'})
+            ])
+        ]),
+        # ── Footer ───────────────────────────────────────────────────────────
+        html.Div(style={
+            'background': '#F1F5F9', 'padding': '8px 20px', 'fontSize': '11px',
+            'color': '#64748B', 'borderTop': '1px solid #E2E8F0'
+        }, children=[
+            html.Span('Stale assets (>3 years): ', style={'fontWeight': '600'}),
+            html.Span(f"{reg['stale_count']:,}", style={'color': '#c0392b', 'fontWeight': '700'})
+        ])
+    ])
+
+    return [register_card]

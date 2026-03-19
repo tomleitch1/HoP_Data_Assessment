@@ -10,6 +10,7 @@ from datetime import date
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
+from dashboard.core.rules.asset_rules import get_asset_checks   
 
 DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
@@ -42,7 +43,8 @@ def load_data():
     split_files = {
         'customer_master': 'acuheader',
         'customer_open_trans': 'acutrans',
-        'customer_history': 'acuhistr'
+        'customer_history': 'acuhistr',
+        'asset_master': 'asset_register', 
     }
     for base_name, table in split_files.items():
         dfs = []
@@ -87,6 +89,7 @@ def get_dq_checks():
     checks.extend(get_gl_checks())
     checks.extend(get_ap_checks())
     checks.extend(get_ar_checks())
+    checks.extend(get_asset_checks())
     return checks
 
 def run_dq_analysis(frames):
@@ -121,6 +124,11 @@ def run_dq_analysis(frames):
                     h_df = df_table[df_table['house'] == house]
                 else:
                     # Precision: only run stuck/orphan checks on active records
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            elif table == 'asset_register':
+                if check_id in ['AT_DUP_ASSET_ID', 'AT_DUP_DESC_GROUP']:
+                    h_df = df_table[df_table['house'] == house]
+                else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
             else:
                 h_df = df_table[df_table['house'] == house]
@@ -283,7 +291,34 @@ def get_check_columns():
 
         # AR History
         'AR_HIS_REST_NOT_ZERO': ['rest_amount'],
-        'AR_HIS_DATE_MISSING': ['trans_date']
+        'AR_HIS_DATE_MISSING': ['trans_date'],
+
+        # Asset Register
+        'AT_MISSING_DESCRIPTION':      ['description'],
+        'AT_MISSING_ASSET_GROUP':      ['asset_group'],
+        'AT_MISSING_CAP_DATE':         ['cap_date_from'],
+        'AT_MISSING_BASE_AMOUNT':      ['base_amount'],
+        'AT_MISSING_ORG_AMOUNT':       ['org_amount'],
+        'AT_MISSING_DIM1':             ['dim_1'],
+        'AT_DATE_FROM_AFTER_DATE_TO':  ['date_from', 'date_to'],
+        'AT_CAP_BEFORE_DATE_FROM':     ['cap_date_from', 'date_from'],
+        'AT_BASE_EXCEEDS_ORG':         ['base_amount', 'org_amount'],
+        'AT_NEGATIVE_BASE_AMOUNT':     ['base_amount'],
+        'AT_WF_STUCK':                 ['wf_state'],
+        'AT_ACTIVE_WITH_DATE_TO':      ['status', 'date_to'],
+        'AT_ORPHANED_ASSET_GROUP':     ['asset_group'],
+        'AT_PARENT_NOT_FOUND':         ['parent_asset', 'asset_id'],
+        'AT_PARENT_INACTIVE':          ['parent_asset', 'status'],
+        'AT_SUPPLIER_NOT_FOUND':       ['apar_id'],
+        'AT_SUPPLIER_INACTIVE':        ['apar_id'],
+        'AT_DIM1_INVALID':             ['dim_1'],
+        'AT_DUP_ASSET_ID':             ['asset_id', 'client'],
+        'AT_DUP_DESC_GROUP':           ['description', 'asset_group', 'client'],
+        'AT_GRANT_FUNDED':             ['grant_flag'],
+        'AT_COMPONENT_ASSET':          ['parent_asset'],
+        'AT_NO_CAP_DATE_SCOPE':        ['cap_date_from'],
+        'AT_STALE':                    ['last_update'],
+        'AT_NO_DIM1_CODING':           ['dim_1'],
     }
 
 def get_failing_records(check_id, house, frames):
@@ -317,6 +352,11 @@ def get_failing_records(check_id, house, frames):
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table == 'agldimvalue':
         if check_id in ['GL_DIM_DUP']:
+            h_df = df_table[df_table['house'] == house]
+        else:
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table == 'asset_register':
+        if check_id in ['AT_DUP_ASSET_ID', 'AT_DUP_DESC_GROUP']:
             h_df = df_table[df_table['house'] == house]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]

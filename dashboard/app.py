@@ -160,7 +160,7 @@ def render_tab_content(master_tab):
         filtered_dq = dq_results[dq_results['scope_id'].isin([11, 17, 19])]
         return render_customers(filtered_dq, frames)
     elif master_tab == 'assets':
-        filtered_dq = dq_results[dq_results['scope_id'] == -1] # Adjust logic as needed later
+        filtered_dq = dq_results[dq_results['scope_id'] == 19]
         return render_assets(filtered_dq, frames)
     elif master_tab == 'pbf':
         filtered_dq = dq_results[dq_results['scope_id'] == -1] # Adjust logic as needed later

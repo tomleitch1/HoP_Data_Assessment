@@ -689,3 +689,66 @@ def get_gl_volumetrics(df_dict: dict) -> dict:
             }
         }
     return results
+
+# ── ADDITION TO volumetrics.py for assets ────────────────────────────────────────────────
+
+
+def get_asset_volumetrics(df_dict: dict) -> dict:
+    """
+    Returns calculated Asset Register volumetrics for both Houses.
+    Calculates Active/Inactive/Total counts, asset group breakdown,
+    grant-funded count, stale count, and WIP (no cap date) count.
+    """
+    import pandas as pd
+    from datetime import date, timedelta
+    CLIENTS = ['HOC', 'HOL']
+    STALE_CUTOFF = pd.Timestamp(date.today() - timedelta(days=3 * 365))
+
+    assets = df_dict.get('asset_register', pd.DataFrame())
+
+    def _safe_max_date(df, col):
+        if df.empty or col not in df.columns:
+            return None
+        valid = pd.to_datetime(df[col], errors='coerce').dropna()
+        return valid.max().strftime('%d %b %Y').lstrip('0') if not valid.empty else None
+
+    results = {}
+    for house in CLIENTS:
+        h = assets[assets['client'] == house] if not assets.empty and 'client' in assets.columns else \
+            (assets[assets['house'] == house] if not assets.empty and 'house' in assets.columns else pd.DataFrame())
+
+        total    = len(h)
+        active   = int((h['status'] == 'N').sum())   if not h.empty and 'status' in h.columns else 0
+        inactive = int((h['status'] != 'N').sum())   if not h.empty and 'status' in h.columns else 0
+
+        group_breakdown = h['asset_group'].value_counts().to_dict() \
+            if not h.empty and 'asset_group' in h.columns else {}
+
+        h_active = h[h['status'] == 'N'] if not h.empty and 'status' in h.columns else pd.DataFrame()
+
+        grant_count = int((h_active['grant_flag'] == 1).sum()) \
+            if not h_active.empty and 'grant_flag' in h_active.columns else 0
+
+        stale_count = int(
+            (pd.to_datetime(h_active['last_update'], errors='coerce') < STALE_CUTOFF).sum()
+        ) if not h_active.empty and 'last_update' in h_active.columns else 0
+
+        wip_count = int(h_active['cap_date_from'].isna().sum()) \
+            if not h_active.empty and 'cap_date_from' in h_active.columns else 0
+
+        extract_date = _safe_max_date(h, 'last_update')
+
+        results[house] = {
+            'house': house,
+            'register': {
+                'total':           total,
+                'active':          active,
+                'inactive':        inactive,
+                'group_breakdown': group_breakdown,
+                'grant_count':     grant_count,
+                'stale_count':     stale_count,
+                'wip_count':       wip_count,
+                'extract_date':    extract_date,
+            }
+        }
+    return results
