@@ -157,7 +157,7 @@ def render_tab_content(master_tab):
         filtered_dq = dq_results[dq_results['scope_id'].isin([10, 16, 18])]
         return render_suppliers(filtered_dq, frames)
     elif master_tab == 'customers':
-        filtered_dq = dq_results[dq_results['scope_id'].isin([11, 17, 19])]
+        filtered_dq = dq_results[dq_results['scope_id'].isin([11, 17, 12])]
         return render_customers(filtered_dq, frames)
     elif master_tab == 'assets':
         filtered_dq = dq_results[dq_results['scope_id'] == 19]

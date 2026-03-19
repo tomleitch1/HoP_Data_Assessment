@@ -165,14 +165,14 @@ def get_ar_checks():
         # --- AR HISTORY (acuhistr) ---
         # ======================================================================
 
-        ('AR_HIS_REST_NOT_ZERO', 19, 'AR History', 'Consistency', 'High', 
+        ('AR_HIS_REST_NOT_ZERO', 12, 'AR History', 'Consistency', 'High', 
          'Historical (closed) item still carries a non-zero balance',
          'Verifies that items in the history table are truly closed.',
          'Historical items in acuhistr must have rest_amount = 0.', 'acuhistr', None,
          'acuhistr.rest_amount <> 0',
          lambda df: df['rest_amount'] != 0),
 
-        ('AR_HIS_DATE_MISSING', 19, 'AR History', 'Completeness', 'Critical', 
+        ('AR_HIS_DATE_MISSING', 12, 'AR History', 'Completeness', 'Critical', 
          'Historical record missing its transaction date',
          'Ensures historical records have dates to allow for accurate trend analysis.',
          'Populate acuhistr.trans_date.', 'acuhistr', None,

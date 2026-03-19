@@ -209,32 +209,32 @@ def get_asset_checks():
          lambda df: df.duplicated(subset=['house', 'description', 'asset_group'], keep=False)),
 
         # ======================================================================
-        # --- SCOPE / TIMELINESS (Active assets) ---
+        # --- REFERENTIAL INTEGRITY (continued) ---
         # ======================================================================
 
-        ('AT_GRANT_FUNDED', 19, 'Asset Register', 'Scope', 'Medium',
-         'Asset is grant-funded (grant_flag = 1)',
-         'Grant-funded assets may require separate migration treatment or business sign-off.',
-         'Flag grant-funded assets for business review and confirm migration approach.',
-         'asset_register', None,
-         'asset_register.grant_flag = 1',
-         lambda df: df['grant_flag'] == 1),
-
-        ('AT_COMPONENT_ASSET', 19, 'Asset Register', 'Scope', 'Low',
-         'Component asset with parent_asset populated',
+        ('AT_COMPONENT_ASSET', 19, 'Asset Register', 'Referential Integrity', 'Low',
+         'Component asset with parent_asset populated — load ordering required',
          'Parent-child asset structures require careful load ordering in the new system.',
          'Ensure all parent assets are loaded before their child components during migration.',
          'asset_register', None,
          'asset_register.parent_asset IS NOT NULL',
          lambda df: df['parent_asset'].notna()),
 
-        ('AT_NO_CAP_DATE_SCOPE', 19, 'Asset Register', 'Scope', 'Medium',
-         'Active asset has no capitalisation date — possible work-in-progress',
-         'Assets without a capitalisation date may be WIP or not yet fully capitalised.',
-         'Confirm with Finance whether these are in-scope for migration or require separate treatment.',
+        # ======================================================================
+        # --- COMPLETENESS (continued) ---
+        # ======================================================================
+
+        ('AT_GRANT_FUNDED', 19, 'Asset Register', 'Completeness', 'Medium',
+         'Asset is grant-funded (grant_flag = 1) — migration treatment unconfirmed',
+         'Grant-funded assets may require separate migration treatment or business sign-off.',
+         'Flag grant-funded assets for business review and confirm migration approach.',
          'asset_register', None,
-         'asset_register.cap_date_from IS NULL',
-         lambda df: df['cap_date_from'].isna()),
+         'asset_register.grant_flag = 1',
+         lambda df: df['grant_flag'] == 1),
+
+        # ======================================================================
+        # --- TIMELINESS (Active assets) ---
+        # ======================================================================
 
         ('AT_STALE', 19, 'Asset Register', 'Timeliness', 'Low',
          'Active asset has not been updated in over 3 years',
@@ -243,13 +243,5 @@ def get_asset_checks():
          'asset_register', None,
          'asset_register.last_update < (TODAY - 3 years)',
          lambda df: pd.to_datetime(df['last_update'], errors='coerce') < (today - pd.Timedelta(days=3*365))),
-
-        ('AT_NO_DIM1_CODING', 19, 'Asset Register', 'Scope', 'High',
-         'Active asset has no dimension coding (dim_1 is null) — cannot post depreciation',
-         'Assets with no cost centre will be unable to post depreciation entries in the new system.',
-         'Assign a valid dim_1 cost centre to all active assets before migration.',
-         'asset_register', None,
-         'asset_register.dim_1 IS NULL',
-         lambda df: df['dim_1'].isna()),
     ]
     return checks
