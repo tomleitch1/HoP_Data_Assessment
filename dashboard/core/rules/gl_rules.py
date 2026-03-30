@@ -58,14 +58,14 @@ def get_gl_checks():
          'aglaccounts.account_type NOT IN ("GL", "AP", "AR")',
          lambda df: (~df['account_type'].isin(['GL', 'AP', 'AR'])) & df['account_type'].notna()),
 
-        ('GL_ACC_PERIOD_INV', 20, 'GL Accounts', 'Validity', 'Medium',
+        ('GL_ACC_PERIOD_INV', 20, 'GL Accounts', 'Timeliness', 'Medium',
          'Valid-from period is after the valid-to period',
          'Identifies logical errors in the account validity range where the start date exceeds the end date.',
          'Correct aglaccounts.period_from/to.', 'aglaccounts', None,
          'aglaccounts.period_from > aglaccounts.period_to',
          lambda df: df['period_from'] > df['period_to']),
 
-        ('GL_ACC_STALE_N', 20, 'GL Accounts', 'Validity', 'Low',
+        ('GL_ACC_STALE_N', 20, 'GL Accounts', 'Timeliness', 'Low',
          'Account is active (status N) but its validity period has expired',
          'Flags accounts that should be closed (Status C) because their defined validity period has passed.',
          'Close account in aglaccounts (status C).', 'aglaccounts', None,
@@ -110,7 +110,7 @@ def get_gl_checks():
          'agldimvalue.period_from IS NULL',
          lambda df: df['period_from'].isna()),
 
-        ('GL_DIM_PERIOD_INV', 21, 'GL Dimensions', 'Validity', 'Medium',
+        ('GL_DIM_PERIOD_INV', 21, 'GL Dimensions', 'Timeliness', 'Medium',
          'Dimension valid-from period is after the valid-to period',
          'Identifies illogical date ranges in the dimension master data.',
          'Correct agldimvalue.period_from/to.', 'agldimvalue', None,

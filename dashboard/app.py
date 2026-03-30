@@ -323,8 +323,9 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             row_idx = active_cell['row']
             if row_idx < len(table_data):
                 row_data = table_data[row_idx]
+                # Check IDs are kept as 'check_id' (hidden), House is renamed for display
                 check_id = row_data.get('check_id')
-                house = row_data.get('house')
+                house = row_data.get('House') or row_data.get('house')
 
     if not check_id or not house:
         # Don't update if we don't have enough info
@@ -386,87 +387,139 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         ], style={'background': 'white', 'padding': '16px 24px', 'borderRadius': '8px', 'border': '1px solid #E2E8F0', 'flex': '1', 'boxShadow': '0 1px 2px rgba(0,0,0,0.05)'}),
     ])
 
-    # ── METADATA ROW 2: NEW STRUCTURED STACK ──
-    tech_details = html.Div(children=[
-        # 1. Test Checking (formerly Business Intent)
+    # ── METADATA ROW 2: ENHANCED RULE CONTEXT ──
+    tech_details = html.Div(style={'display': 'flex', 'gap': '20px', 'marginBottom': '32px'}, children=[
+        # Left: The 'What & Why'
         html.Div(style={
-            'background': '#F8FAFC', 'padding': '20px 24px', 'borderRadius': '12px', 
-            'border': '1px solid #E2E8F0', 'marginBottom': '16px'
+            'background': '#F8FAFC', 'padding': '24px', 'borderRadius': '12px', 
+            'border': '1px solid #E2E8F0', 'flex': '1.5'
         }, children=[
-            html.Div('TEST CHECKING', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '8px'}),
-            html.Div(row.get('intent', 'Purpose not articulated for this check.'), style={
-                'fontSize': '14px', 'color': '#1E293B', 'fontWeight': '600', 'lineHeight': '1.5'
+            html.Div('LOGICAL GOAL', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
+            html.Div(row.get('intent', 'Purpose not articulated.'), style={
+                'fontSize': '15px', 'color': '#1E293B', 'fontWeight': '600', 'lineHeight': '1.5', 'marginBottom': '20px'
+            }),
+            
+            html.Div('RULE DEFINITION', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '8px'}),
+            html.Div(logic, style={
+                'fontFamily': 'monospace', 'fontSize': '12px', 'background': '#F1F5F9', 
+                'padding': '10px 14px', 'borderRadius': '6px', 'color': '#475569', 'border': '1px solid #E2E8F0'
             })
         ]),
 
-        # 2. Data & Cleansing Row
+        # Right: The 'How & Action'
         html.Div(style={
-            'background': '#F1F5F9', 'padding': '24px 32px', 'borderRadius': '12px', 
-            'border': '1px solid #E2E8F0', 'marginBottom': '32px',
-            'display': 'flex', 'alignItems': 'flex-start', 'gap': '40px'
+            'background': '#F1F5F9', 'padding': '24px', 'borderRadius': '12px', 
+            'border': '1px solid #E2E8F0', 'flex': '1'
         }, children=[
-            # Label
-            html.Div([
-                html.Div('DATA', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#475569', 'letterSpacing': '1.5px', 'marginRight': '24px'}),
-            ], style={'borderRight': '2px solid #CBD5E1', 'paddingRight': '24px', 'alignSelf': 'stretch', 'display': 'flex', 'alignItems': 'center'}),
-            
-            # Metadata Grid (Source, Related, Fields)
-            html.Div(style={'flex': '1.2', 'display': 'flex', 'flexDirection': 'column', 'gap': '16px'}, children=[
-                # Row 1: Objects
-                html.Div(style={'display': 'flex', 'gap': '24px'}, children=[
-                    html.Div([
-                        html.Div('SOURCE OBJECT', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'marginBottom': '6px', 'letterSpacing': '0.5px'}),
-                        html.Div(table_name, style={
-                            'fontSize': '11px', 'color': '#0F172A', 'fontWeight': '700', 'background': 'white', 
-                            'padding': '4px 14px', 'borderRadius': '20px', 'border': '1px solid #E2E8F0', 'display': 'inline-block',
-                            'boxShadow': '0 1px 2px rgba(0,0,0,0.03)'
-                        })
-                    ]),
-                    html.Div([
-                        html.Div('RELATED DATA', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'marginBottom': '6px', 'letterSpacing': '0.5px'}),
-                        html.Div(joined_table if joined_table else 'None', style={
-                            'fontSize': '11px', 'color': '#0F172A', 'fontWeight': '700', 'background': 'white', 
-                            'padding': '4px 14px', 'borderRadius': '20px', 'border': '1px solid #E2E8F0', 'display': 'inline-block',
-                            'boxShadow': '0 1px 2px rgba(0,0,0,0.03)'
-                        })
-                    ]),
-                ]),
-                # Row 2: Critical Fields
-                html.Div([
-                    html.Div('CRITICAL FIELDS', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'marginBottom': '8px', 'letterSpacing': '0.5px'}),
-                    html.Div(style={'display': 'flex', 'gap': '8px', 'flexWrap': 'wrap'}, children=[
-                        html.Span(c, style={
-                            'fontSize': '11px', 'fontWeight': '700', 'color': '#475569', 'background': 'white', 
-                            'padding': '4px 14px', 'borderRadius': '20px', 'border': '1px solid #E2E8F0',
-                            'boxShadow': '0 1px 2px rgba(0,0,0,0.03)'
-                        })
-                        for c in base_cols
-                    ]) if base_cols else html.Div("None", style={'fontSize': '11px', 'color': '#94A3B8', 'fontWeight': '600'})
-                ])
-            ]),
+            html.Div('CRITICAL FIELDS', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
+            html.Div(style={'display': 'flex', 'gap': '8px', 'flexWrap': 'wrap', 'marginBottom': '20px'}, children=[
+                html.Span(c, style={
+                    'fontSize': '11px', 'fontWeight': '700', 'color': '#475569', 'background': 'white', 
+                    'padding': '4px 14px', 'borderRadius': '20px', 'border': '1px solid #E2E8F0'
+                }) for c in base_cols
+            ] if base_cols else [html.Div("Automatic Check", style={'fontSize': '11px', 'color': '#94A3B8'})]),
 
-            # Data Cleansing (Integrated)
-            html.Div([
-                html.Div('DATA CLEANSING', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#92400E', 'letterSpacing': '1px', 'marginBottom': '8px'}),
-                html.Div(row['remediation'], style={
-                    'fontSize': '13px', 'color': '#78350F', 'fontWeight': '600', 'lineHeight': '1.6',
-                    'background': 'rgba(255, 251, 235, 0.6)', 'padding': '16px 20px', 'borderRadius': '12px', 'border': '1px solid #FEF3C7'
-                })
-            ], style={'flex': '2', 'borderLeft': '2px solid #CBD5E1', 'paddingLeft': '40px'})
+            html.Div('REMEDIATION ACTION', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#92400E', 'letterSpacing': '1px', 'marginBottom': '8px'}),
+            html.Div(row['remediation'], style={
+                'fontSize': '13px', 'color': '#78350F', 'fontWeight': '600', 'lineHeight': '1.5',
+                'background': '#FFFBEB', 'padding': '12px 16px', 'borderRadius': '8px', 'border': '1px solid #FEF3C7'
+            })
         ]),
     ])
+
+    # ── TABLE DATA PREPARATION ──
+    # 1. Identify Key Columns for Reordering
+    # We want to put Asset ID, Bridge fields, and Failing fields first
+    key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'BRIDGE_Asset_Group']
+    evidence_cols = []
+    
+    # Add standardized/bridge fields first
+    for c in df.columns:
+        if any(k in c for k in key_fields) or 'STANDARD_' in c or 'Ref_' in c:
+            evidence_cols.append(c)
+    
+    # Add base failing fields next (if not already added)
+    for c in df.columns:
+        if any(base in c for base in base_cols) and c not in evidence_cols:
+            evidence_cols.append(c)
+            
+    # Add everything else
+    other_cols = [c for c in df.columns if c not in evidence_cols]
+    ordered_cols = evidence_cols + other_cols
+    df = df[ordered_cols]
+
+    # ── TABLE HIGHLIGHTING & HEADERS ──
+    style_data_conditional = []
+    dt_cols = []
+    
+    # ── JOIN MAP HEADER (FOR CONTEXT) ──
+    join_map = None
+    if table_name == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
+        target = "Group Lifetime" if check_id == 'DQ-AG-X04' else "Depr Method"
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px', 
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex', 
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Group Code]", style={'color': '#475569'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span(f"Asset Groups [{target}]", style={'color': '#1E40AF'}),
+        ])
+
+    for c in df.columns:
+        source = "SYSTEM"
+        name = c
+        
+        # Explicit Mapping for Asset Chain of Evidence
+        if 'ASSET_DEPRECIATION.' in c:
+            source = "ASSET DEPRECIATION"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_MASTER.' in c:
+            source = "ASSET MASTER (BRIDGE)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_GROUPS.' in c:
+            source = "ASSET GROUP (TARGET)"
+            name = "Group " + c.split('.', 1)[1].replace('_', ' ').title()
+        elif '.' in c:
+            source, name = c.split('.', 1)
+            source = source.replace('_', ' ').upper()
+            name = name.replace('_', ' ').title()
+            
+        dt_cols.append({"name": [source, name], "id": c})
+
+        # Apply Surgical Highlighting
+        # 1. FAILING SOURCE (Red)
+        if source == "ASSET DEPRECIATION" or (any(base in c for base in base_cols) and source.lower() == table_name.lower()):
+            style_data_conditional.append({
+                'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'
+            })
+        # 2. TARGET STANDARD (Blue)
+        elif "TARGET" in source:
+            style_data_conditional.append({
+                'if': {'column_id': c}, 'backgroundColor': '#EFF6FF', 'color': '#1E40AF', 'fontWeight': 'bold'
+            })
+        # 3. BRIDGE LINK (Gray)
+        elif "BRIDGE" in source or any(k in c.lower() for k in ['asset_id', 'apar_id', 'account']):
+            style_data_conditional.append({
+                'if': {'column_id': c}, 'backgroundColor': '#F8FAFC', 'color': '#475569', 'fontWeight': '600'
+            })
 
     content = html.Div([
         kpi_bar,
         tech_details,
-        section_header('Failing Record Inspection', 'Detailed list of records requiring remediation. Contributing columns are highlighted.'),
+        join_map,
+        section_header('Chain of Evidence Inspection', 'Follow the join trail from left to right to validate the exception.'),
         
         dash_table.DataTable(
             data=df.to_dict('records'),
-            columns=[{'name': c, 'id': c} for c in df.columns],
+            columns=dt_cols,
+            merge_duplicate_headers=True,
             style_table={'overflowX': 'auto'},
-            style_cell={'textAlign': 'left', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '120px'},
-            style_header={'backgroundColor': '#F1F5F9', 'fontWeight': 'bold', 'color': '#475569'},
+            style_cell={'textAlign': 'left', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '160px'},
+            style_header={'backgroundColor': '#F1F5F9', 'fontWeight': 'bold', 'color': '#475569', 'textAlign': 'center'},
             style_data_conditional=style_data_conditional,
             sort_action="native",
             filter_action="native",
@@ -515,7 +568,7 @@ def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
             row_idx = active_cell['row']
             if row_idx < len(table_data):
                 check_id = table_data[row_idx].get('check_id')
-                house = table_data[row_idx].get('house')
+                house = table_data[row_idx].get('House') or table_data[row_idx].get('house')
 
     if not check_id or not house: return None
     

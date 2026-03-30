@@ -74,9 +74,17 @@ def render_dimension_widget(dim_name, dq_results):
     total_checks = len(sub['check_id'].unique())
     desc = DIMENSION_DESCRIPTIONS.get(dim_name, 'No description available.')
     
-    dim_checks = sub[['check_id', 'description']].drop_duplicates('check_id').sort_values('check_id')
+    dim_checks = sub[['check_id', 'description', 'object']].drop_duplicates('check_id').sort_values('check_id')
     check_ids = dim_checks['check_id'].tolist()
-    check_descs = ["<br>".join(textwrap.wrap(d, width=65)) for d in dim_checks['description'].tolist()]
+    
+    # Create unique labels by combining object and description
+    # This prevents Plotly from stacking bars with identical descriptions
+    check_descs = []
+    for _, r in dim_checks.iterrows():
+        clean_desc = r['description'].replace('<br>', ' ')
+        label = f"<b>{r['object']}</b>: {clean_desc}"
+        wrapped_label = "<br>".join(textwrap.wrap(label, width=75))
+        check_descs.append(wrapped_label)
     
     fig = go.Figure()
     for house in ['HOC', 'HOL']:
@@ -153,17 +161,24 @@ def render_dimensions_table(dq_results):
     if dq_results is None or dq_results.empty: return html.Div()
     df = dq_results.copy()
     df['action'] = '🔍 Inspect'
-    tbl_cols = ["action", "house", "object", "dimension", "severity", "description", "failing", "total", "error_rate", "rag"]
+    # Include check_id in the DataFrame so it's in the 'data' but not in 'columns'
+    tbl_cols = ["action", "check_id", "house", "object", "dimension", "severity", "description", "failing", "total", "error_rate", "rag"]
     df_display = df[tbl_cols].copy()
-    df_display.columns = ["Action", "House", "Object", "Dimension", "Severity", "Description", "Failing", "Total", "Error %", "RAG"]
     
     return card([
         section_header('Full Rule Breakdown', 'Detailed results for every DQ rule applied'),
         html.Div([
             dash_table.DataTable(
                 id={'type': 'dim-results-table', 'index': 'main'},
+                # Only include visible columns here
                 columns=[{"name": i, "id": i} for i in ["Action", "House", "Object", "Dimension", "Severity", "Description", "Failing", "Total", "Error %", "RAG"]],
-                data=df_display.to_dict('records'),
+                # Rename columns for display purposes in the DataTable data dict mapping
+                data=df_display.rename(columns={
+                    "action": "Action", "house": "House", "object": "Object", 
+                    "dimension": "Dimension", "severity": "Severity", 
+                    "description": "Description", "failing": "Failing", 
+                    "total": "Total", "error_rate": "Error %", "rag": "RAG"
+                }).to_dict('records'),
                 sort_action="native", filter_action="native", cell_selectable=True, column_selectable="single", page_size=15,
                 style_table={'overflowX': 'auto'}, style_cell={'textAlign': 'left', 'padding': '12px', 'fontFamily': 'Poppins', 'fontSize': '12px'},
                 style_header={'backgroundColor': '#F8FAFC', 'fontWeight': 'bold', 'color': '#64748B', 'borderBottom': '2px solid #E2E8F0'},

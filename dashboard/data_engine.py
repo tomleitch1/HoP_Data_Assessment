@@ -44,7 +44,11 @@ def load_data():
         'customer_master': 'acuheader',
         'customer_open_trans': 'acutrans',
         'customer_history': 'acuhistr',
-        'asset_master': 'asset_register', 
+        'asset_master': 'asset_master',
+        'asset_depreciation': 'asset_depreciation',
+        'asset_balances': 'asset_balances',
+        'asset_trans_flags': 'asset_trans_flags',
+        'asset_groups': 'asset_groups',
     }
     for base_name, table in split_files.items():
         dfs = []
@@ -52,7 +56,9 @@ def load_data():
             path = os.path.join(DATA_DIR, f"{base_name}_{house}.csv")
             if os.path.exists(path):
                 df = pd.read_csv(path, low_memory=False)
-                if 'client' in df.columns:
+                if table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'asset_groups']:
+                    df['house'] = house
+                elif 'client' in df.columns:
                     df['house'] = df['client']
                 else:
                     df['house'] = house
@@ -125,11 +131,8 @@ def run_dq_analysis(frames):
                 else:
                     # Precision: only run stuck/orphan checks on active records
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
-            elif table == 'asset_register':
-                if check_id in ['AT_DUP_ASSET_ID', 'AT_DUP_DESC_GROUP']:
-                    h_df = df_table[df_table['house'] == house]
-                else:
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
+                h_df = df_table[df_table['house'] == house]
             else:
                 h_df = df_table[df_table['house'] == house]
             
@@ -293,32 +296,100 @@ def get_check_columns():
         'AR_HIS_REST_NOT_ZERO': ['rest_amount'],
         'AR_HIS_DATE_MISSING': ['trans_date'],
 
-        # Asset Register
-        'AT_MISSING_DESCRIPTION':      ['description'],
-        'AT_MISSING_ASSET_GROUP':      ['asset_group'],
-        'AT_MISSING_CAP_DATE':         ['cap_date_from'],
-        'AT_MISSING_BASE_AMOUNT':      ['base_amount'],
-        'AT_MISSING_ORG_AMOUNT':       ['org_amount'],
-        'AT_MISSING_DIM1':             ['dim_1'],
-        'AT_DATE_FROM_AFTER_DATE_TO':  ['date_from', 'date_to'],
-        'AT_CAP_BEFORE_DATE_FROM':     ['cap_date_from', 'date_from'],
-        'AT_BASE_EXCEEDS_ORG':         ['base_amount', 'org_amount'],
-        'AT_NEGATIVE_BASE_AMOUNT':     ['base_amount'],
-        'AT_WF_STUCK':                 ['wf_state'],
-        'AT_ACTIVE_WITH_DATE_TO':      ['status', 'date_to'],
-        'AT_ORPHANED_ASSET_GROUP':     ['asset_group'],
-        'AT_PARENT_NOT_FOUND':         ['parent_asset', 'asset_id'],
-        'AT_PARENT_INACTIVE':          ['parent_asset', 'status'],
-        'AT_SUPPLIER_NOT_FOUND':       ['apar_id'],
-        'AT_SUPPLIER_INACTIVE':        ['apar_id'],
-        'AT_DIM1_INVALID':             ['dim_1'],
-        'AT_DUP_ASSET_ID':             ['asset_id', 'client'],
-        'AT_DUP_DESC_GROUP':           ['description', 'asset_group', 'client'],
-        'AT_GRANT_FUNDED':             ['grant_flag'],
-        'AT_COMPONENT_ASSET':          ['parent_asset'],
-        'AT_NO_CAP_DATE_SCOPE':        ['cap_date_from'],
-        'AT_STALE':                    ['last_update'],
-        'AT_NO_DIM1_CODING':           ['dim_1'],
+        # Asset Register - Master
+        'DQ-AM-C01': ['asset_id'],
+        'DQ-AM-C02': ['description', 'status'],
+        'DQ-AM-C03': ['asset_group', 'status'],
+        'DQ-AM-C04': ['date_from', 'status'],
+        'DQ-AM-C05': ['org_amount', 'cap_date_from'],
+        'DQ-AM-C06': ['cap_date_from', 'cap_flag'],
+        'DQ-AM-C07': ['ins_amount'],
+        'DQ-AM-V01': ['status'],
+        'DQ-AM-V02': ['wf_state'],
+        'DQ-AM-V03': ['org_amount'],
+        'DQ-AM-V04': ['date_from', 'date_to'],
+        'DQ-AM-V05': ['cap_date_from', 'date_from'],
+        'DQ-AM-V06': ['org_amt_date', 'cap_date_from'],
+        'DQ-AM-T01': ['last_update'],
+        'DQ-AM-K01': ['date_to', 'status'],
+        'DQ-AM-K02': ['wf_state', 'status'],
+        'DQ-AM-K03': ['org_amt_date', 'org_amount'],
+        'DQ-AM-K04': ['grant_flag', 'dim_1'],
+        'DQ-AM-D01': ['asset_id', 'house'],
+        'DQ-AM-D02': ['description', 'asset_group', 'cap_date_from', 'org_amount'],
+        'DQ-AM-R01': ['asset_id'],
+        'DQ-AM-R02': ['asset_id'],
+        'DQ-AM-R03': ['asset_id', 'status'],
+        'DQ-AM-R04': ['parent_asset', 'asset_id'],
+        'DQ-AM-R05': ['apar_id'],
+
+        # Asset Register - Depreciation
+        'DQ-AD-C01': ['asset_id'],
+        'DQ-AD-C02': ['depr_book_id'],
+        'DQ-AD-C03': ['depr_method'],
+        'DQ-AD-C04': ['lifetime', 'depr_method'],
+        'DQ-AD-C05': ['depr_percent', 'depr_method'],
+        'DQ-AD-C06': ['cap_date_from', 'cap_flag'],
+        'DQ-AD-C07': ['depr_period'],
+        'DQ-AD-V01': ['depr_method'],
+        'DQ-AD-V02': ['status'],
+        'DQ-AD-V03': ['depr_percent'],
+        'DQ-AD-V04': ['lifetime', 'depr_method'],
+        'DQ-AD-V05': ['date_from', 'date_to'],
+        'DQ-AD-V06': ['cap_date_from', 'date_from'],
+        'DQ-AD-V07': ['depr_percent'],
+        'DQ-AD-T01': ['last_update'],
+        'DQ-AD-K01': ['date_to', 'status'],
+        'DQ-AD-K02': ['depr_period'],
+        'DQ-AD-K03': ['switch', 'depr_method'],
+        'DQ-AD-K04': ['index_id', 'depr_method'],
+        'DQ-AD-K05': ['res_value', 'org_amount'],
+        'DQ-AD-D01': ['asset_id', 'depr_book_id', 'house'],
+        'DQ-AD-X01': ['asset_id'],
+        'DQ-AD-X02': ['asset_id', 'status'],
+        'DQ-AD-X03': ['cap_date_from'],
+        'DQ-AD-X04': ['res_value', 'org_amount'],
+        'DQ-AD-X05': ['asset_id', 'depr_book_id'],
+
+        # Asset Register - Balances
+        'DQ-AB-C01': ['asset_id'],
+        'DQ-AB-C02': ['depr_book_id'],
+        'DQ-AB-C03': ['trans_type'],
+        'DQ-AB-C04': ['total_amount'],
+        'DQ-AB-V01': ['trans_type'],
+        'DQ-AB-V02': ['total_amount', 'trans_type'],
+        'DQ-AB-V03': ['max_trans_date'],
+        'DQ-AB-K01': ['total_amount', 'trans_type'],
+        'DQ-AB-K02': ['trans_type'],
+        'DQ-AB-K03': ['trans_type'],
+        'DQ-AB-X01': ['asset_id'],
+        'DQ-AB-X02': ['asset_id', 'depr_book_id'],
+        'DQ-AB-X03': ['asset_id', 'status'],
+
+        # Asset Register - Flags
+        'DQ-AF-X01': ['trans_type', 'status'],
+        'DQ-AF-X02': ['trans_type', 'trans_date', 'date_to'],
+        'DQ-AF-X03': ['trans_type', 'amount'],
+        'DQ-AF-X04': ['trans_date'],
+        'DQ-AF-X05': ['trans_type', 'asset_id'],
+
+        # Asset Groups & Configuration
+        'DQ-AG-C01': ['asset_group'],
+        'DQ-AG-C02': ['description', 'grp_status'],
+        'DQ-AG-C03': ['depr_book_id'],
+        'DQ-AG-C04': ['depr_method', 'grp_status', 'book_status'],
+        'DQ-AG-C05': ['lifetime', 'depr_method'],
+        'DQ-AG-C06': ['depr_percent', 'depr_method'],
+        'DQ-AG-V01': ['depr_method'],
+        'DQ-AG-V02': ['grp_status'],
+        'DQ-AG-V03': ['book_status'],
+        'DQ-AG-V04': ['depr_percent'],
+        'DQ-AG-V05': ['lifetime', 'depr_method'],
+        'DQ-AG-K01': ['book_status', 'grp_status'],
+        'DQ-AG-D02': ['description'],
+        'DQ-AG-X01': ['asset_group'],
+        'DQ-AG-X03': ['depr_method', 'asset_group'],
+        'DQ-AG-X04': ['lifetime', 'asset_group'],
     }
 
 def get_failing_records(check_id, house, frames):
@@ -329,7 +400,7 @@ def get_failing_records(check_id, house, frames):
         return pd.DataFrame()
     
     # Extract based on new Format: (id, scope, object, dimension, severity, desc, intent, remediation, table, joined_table, logic_desc, filter_func)
-    _, _, _, _, _, _, _, _, table, _, _, filter_func = check
+    _, _, _, _, _, _, _, _, table, joined_table, _, filter_func = check
     if table not in frames:
         return pd.DataFrame()
         
@@ -355,11 +426,8 @@ def get_failing_records(check_id, house, frames):
             h_df = df_table[df_table['house'] == house]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
-    elif table == 'asset_register':
-        if check_id in ['AT_DUP_ASSET_ID', 'AT_DUP_DESC_GROUP']:
-            h_df = df_table[df_table['house'] == house]
-        else:
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
+        h_df = df_table[df_table['house'] == house]
     else:
         h_df = df_table[df_table['house'] == house]
 
@@ -376,6 +444,35 @@ def get_failing_records(check_id, house, frames):
         return failing
 
     # Enrich with context for better inspection
+    if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
+        # 1. Join to Master to get the Bridging Group (Deduplicated)
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'asset_group']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            failing = failing.merge(master_link, on=['house', 'asset_id'], how='left')
+            
+        # 2. Join to Group Config to get the Standard Value (Deduplicated)
+        if 'asset_groups' in frames:
+            target_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
+            grp_link = frames['asset_groups'][['house', 'asset_group', target_field]].copy()
+            grp_link.columns = ['house', 'asset_group', f'STANDARD_{target_field}']
+            grp_link = grp_link.drop_duplicates(subset=['house', 'asset_group'])
+            failing = failing.merge(grp_link, on=['house', 'asset_group'], how='left')
+            
+        # 3. Final Explicit Mapping for business users
+        val_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
+        
+        # We rename to explicit Source.Field format
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_DEPRECIATION.asset_id',
+            val_field: f'ASSET_DEPRECIATION.{val_field}',
+            'asset_group': 'ASSET_MASTER.asset_group',
+            f'STANDARD_{val_field}': f'ASSET_GROUPS.{val_field}'
+        })
+        
+        cols = ['ASSET_DEPRECIATION.asset_id', f'ASSET_DEPRECIATION.{val_field}', 'ASSET_MASTER.asset_group', f'ASSET_GROUPS.{val_field}']
+        return failing[[c for c in cols if c in failing.columns]]
+
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
         # Join to master to get supplier name for transaction errors
         master = frames['asuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
@@ -392,6 +489,57 @@ def get_failing_records(check_id, house, frames):
         acc = frames['aglaccounts'][['house', 'account', 'description', 'res_bal', 'status']].copy()
         acc.columns = ['house', 'account', 'Account_Description', 'Res_Bal', 'Account_Status']
         failing = failing.merge(acc, on=['house', 'account'], how='left')
+
+    # Generic Join Logic for Referential Integrity
+    if joined_table and joined_table in frames:
+        jt_df = frames[joined_table].copy()
+        
+        # Identify join keys with support for aliased keys
+        join_pairs = [] # List of (failing_key, joined_key)
+        
+        if 'house' in failing.columns and 'house' in jt_df.columns:
+            join_pairs.append(('house', 'house'))
+        
+        # Common key candidates
+        key_candidates = [
+            ('asset_id', 'asset_id'),
+            ('apar_id', 'apar_id'),
+            ('account', 'account'),
+            ('dim_value', 'dim_value'),
+            ('voucher_no', 'voucher_no'),
+            ('dim_1', 'dim_value'),     # GL Transactions -> Dims
+            ('parent_asset', 'asset_id'),# Asset Master -> Parent Asset
+            ('rel_value', 'dim_value')   # Dim Hierarchies
+        ]
+        
+        for f_key, j_key in key_candidates:
+            if f_key in failing.columns and j_key in jt_df.columns:
+                # If we already have a primary key (non-house), don't add more unless relevant
+                join_pairs.append((f_key, j_key))
+        
+        if join_pairs:
+            f_keys = [p[0] for p in join_pairs]
+            j_keys = [p[1] for p in join_pairs]
+            
+            # Drop duplicates on join keys to avoid cartesian products
+            jt_df = jt_df.drop_duplicates(subset=j_keys)
+            
+            # Select useful columns from joined table
+            jt_cols = [c for c in jt_df.columns if c in j_keys or c not in failing.columns]
+            jt_subset = jt_df[jt_cols].copy()
+            
+            # Prefix joined columns to distinguish them
+            prefix = "STANDARD_" if joined_table == "asset_groups" else f"Ref_{joined_table}_"
+            rename_map = {c: f"{prefix}{c}" for c in jt_subset.columns if c not in j_keys}
+            jt_subset = jt_subset.rename(columns=rename_map)
+            
+            # Perform merge with potentially different key names
+            failing = failing.merge(jt_subset, left_on=f_keys, right_on=j_keys, how='left')
+            
+            # If keys had different names, remove the redundant joined keys
+            for f_k, j_k in join_pairs:
+                if f_k != j_k and j_k in failing.columns:
+                    failing = failing.drop(columns=[j_k])
 
     # Add source indicator to columns for clarity in joins
     cols = []

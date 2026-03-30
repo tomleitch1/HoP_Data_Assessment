@@ -149,7 +149,7 @@ SCOPE_CONFIG = {
         'label':     'Assets',
         'tab_value': 'assets',
         'scope_ids': [Scope.ASSETS],
-        'tables':    ['asset_register'],
+        'tables':    ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags'],
         'aging':     None,
     },
     'pbf': {
@@ -185,7 +185,7 @@ SCOPE_TABLES = {
     Scope.GL_DIMENSIONS: 'gl_dim_values',
     Scope.GL_BALANCES: 'gl_opening_balances',
     Scope.GL_TRANSACTIONS: 'gl_transact_dims',
-    Scope.ASSETS: 'asset_register',
+    Scope.ASSETS: 'asset_master',
     Scope.PBF: 'pbf_data',
 }
 
@@ -198,7 +198,7 @@ ALL_TABLES = [
     'asuheader', 'asutrans', 'asuhistr',
     'acuheader', 'acutrans', 'acuhistr',
     'gl_coa', 'gl_dim_values', 'gl_opening_balances', 'gl_transact_dims',
-    'asset_register', 'pbf_data',
+    'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'pbf_data',
 ]
 
 RAG_GREEN_THRESHOLD = 90
