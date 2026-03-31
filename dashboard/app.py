@@ -860,7 +860,9 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
 
         # Apply Surgical Highlighting
         # 1. FAILING SOURCE (Red)
-        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()):
+        # Matches: explicitly prefixed source columns, prefixed critical-field columns,
+        # or plain (unprefixed) columns whose name exactly matches a critical field.
+        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()) or (c in base_cols and source == "SYSTEM"):
             style_data_conditional.append({
                 'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'
             })
