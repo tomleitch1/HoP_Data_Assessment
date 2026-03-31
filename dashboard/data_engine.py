@@ -49,6 +49,7 @@ def load_data():
         'asset_balances': 'asset_balances',
         'asset_trans_flags': 'asset_trans_flags',
         'asset_groups': 'asset_groups',
+        'gl_journals': 'gl_journals',      # Seq 20 GL Journals (agltransact full extract)
     }
     for base_name, table in split_files.items():
         dfs = []
@@ -56,7 +57,7 @@ def load_data():
             path = os.path.join(DATA_DIR, f"{base_name}_{house}.csv")
             if os.path.exists(path):
                 df = pd.read_csv(path, low_memory=False)
-                if table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'asset_groups']:
+                if table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'asset_groups', 'gl_journals']:
                     df['house'] = house
                 elif 'client' in df.columns:
                     df['house'] = df['client']
