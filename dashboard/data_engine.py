@@ -391,6 +391,43 @@ def get_check_columns():
         'DQ-AG-X01': ['asset_group'],
         'DQ-AG-X03': ['depr_method', 'asset_group'],
         'DQ-AG-X04': ['lifetime', 'asset_group'],
+
+        # GL Journals (agltransact — Seq 20)
+        # Completeness
+        'DQ-GJ-C01': ['voucher_no', 'client'],
+        'DQ-GJ-C02': ['account', 'voucher_no'],
+        'DQ-GJ-C03': ['amount', 'voucher_no'],
+        'DQ-GJ-C04': ['trans_date', 'voucher_no'],
+        'DQ-GJ-C05': ['voucher_date', 'voucher_no'],
+        'DQ-GJ-C06': ['voucher_type', 'voucher_no'],
+        'DQ-GJ-C07': ['description', 'voucher_type'],
+        'DQ-GJ-C08': ['user_id', 'voucher_no'],
+        # Validity
+        'DQ-GJ-V01': ['update_flag', 'voucher_no'],
+        'DQ-GJ-V02': ['trans_date', 'voucher_no'],
+        'DQ-GJ-V03': ['voucher_date', 'voucher_no'],
+        'DQ-GJ-V04': ['trans_date', 'voucher_date'],
+        'DQ-GJ-V05': ['currency', 'voucher_no'],
+        'DQ-GJ-V06': ['currency', 'cur_amount'],
+        'DQ-GJ-V07': ['period', 'fiscal_year'],
+        'DQ-GJ-V08': ['apar_id', 'account'],
+        # Consistency
+        'DQ-GJ-K01': ['voucher_no', 'amount', 'update_flag'],
+        'DQ-GJ-K02': ['trans_date', 'period'],
+        'DQ-GJ-K03': ['apar_id', 'apar_type'],
+        'DQ-GJ-K04': ['voucher_no', 'period'],
+        'DQ-GJ-K05': ['tax_code', 'tax_system'],
+        # Duplicates
+        'DQ-GJ-D01': ['voucher_no', 'sequence_no', 'client'],
+        'DQ-GJ-D02': ['voucher_no', 'account', 'amount', 'trans_date'],
+        # Scope / Info
+        'DQ-GJ-S02': ['period', 'voucher_no', 'client'],
+        'DQ-GJ-S04': ['currency', 'cur_amount'],
+        'DQ-GJ-S05': ['apar_id', 'apar_type', 'account'],
+        # Cross-extract
+        'DQ-GJ-X01': ['account', 'voucher_no'],
+        'DQ-GJ-X02': ['account', 'voucher_no'],
+        'DQ-GJ-X03': ['dim_1', 'account'],
     }
 
 def get_failing_records(check_id, house, frames):
