@@ -394,7 +394,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             'background': '#F8FAFC', 'padding': '24px', 'borderRadius': '12px', 
             'border': '1px solid #E2E8F0', 'flex': '1.5'
         }, children=[
-            html.Div('LOGICAL GOAL', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
+            html.Div('PURPOSE', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
             html.Div(row.get('intent', 'Purpose not articulated.'), style={
                 'fontSize': '15px', 'color': '#1E293B', 'fontWeight': '600', 'lineHeight': '1.5', 'marginBottom': '20px'
             }),
