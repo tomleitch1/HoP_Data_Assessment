@@ -473,6 +473,283 @@ def get_failing_records(check_id, house, frames):
         cols = ['ASSET_DEPRECIATION.asset_id', f'ASSET_DEPRECIATION.{val_field}', 'ASSET_MASTER.asset_group', f'ASSET_GROUPS.{val_field}']
         return failing[[c for c in cols if c in failing.columns]]
 
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-K05':
+        # Join to Asset Master to get org_amount for comparison
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'org_amount']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            failing = failing.merge(master_link, on=['house', 'asset_id'], how='left')
+ 
+        # Rename to explicit Source.Field format for the evidence table
+        failing = failing.rename(columns={
+            'asset_id':          'ASSET_DEPRECIATION.asset_id',
+            'res_value':         'ASSET_DEPRECIATION.res_value',
+            'org_amount':        'ASSET_MASTER.org_amount',
+        })
+ 
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.res_value', 'ASSET_MASTER.org_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AG-X01':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_MASTER.asset_id',
+            'asset_group': 'ASSET_MASTER.asset_group',
+        })
+        if 'asset_groups' in frames:
+            grp_link = frames['asset_groups'][['house', 'asset_group']].copy()
+            grp_link = grp_link.drop_duplicates(subset=['house', 'asset_group'])
+            grp_link = grp_link.rename(columns={'asset_group': 'ASSET_GROUPS.asset_group'})
+            failing = failing.merge(grp_link, left_on=['house', 'ASSET_MASTER.asset_group'], right_on=['house', 'ASSET_GROUPS.asset_group'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.asset_group', 'ASSET_GROUPS.asset_group']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_balances' and check_id == 'DQ-AM-R01':
+        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_depreciation' and check_id in ['DQ-AM-R02', 'DQ-AD-X01']:
+        failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_MASTER.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_balances' and check_id == 'DQ-AM-R03':
+        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'status']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id', 'ASSET_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_master' and check_id == 'DQ-AM-R05':
+        failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'apar_id': 'ASSET_MASTER.apar_id'})
+        if 'asuheader' in frames:
+            sup_link = frames['asuheader'][['house', 'apar_id']].copy()
+            sup_link = sup_link.drop_duplicates(subset=['house', 'apar_id'])
+            sup_link = sup_link.rename(columns={'apar_id': 'SUPPLIER_MASTER.apar_id'})
+            failing = failing.merge(sup_link, left_on=['house', 'ASSET_MASTER.apar_id'], right_on=['house', 'SUPPLIER_MASTER.apar_id'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.apar_id', 'SUPPLIER_MASTER.apar_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_master' and check_id == 'DQ-AD-X02':
+        failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
+        if 'asset_depreciation' in frames:
+            depr_link = frames['asset_depreciation'][['house', 'asset_id']].copy()
+            depr_link = depr_link.drop_duplicates(subset=['house', 'asset_id'])
+            depr_link = depr_link.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id'})
+            failing = failing.merge(depr_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_DEPRECIATION.asset_id'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_DEPRECIATION.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-X03':
+        failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'cap_date_from': 'ASSET_DEPRECIATION.cap_date_from'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'cap_date_from']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'cap_date_from': 'ASSET_MASTER.cap_date_from'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_MASTER.cap_date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-X05':
+        failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id'})
+        if 'asset_balances' in frames:
+            bal_link = frames['asset_balances'][['house', 'asset_id', 'depr_book_id']].copy()
+            bal_link = bal_link.drop_duplicates(subset=['house', 'asset_id', 'depr_book_id'])
+            bal_link = bal_link.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id', 'depr_book_id': 'ASSET_BALANCES.depr_book_id'})
+            failing = failing.merge(bal_link,
+                left_on=['house', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id'],
+                right_on=['house', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id'],
+                how='left')
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_balances' and check_id == 'DQ-AB-X01':
+        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_balances' and check_id == 'DQ-AB-X02':
+        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id', 'depr_book_id': 'ASSET_BALANCES.depr_book_id'})
+        if 'asset_depreciation' in frames:
+            depr_link = frames['asset_depreciation'][['house', 'asset_id', 'depr_book_id']].copy()
+            depr_link = depr_link.drop_duplicates(subset=['house', 'asset_id', 'depr_book_id'])
+            depr_link = depr_link.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id'})
+            failing = failing.merge(depr_link,
+                left_on=['house', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id'],
+                right_on=['house', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id'],
+                how='left')
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_master' and check_id == 'DQ-AB-X03':
+        failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
+        if 'asset_balances' in frames:
+            bal_link = frames['asset_balances'][['house', 'asset_id']].copy()
+            bal_link = bal_link.drop_duplicates(subset=['house', 'asset_id'])
+            bal_link = bal_link.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
+            failing = failing.merge(bal_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_BALANCES.asset_id'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_BALANCES.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X01':
+        failing = failing.rename(columns={'asset_id': 'ASSET_TRANS_FLAGS.asset_id', 'trans_type': 'ASSET_TRANS_FLAGS.trans_type'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'status']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_TRANS_FLAGS.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+ 
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
+        failing = failing.rename(columns={'asset_id': 'ASSET_TRANS_FLAGS.asset_id', 'trans_type': 'ASSET_TRANS_FLAGS.trans_type', 'trans_date': 'ASSET_TRANS_FLAGS.trans_date'})
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'date_to']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'date_to': 'ASSET_MASTER.date_to'})
+            failing = failing.merge(master_link, left_on=['house', 'ASSET_TRANS_FLAGS.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.trans_date', 'ASSET_MASTER.date_to']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
+        if 'asset_master' in frames:
+            master_link = frames['asset_master'][['house', 'asset_id', 'date_to']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
+            master_link = master_link.rename(columns={
+                'asset_id': 'ASSET_MASTER.asset_id',
+                'date_to':  'ASSET_MASTER.date_to',
+            })
+            failing = failing.merge(master_link, left_on=['house', 'asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
+
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_TRANS_FLAGS.asset_id',
+            'trans_type': 'ASSET_TRANS_FLAGS.trans_type',
+            'trans_date': 'ASSET_TRANS_FLAGS.trans_date',
+        })
+
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.trans_date', 'ASSET_MASTER.date_to']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C06':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_MASTER.asset_id',
+            'cap_date_from': 'ASSET_MASTER.cap_date_from',
+        })
+        if 'asset_depreciation' in frames:
+            depr_link = frames['asset_depreciation'][['house', 'asset_id', 'cap_flag']].copy()
+            depr_link = depr_link.drop_duplicates(subset=['house', 'asset_id'])
+            depr_link = depr_link.rename(columns={
+                'asset_id': 'ASSET_DEPRECIATION.asset_id',
+                'cap_flag': 'ASSET_DEPRECIATION.cap_flag',
+            })
+            failing = failing.merge(depr_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_DEPRECIATION.asset_id'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.cap_date_from', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_flag']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'acutrans' and check_id == 'AR_ORPHANED_TRANS':
+        failing = failing.rename(columns={
+            'voucher_no': 'AR_INVOICES.voucher_no',
+            'apar_id':    'AR_INVOICES.apar_id',
+        })
+        if 'acuheader' in frames:
+            cus_link = frames['acuheader'][['house', 'apar_id']].copy()
+            cus_link = cus_link.drop_duplicates(subset=['house', 'apar_id'])
+            cus_link = cus_link.rename(columns={'apar_id': 'CUSTOMER_MASTER.apar_id'})
+            failing = failing.merge(cus_link,
+                left_on=['house', 'AR_INVOICES.apar_id'],
+                right_on=['house', 'CUSTOMER_MASTER.apar_id'],
+                how='left')
+        cols = ['AR_INVOICES.voucher_no', 'AR_INVOICES.apar_id', 'CUSTOMER_MASTER.apar_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'acutrans' and check_id == 'AR_TRANS_CUS_CLOSED':
+        failing = failing.rename(columns={
+            'voucher_no': 'AR_INVOICES.voucher_no',
+            'apar_id':    'AR_INVOICES.apar_id',
+        })
+        if 'acuheader' in frames:
+            cus_link = frames['acuheader'][['house', 'apar_id', 'status']].copy()
+            cus_link = cus_link.drop_duplicates(subset=['house', 'apar_id'])
+            cus_link = cus_link.rename(columns={
+                'apar_id': 'CUSTOMER_MASTER.apar_id',
+                'status':  'CUSTOMER_MASTER.status',
+            })
+            failing = failing.merge(cus_link,
+                left_on=['house', 'AR_INVOICES.apar_id'],
+                right_on=['house', 'CUSTOMER_MASTER.apar_id'],
+                how='left')
+        cols = ['AR_INVOICES.voucher_no', 'AR_INVOICES.apar_id', 'CUSTOMER_MASTER.apar_id', 'CUSTOMER_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asutrans' and check_id == 'AP_ORPHANED_TRANS':
+        failing = failing.rename(columns={
+            'voucher_no': 'AP_INVOICES.voucher_no',
+            'apar_id':    'AP_INVOICES.apar_id',
+        })
+        if 'asuheader' in frames:
+            sup_link = frames['asuheader'][['house', 'apar_id']].copy()
+            sup_link = sup_link.drop_duplicates(subset=['house', 'apar_id'])
+            sup_link = sup_link.rename(columns={'apar_id': 'SUPPLIER_MASTER.apar_id'})
+            failing = failing.merge(sup_link,
+                left_on=['house', 'AP_INVOICES.apar_id'],
+                right_on=['house', 'SUPPLIER_MASTER.apar_id'],
+                how='left')
+        cols = ['AP_INVOICES.voucher_no', 'AP_INVOICES.apar_id', 'SUPPLIER_MASTER.apar_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asutrans' and check_id == 'AP_TRANS_SUP_CLOSED':
+        failing = failing.rename(columns={
+            'voucher_no': 'AP_INVOICES.voucher_no',
+            'apar_id':    'AP_INVOICES.apar_id',
+        })
+        if 'asuheader' in frames:
+            sup_link = frames['asuheader'][['house', 'apar_id', 'status']].copy()
+            sup_link = sup_link.drop_duplicates(subset=['house', 'apar_id'])
+            sup_link = sup_link.rename(columns={
+                'apar_id': 'SUPPLIER_MASTER.apar_id',
+                'status':  'SUPPLIER_MASTER.status',
+            })
+            failing = failing.merge(sup_link,
+                left_on=['house', 'AP_INVOICES.apar_id'],
+                right_on=['house', 'SUPPLIER_MASTER.apar_id'],
+                how='left')
+        cols = ['AP_INVOICES.voucher_no', 'AP_INVOICES.apar_id', 'SUPPLIER_MASTER.apar_id', 'SUPPLIER_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asuhistr' and check_id == 'HIS_ORPHANED':
+        failing = failing.rename(columns={
+            'voucher_no': 'AP_HISTORY.voucher_no',
+            'apar_id':    'AP_HISTORY.apar_id',
+        })
+        if 'asuheader' in frames:
+            sup_link = frames['asuheader'][['house', 'apar_id']].copy()
+            sup_link = sup_link.drop_duplicates(subset=['house', 'apar_id'])
+            sup_link = sup_link.rename(columns={'apar_id': 'SUPPLIER_MASTER.apar_id'})
+            failing = failing.merge(sup_link,
+                left_on=['house', 'AP_HISTORY.apar_id'],
+                right_on=['house', 'SUPPLIER_MASTER.apar_id'],
+                how='left')
+        cols = ['AP_HISTORY.voucher_no', 'AP_HISTORY.apar_id', 'SUPPLIER_MASTER.apar_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
         # Join to master to get supplier name for transaction errors
         master = frames['asuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
@@ -484,7 +761,76 @@ def get_failing_records(check_id, house, frames):
         master = frames['acuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
         master.columns = ['house', 'apar_id', 'Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=['house', 'apar_id'], how='left')
-    
+
+    if table == 'aglyearend' and check_id == 'GL_BAL_ORPHAN_ACC':
+        failing = failing.rename(columns={
+            'account': 'GL_BALANCES.account',
+            'amount':  'GL_BALANCES.amount',
+        })
+        if 'aglaccounts' in frames:
+            acc_link = frames['aglaccounts'][['house', 'account']].copy()
+            acc_link = acc_link.drop_duplicates(subset=['house', 'account'])
+            acc_link = acc_link.rename(columns={'account': 'GL_ACCOUNTS.account'})
+            failing = failing.merge(acc_link,
+                left_on=['house', 'GL_BALANCES.account'],
+                right_on=['house', 'GL_ACCOUNTS.account'],
+                how='left')
+        cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
+        failing = failing.rename(columns={
+            'account': 'GL_BALANCES.account',
+            'amount':  'GL_BALANCES.amount',
+        })
+        if 'aglaccounts' in frames:
+            acc_link = frames['aglaccounts'][['house', 'account', 'res_bal']].copy()
+            acc_link = acc_link.drop_duplicates(subset=['house', 'account'])
+            acc_link = acc_link.rename(columns={
+                'account': 'GL_ACCOUNTS.account',
+                'res_bal': 'GL_ACCOUNTS.res_bal',
+            })
+            failing = failing.merge(acc_link,
+                left_on=['house', 'GL_BALANCES.account'],
+                right_on=['house', 'GL_ACCOUNTS.account'],
+                how='left')
+        cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account', 'GL_ACCOUNTS.res_bal']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'agltransact' and check_id == 'GL_TRA_ORPHAN_DIM1':
+        failing = failing.rename(columns={
+            'dim_1': 'GL_TRANSACTIONS.dim_1',
+        })
+        if 'agldimvalue' in frames:
+            dim_link = frames['agldimvalue'][['house', 'dim_value', 'status']].copy()
+            dim_link = dim_link.drop_duplicates(subset=['house', 'dim_value'])
+            dim_link = dim_link.rename(columns={
+                'dim_value': 'GL_DIMENSIONS.dim_value',
+                'status':    'GL_DIMENSIONS.status',
+            })
+            failing = failing.merge(dim_link,
+                left_on=['house', 'GL_TRANSACTIONS.dim_1'],
+                right_on=['house', 'GL_DIMENSIONS.dim_value'],
+                how='left')
+        cols = ['GL_TRANSACTIONS.dim_1', 'GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'agldimvalue' and check_id == 'GL_DIM_ORPHAN_REL':
+        failing = failing.rename(columns={
+            'dim_value': 'GL_DIMENSIONS.dim_value',
+            'rel_value': 'GL_DIMENSIONS.rel_value',
+        })
+        if 'agldimvalue' in frames:
+            parent_link = frames['agldimvalue'][['house', 'dim_value']].copy()
+            parent_link = parent_link.drop_duplicates(subset=['house', 'dim_value'])
+            parent_link = parent_link.rename(columns={'dim_value': 'GL_DIMENSIONS (TARGET).dim_value'})
+            failing = failing.merge(parent_link,
+                left_on=['house', 'GL_DIMENSIONS.rel_value'],
+                right_on=['house', 'GL_DIMENSIONS (TARGET).dim_value'],
+                how='left')
+        cols = ['GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.rel_value', 'GL_DIMENSIONS (TARGET).dim_value']
+        return failing[[c for c in cols if c in failing.columns]]
+
     if table == 'aglyearend' and 'aglaccounts' in frames:
         acc = frames['aglaccounts'][['house', 'account', 'description', 'res_bal', 'status']].copy()
         acc.columns = ['house', 'account', 'Account_Description', 'Res_Bal', 'Account_Status']

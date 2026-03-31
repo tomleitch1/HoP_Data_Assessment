@@ -428,25 +428,28 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     ])
 
     # ── TABLE DATA PREPARATION ──
-    # 1. Identify Key Columns for Reordering
-    # We want to put Asset ID, Bridge fields, and Failing fields first
-    key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'BRIDGE_Asset_Group']
-    evidence_cols = []
-    
-    # Add standardized/bridge fields first
-    for c in df.columns:
-        if any(k in c for k in key_fields) or 'STANDARD_' in c or 'Ref_' in c:
-            evidence_cols.append(c)
-    
-    # Add base failing fields next (if not already added)
-    for c in df.columns:
-        if any(base in c for base in base_cols) and c not in evidence_cols:
-            evidence_cols.append(c)
-            
-    # Add everything else
-    other_cols = [c for c in df.columns if c not in evidence_cols]
-    ordered_cols = evidence_cols + other_cols
-    df = df[ordered_cols]
+    prefixed_tables = ['ASSET_DEPRECIATION.', 'ASSET_MASTER.', 'ASSET_BALANCES.', 
+                       'ASSET_GROUPS.', 'ASSET_TRANS_FLAGS.', 'SUPPLIER_MASTER.',
+                       'AR_INVOICES.', 'CUSTOMER_MASTER.',
+                       'AP_INVOICES.', 'AP_HISTORY.',
+                       'GL_BALANCES.', 'GL_ACCOUNTS.', 'GL_TRANSACTIONS.', 'GL_DIMENSIONS.']
+    is_prefixed = any(any(p in c for p in prefixed_tables) for c in df.columns)
+
+    if not is_prefixed:
+        key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'BRIDGE_Asset_Group']
+        evidence_cols = []
+        
+        for c in df.columns:
+            if any(k in c for k in key_fields) or 'STANDARD_' in c or 'Ref_' in c:
+                evidence_cols.append(c)
+        
+        for c in df.columns:
+            if any(base in c for base in base_cols) and c not in evidence_cols:
+                evidence_cols.append(c)
+                
+        other_cols = [c for c in df.columns if c not in evidence_cols]
+        ordered_cols = evidence_cols + other_cols
+        df = df[ordered_cols]
 
     # ── TABLE HIGHLIGHTING & HEADERS ──
     style_data_conditional = []
@@ -469,20 +472,385 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             html.Span(f"Asset Groups [{target}]", style={'color': '#1E40AF'}),
         ])
 
+    elif table_name == 'asset_depreciation' and check_id == 'DQ-AD-K05':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px', 
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex', 
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Org Amount]", style={'color': '#1E40AF'}),
+        ])
+    
+    elif table_name == 'asset_master' and check_id == 'DQ-AG-X01':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [Asset Group]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Groups [Asset Group]", style={'color': '#1E40AF'}),
+        ])
+    
+    elif table_name == 'asset_balances' and check_id == 'DQ-AM-R01':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+    
+    elif table_name == 'asset_depreciation' and check_id == 'DQ-AM-R02':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_depreciation' and check_id == 'DQ-AD-X01':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_balances' and check_id == 'DQ-AM-R03':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_master' and check_id == 'DQ-AM-R05':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Supplier Master [apar_id]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_master' and check_id == 'DQ-AD-X02':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Depreciation [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_depreciation' and check_id == 'DQ-AD-X03':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [cap_date_from]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [cap_date_from]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_depreciation' and check_id == 'DQ-AD-X05':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Depreciation [Asset ID / Book ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Balances [Asset ID / Book ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_balances' and check_id == 'DQ-AB-X01':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_balances' and check_id == 'DQ-AB-X02':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Balances [Asset ID / Book ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Depreciation [Asset ID / Book ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_master' and check_id == 'DQ-AB-X03':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Balances [Asset ID]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_balances' and check_id == 'DQ-AB-X04':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Balances [NBV]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("GL Opening Balances [Fixed Assets]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_trans_flags' and check_id == 'DQ-AF-X01':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Trans Flags [Asset ID]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [Status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Trans Flags [trans_date]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [date_to]", style={'color': '#1E40AF'}),
+        ])
+    
+    elif table_name == 'asset_master' and check_id == 'DQ-AM-C06':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [cap_date_from]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Depreciation [cap_flag]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'acutrans' and check_id == 'AR_ORPHANED_TRANS':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("AR Invoices [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Customer Master [apar_id]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'acutrans' and check_id == 'AR_TRANS_CUS_CLOSED':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("AR Invoices [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Customer Master [apar_id, status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asutrans' and check_id == 'AP_ORPHANED_TRANS':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("AP Invoices [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Supplier Master [apar_id]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asutrans' and check_id == 'AP_TRANS_SUP_CLOSED':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("AP Invoices [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Supplier Master [apar_id, status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asuhistr' and check_id == 'HIS_ORPHANED':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("AP History [apar_id]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Supplier Master [apar_id]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'aglyearend' and check_id == 'GL_BAL_ORPHAN_ACC':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("GL Balances [account]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("GL Accounts [account]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("GL Balances [account]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("GL Accounts [account, res_bal]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'agltransact' and check_id == 'GL_TRA_ORPHAN_DIM1':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("GL Transactions [dim_1]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("GL Dimensions [dim_value, status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'agldimvalue' and check_id == 'GL_DIM_ORPHAN_REL':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("GL Dimensions [rel_value]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("GL Dimensions [dim_value]", style={'color': '#1E40AF'}),
+        ])
+
     for c in df.columns:
         source = "SYSTEM"
         name = c
         
         # Explicit Mapping for Asset Chain of Evidence
         if 'ASSET_DEPRECIATION.' in c:
-            source = "ASSET DEPRECIATION"
+            if check_id == 'DQ-AM-C06':
+                source = "ASSET DEPRECIATION (TARGET)"
+            else:
+                source = "ASSET DEPRECIATION"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_TRANS_FLAGS.' in c:
+            source = "ASSET TRANS FLAGS"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_OPENING_BALANCES.' in c:
+            source = "GL OPENING BALANCES (TARGET)"
             name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_MASTER.' in c:
-            source = "ASSET MASTER (BRIDGE)"
+            if check_id in ['DQ-AG-X01', 'DQ-AM-R05', 'DQ-AD-X02', 'DQ-AB-X03', 'DQ-AM-C06']:
+                source = "ASSET MASTER"
+            elif check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
+                source = "ASSET MASTER (BRIDGE)"
+            else:
+                source = "ASSET MASTER (TARGET)"
             name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_GROUPS.' in c:
             source = "ASSET GROUP (TARGET)"
             name = "Group " + c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_BALANCES.' in c:
+            if check_id in ['DQ-AM-R01', 'DQ-AM-R03', 'DQ-AB-X01', 'DQ-AB-X02']:
+                source = "ASSET BALANCES"
+            else:
+                source = "ASSET BALANCES (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title() 
+        elif 'SUPPLIER_MASTER.' in c:
+            source = "SUPPLIER MASTER (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'AR_INVOICES.' in c:
+            source = "AR INVOICES"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'CUSTOMER_MASTER.' in c:
+            source = "CUSTOMER MASTER (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'AP_INVOICES.' in c:
+            source = "AP INVOICES"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'AP_HISTORY.' in c:
+            source = "AP HISTORY"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_BALANCES.' in c:
+            source = "GL BALANCES"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_ACCOUNTS.' in c:
+            source = "GL ACCOUNTS (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_TRANSACTIONS.' in c:
+            source = "GL TRANSACTIONS"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_DIMENSIONS (TARGET).' in c:
+            source = "GL DIMENSIONS (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'GL_DIMENSIONS.' in c:
+            if check_id == 'GL_TRA_ORPHAN_DIM1':
+                source = "GL DIMENSIONS (TARGET)"
+            else:
+                source = "GL DIMENSIONS"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
         elif '.' in c:
             source, name = c.split('.', 1)
             source = source.replace('_', ' ').upper()
@@ -492,7 +860,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
 
         # Apply Surgical Highlighting
         # 1. FAILING SOURCE (Red)
-        if source == "ASSET DEPRECIATION" or (any(base in c for base in base_cols) and source.lower() == table_name.lower()):
+        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()):
             style_data_conditional.append({
                 'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'
             })
@@ -502,7 +870,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 'if': {'column_id': c}, 'backgroundColor': '#EFF6FF', 'color': '#1E40AF', 'fontWeight': 'bold'
             })
         # 3. BRIDGE LINK (Gray)
-        elif "BRIDGE" in source or any(k in c.lower() for k in ['asset_id', 'apar_id', 'account']):
+        elif "BRIDGE" in source:
             style_data_conditional.append({
                 'if': {'column_id': c}, 'backgroundColor': '#F8FAFC', 'color': '#475569', 'fontWeight': '600'
             })
