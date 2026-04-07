@@ -667,25 +667,6 @@ def get_failing_records(check_id, house, frames):
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.trans_date', 'ASSET_MASTER.date_to']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
-        if 'asset_master' in frames:
-            master_link = frames['asset_master'][['house', 'asset_id', 'date_to']].copy()
-            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
-            master_link = master_link.rename(columns={
-                'asset_id': 'ASSET_MASTER.asset_id',
-                'date_to':  'ASSET_MASTER.date_to',
-            })
-            failing = failing.merge(master_link, left_on=['house', 'asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
-
-        failing = failing.rename(columns={
-            'asset_id':   'ASSET_TRANS_FLAGS.asset_id',
-            'trans_type': 'ASSET_TRANS_FLAGS.trans_type',
-            'trans_date': 'ASSET_TRANS_FLAGS.trans_date',
-        })
-
-        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.trans_date', 'ASSET_MASTER.date_to']
-        return failing[[c for c in cols if c in failing.columns]]
-
     if table == 'asset_master' and check_id == 'DQ-AM-C06':
         failing = failing.rename(columns={
             'asset_id':      'ASSET_MASTER.asset_id',
@@ -700,6 +681,520 @@ def get_failing_records(check_id, house, frames):
             })
             failing = failing.merge(depr_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_DEPRECIATION.asset_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.cap_date_from', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_flag']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C01':
+        failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
+        cols = ['ASSET_MASTER.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C02':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_MASTER.asset_id',
+            'description': 'ASSET_MASTER.description',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.description']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C03':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_MASTER.asset_id',
+            'asset_group': 'ASSET_MASTER.asset_group',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.asset_group']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C04':
+        failing = failing.rename(columns={
+            'asset_id':  'ASSET_MASTER.asset_id',
+            'date_from': 'ASSET_MASTER.date_from',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C05':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_MASTER.asset_id',
+            'org_amount':    'ASSET_MASTER.org_amount',
+            'cap_date_from': 'ASSET_MASTER.cap_date_from',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amount', 'ASSET_MASTER.cap_date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-C07':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_MASTER.asset_id',
+            'ins_amount': 'ASSET_MASTER.ins_amount',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.ins_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_MASTER.asset_id',
+            'status':   'ASSET_MASTER.status',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V02':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_MASTER.asset_id',
+            'wf_state': 'ASSET_MASTER.wf_state',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.wf_state']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V03':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_MASTER.asset_id',
+            'org_amount': 'ASSET_MASTER.org_amount',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V04':
+        failing = failing.rename(columns={
+            'asset_id':  'ASSET_MASTER.asset_id',
+            'date_from': 'ASSET_MASTER.date_from',
+            'date_to':   'ASSET_MASTER.date_to',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_from', 'ASSET_MASTER.date_to']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V05':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_MASTER.asset_id',
+            'cap_date_from': 'ASSET_MASTER.cap_date_from',
+            'date_from':     'ASSET_MASTER.date_from',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.cap_date_from', 'ASSET_MASTER.date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-V06':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_MASTER.asset_id',
+            'org_amt_date':  'ASSET_MASTER.org_amt_date',
+            'cap_date_from': 'ASSET_MASTER.cap_date_from',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amt_date', 'ASSET_MASTER.cap_date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-T01':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_MASTER.asset_id',
+            'last_update': 'ASSET_MASTER.last_update',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.last_update']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-K01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_MASTER.asset_id',
+            'date_to':  'ASSET_MASTER.date_to',
+            'status':   'ASSET_MASTER.status',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_to', 'ASSET_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-K02':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_MASTER.asset_id',
+            'wf_state': 'ASSET_MASTER.wf_state',
+            'status':   'ASSET_MASTER.status',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.wf_state', 'ASSET_MASTER.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-K03':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_MASTER.asset_id',
+            'org_amt_date': 'ASSET_MASTER.org_amt_date',
+            'org_amount':   'ASSET_MASTER.org_amount',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amt_date', 'ASSET_MASTER.org_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-K04':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_MASTER.asset_id',
+            'grant_flag': 'ASSET_MASTER.grant_flag',
+            'dim_1':      'ASSET_MASTER.dim_1',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.grant_flag', 'ASSET_MASTER.dim_1']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-D01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_MASTER.asset_id',
+            'house':    'ASSET_MASTER.house',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.house']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-D02':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_MASTER.asset_id',
+            'description':   'ASSET_MASTER.description',
+            'asset_group':   'ASSET_MASTER.asset_group',
+            'cap_date_from': 'ASSET_MASTER.cap_date_from',
+            'org_amount':    'ASSET_MASTER.org_amount',
+        })
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.description', 'ASSET_MASTER.asset_group', 'ASSET_MASTER.cap_date_from', 'ASSET_MASTER.org_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_master' and check_id == 'DQ-AM-R04':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_MASTER.asset_id',
+            'parent_asset': 'ASSET_MASTER.parent_asset',
+        })
+        if 'asset_master' in frames:
+            parent_link = frames['asset_master'][['house', 'asset_id']].copy()
+            parent_link = parent_link.drop_duplicates(subset=['house', 'asset_id'])
+            parent_link = parent_link.rename(columns={'asset_id': 'ASSET_MASTER (TARGET).asset_id'})
+            failing = failing.merge(parent_link,
+                left_on=['house', 'ASSET_MASTER.parent_asset'],
+                right_on=['house', 'ASSET_MASTER (TARGET).asset_id'],
+                how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.parent_asset', 'ASSET_MASTER (TARGET).asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_DEPRECIATION.asset_id',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C02':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C03':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_method':  'ASSET_DEPRECIATION.depr_method',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C04':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'depr_method': 'ASSET_DEPRECIATION.depr_method',
+            'lifetime':    'ASSET_DEPRECIATION.lifetime',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.lifetime']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C05':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_method':  'ASSET_DEPRECIATION.depr_method',
+            'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.depr_percent']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C06':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_DEPRECIATION.asset_id',
+            'cap_date_from': 'ASSET_DEPRECIATION.cap_date_from',
+            'cap_flag':      'ASSET_DEPRECIATION.cap_flag',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_DEPRECIATION.cap_flag']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-C07':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'depr_period': 'ASSET_DEPRECIATION.depr_period',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_period']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V01':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'depr_method': 'ASSET_DEPRECIATION.depr_method',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V02':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_DEPRECIATION.asset_id',
+            'status':   'ASSET_DEPRECIATION.status',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V03':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_percent']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V04':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'depr_method': 'ASSET_DEPRECIATION.depr_method',
+            'lifetime':    'ASSET_DEPRECIATION.lifetime',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.lifetime']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V05':
+        failing = failing.rename(columns={
+            'asset_id':  'ASSET_DEPRECIATION.asset_id',
+            'date_from': 'ASSET_DEPRECIATION.date_from',
+            'date_to':   'ASSET_DEPRECIATION.date_to',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.date_from', 'ASSET_DEPRECIATION.date_to']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V06':
+        failing = failing.rename(columns={
+            'asset_id':      'ASSET_DEPRECIATION.asset_id',
+            'cap_date_from': 'ASSET_DEPRECIATION.cap_date_from',
+            'date_from':     'ASSET_DEPRECIATION.date_from',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_DEPRECIATION.date_from']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-V07':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_percent']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-T01':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'last_update': 'ASSET_DEPRECIATION.last_update',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.last_update']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-K01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_DEPRECIATION.asset_id',
+            'date_to':  'ASSET_DEPRECIATION.date_to',
+            'status':   'ASSET_DEPRECIATION.status',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.date_to', 'ASSET_DEPRECIATION.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-K02':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'depr_period': 'ASSET_DEPRECIATION.depr_period',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_period']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-K03':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'switch':      'ASSET_DEPRECIATION.switch',
+            'depr_method': 'ASSET_DEPRECIATION.depr_method',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.switch', 'ASSET_DEPRECIATION.depr_method']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-K04':
+        failing = failing.rename(columns={
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'index_id':    'ASSET_DEPRECIATION.index_id',
+            'depr_method': 'ASSET_DEPRECIATION.depr_method',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.index_id', 'ASSET_DEPRECIATION.depr_method']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_depreciation' and check_id == 'DQ-AD-D01':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_DEPRECIATION.asset_id',
+            'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id',
+            'house':        'ASSET_DEPRECIATION.house',
+        })
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.house']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-C01':
+        failing = failing.rename(columns={
+            'asset_id': 'ASSET_BALANCES.asset_id',
+        })
+        cols = ['ASSET_BALANCES.asset_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-C02':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'depr_book_id': 'ASSET_BALANCES.depr_book_id',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-C03':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_BALANCES.asset_id',
+            'trans_type': 'ASSET_BALANCES.trans_type',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-C04':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'total_amount': 'ASSET_BALANCES.total_amount',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.total_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-V01':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_BALANCES.asset_id',
+            'trans_type': 'ASSET_BALANCES.trans_type',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-V02':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'trans_type':   'ASSET_BALANCES.trans_type',
+            'total_amount': 'ASSET_BALANCES.total_amount',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-V03':
+        failing = failing.rename(columns={
+            'asset_id':       'ASSET_BALANCES.asset_id',
+            'max_trans_date': 'ASSET_BALANCES.max_trans_date',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.max_trans_date']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-K01':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'depr_book_id': 'ASSET_BALANCES.depr_book_id',
+            'trans_type':   'ASSET_BALANCES.trans_type',
+            'total_amount': 'ASSET_BALANCES.total_amount',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-K02':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'depr_book_id': 'ASSET_BALANCES.depr_book_id',
+            'trans_type':   'ASSET_BALANCES.trans_type',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_balances' and check_id == 'DQ-AB-K03':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_BALANCES.asset_id',
+            'depr_book_id': 'ASSET_BALANCES.depr_book_id',
+            'trans_type':   'ASSET_BALANCES.trans_type',
+        })
+        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-C01':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+        })
+        cols = ['ASSET_GROUPS.asset_group']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-C02':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+            'description': 'ASSET_GROUPS.description',
+            'grp_status':  'ASSET_GROUPS.grp_status',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.grp_status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-V01':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+            'depr_method': 'ASSET_GROUPS.depr_method',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_method']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-V04':
+        failing = failing.rename(columns={
+            'asset_group':  'ASSET_GROUPS.asset_group',
+            'depr_percent': 'ASSET_GROUPS.depr_percent',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_percent']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-V05':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+            'depr_method': 'ASSET_GROUPS.depr_method',
+            'lifetime':    'ASSET_GROUPS.lifetime',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_method', 'ASSET_GROUPS.lifetime']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-K01':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+            'grp_status':  'ASSET_GROUPS.grp_status',
+            'book_status': 'ASSET_GROUPS.book_status',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.grp_status', 'ASSET_GROUPS.book_status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_groups' and check_id == 'DQ-AG-D02':
+        failing = failing.rename(columns={
+            'asset_group': 'ASSET_GROUPS.asset_group',
+            'description': 'ASSET_GROUPS.description',
+            'house':       'ASSET_GROUPS.house',
+        })
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.house']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X03':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_TRANS_FLAGS.asset_id',
+            'trans_type': 'ASSET_TRANS_FLAGS.trans_type',
+            'amount':     'ASSET_TRANS_FLAGS.amount',
+        })
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X04':
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_TRANS_FLAGS.asset_id',
+            'trans_date': 'ASSET_TRANS_FLAGS.trans_date',
+        })
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_date']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'asset_trans_flags' and check_id == 'DQ-AF-X05':
+        failing = failing.rename(columns={
+            'asset_id':     'ASSET_TRANS_FLAGS.asset_id',
+            'depr_book_id': 'ASSET_TRANS_FLAGS.depr_book_id',
+            'trans_type':   'ASSET_TRANS_FLAGS.trans_type',
+        })
+        cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.depr_book_id', 'ASSET_TRANS_FLAGS.trans_type']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'acutrans' and check_id == 'AR_ORPHANED_TRANS':

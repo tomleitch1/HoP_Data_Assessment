@@ -255,8 +255,8 @@ def drill_down_from_summary(dim_click, rag_click, master_tab):
                 {"name": "RAG", "id": "rag"}
             ],
             data=filtered_df.to_dict('records'),
-            style_table={'overflowX': 'auto'},
-            style_cell={'textAlign': 'left', 'padding': '10px', 'fontSize': '12px', 'fontFamily': 'Poppins'},
+            style_table={'overflowX': 'auto', 'minWidth': '100%'},
+            style_cell={'textAlign': 'center', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '160px', 'maxWidth': '300px'},
             style_header={'backgroundColor': '#F8FAFC', 'fontWeight': 'bold', 'color': '#64748B'},
             style_data_conditional=[
                 {'if': {'column_id': 'rag', 'filter_query': '{rag} eq "Red"'}, 'color': '#E74C3C', 'fontWeight': 'bold'},
@@ -428,7 +428,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     ])
 
     # ── TABLE DATA PREPARATION ──
-    prefixed_tables = ['ASSET_DEPRECIATION.', 'ASSET_MASTER.', 'ASSET_BALANCES.', 
+    prefixed_tables = ['ASSET_DEPRECIATION.', 'ASSET_MASTER.', 'ASSET_MASTER (TARGET).', 'ASSET_BALANCES.', 
                        'ASSET_GROUPS.', 'ASSET_TRANS_FLAGS.', 'SUPPLIER_MASTER.',
                        'AR_INVOICES.', 'CUSTOMER_MASTER.',
                        'AP_INVOICES.', 'AP_HISTORY.',
@@ -542,6 +542,18 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
             html.Span("➔", style={'color': '#CBD5E1'}),
             html.Span("Asset Master [Status]", style={'color': '#1E40AF'}),
+        ])
+
+    elif table_name == 'asset_master' and check_id == 'DQ-AM-R04':
+        join_map = html.Div(style={
+            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
+            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
+            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
+        }, children=[
+            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
+            html.Span("Asset Master [parent_asset]", style={'color': '#991B1B'}),
+            html.Span("➔", style={'color': '#CBD5E1'}),
+            html.Span("Asset Master [asset_id]", style={'color': '#1E40AF'}),
         ])
 
     elif table_name == 'asset_master' and check_id == 'DQ-AM-R05':
@@ -801,17 +813,25 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         elif 'GL_OPENING_BALANCES.' in c:
             source = "GL OPENING BALANCES (TARGET)"
             name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_MASTER (TARGET).' in c:
+            source = "ASSET MASTER (TARGET)"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_MASTER.' in c:
-            if check_id in ['DQ-AG-X01', 'DQ-AM-R05', 'DQ-AD-X02', 'DQ-AB-X03', 'DQ-AM-C06']:
-                source = "ASSET MASTER"
-            elif check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
+            if check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
                 source = "ASSET MASTER (BRIDGE)"
+            elif check_id in ['DQ-AG-X01', 'DQ-AM-R05', 'DQ-AD-X02', 'DQ-AB-X03', 'DQ-AM-C06']:
+                source = "ASSET MASTER"
+            elif check_id.startswith('DQ-AM-') or check_id.startswith('DQ-AD-') or check_id.startswith('DQ-AB-') or check_id.startswith('DQ-AF-') or check_id.startswith('DQ-AG-'):
+                source = "ASSET MASTER"
             else:
                 source = "ASSET MASTER (TARGET)"
             name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_GROUPS.' in c:
             source = "ASSET GROUP (TARGET)"
             name = "Group " + c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'ASSET_GROUPS.' in c:
+            source = "ASSET GROUPS"
+            name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_BALANCES.' in c:
             if check_id in ['DQ-AM-R01', 'DQ-AM-R03', 'DQ-AB-X01', 'DQ-AB-X02']:
                 source = "ASSET BALANCES"
@@ -862,7 +882,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         # 1. FAILING SOURCE (Red)
         # Matches: explicitly prefixed source columns, prefixed critical-field columns,
         # or plain (unprefixed) columns whose name exactly matches a critical field.
-        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()) or (c in base_cols and source == "SYSTEM"):
+        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "ASSET GROUPS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()) or (c in base_cols and source == "SYSTEM"):
             style_data_conditional.append({
                 'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'
             })
@@ -877,6 +897,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 'if': {'column_id': c}, 'backgroundColor': '#F8FAFC', 'color': '#475569', 'fontWeight': '600'
             })
 
+    
     content = html.Div([
         kpi_bar,
         tech_details,
@@ -884,11 +905,11 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         section_header('Chain of Evidence Inspection', 'Follow the join trail from left to right to validate the exception.'),
         
         dash_table.DataTable(
-            data=df.to_dict('records'),
+            data=df.fillna('—').to_dict('records'),
             columns=dt_cols,
             merge_duplicate_headers=True,
             style_table={'overflowX': 'auto'},
-            style_cell={'textAlign': 'left', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '160px'},
+            style_cell={'textAlign': 'center', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '160px'},
             style_header={'backgroundColor': '#F1F5F9', 'fontWeight': 'bold', 'color': '#475569', 'textAlign': 'center'},
             style_data_conditional=style_data_conditional,
             sort_action="native",

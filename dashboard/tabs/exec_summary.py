@@ -127,7 +127,7 @@ def _data_snapshot(vol_stats: dict, frames: dict) -> html.Div:
             'hoc_key':  None,
             'hol_key':  None,
             'date_key': None,
-            'table':    'asset_register',
+            'table':    'asset_master',
         },
         {
             'label':    'Planning, Budgeting & Forecasting',
@@ -164,12 +164,21 @@ def _data_snapshot(vol_stats: dict, frames: dict) -> html.Div:
             table = ds.get('table')
             if table and table in frames and not frames[table].empty:
                 df    = frames[table]
-                hoc_n = int((df['client'] == 'HOC').sum()) if 'client' in df.columns else len(df)
-                hol_n = int((df['client'] == 'HOL').sum()) if 'client' in df.columns else 0
+                if 'house' in df.columns:
+                    hoc_n = int((df['house'] == 'HOC').sum())
+                    hol_n = int((df['house'] == 'HOL').sum())
+                elif 'client' in df.columns:
+                    hoc_n = int((df['client'] == 'HOC').sum())
+                    hol_n = int((df['client'] == 'HOL').sum())
+                else:
+                    hoc_n = len(df)
+                    hol_n = 0
+                date_col = 'last_update' if 'last_update' in df.columns else None
+                date_str = pd.to_datetime(df[date_col], errors='coerce').loc[lambda x: x <= pd.Timestamp.now()].max().strftime('%d %b %Y').lstrip('0') if date_col else '—'
             else:
                 hoc_n = 0
                 hol_n = 0
-            date_str = '—'
+                date_str = '—'
 
         total = hoc_n + hol_n
 
