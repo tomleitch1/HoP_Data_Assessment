@@ -430,7 +430,7 @@ def get_check_columns():
         'DQ-GJ-X03': ['dim_1', 'account'],
     }
 
-def get_failing_records(check_id, house, frames):
+def get_failing_records(check_id, house, frames, base_cols=None):
     """Retrieves the actual failing records for a specific check and house with enriched context."""
     checks = get_dq_checks()
     check = next((c for c in checks if c[0] == check_id), None)
@@ -1404,7 +1404,7 @@ def get_failing_records(check_id, house, frames):
             jt_df = jt_df.drop_duplicates(subset=j_keys)
             
             # Select useful columns from joined table
-            jt_cols = [c for c in jt_df.columns if c in j_keys or c not in failing.columns]
+            jt_cols = [c for c in jt_df.columns if c in j_keys or c in (base_cols or []) or c == 'status']
             jt_subset = jt_df[jt_cols].copy()
             
             # Prefix joined columns to distinguish them
@@ -1420,13 +1420,18 @@ def get_failing_records(check_id, house, frames):
                 if f_k != j_k and j_k in failing.columns:
                     failing = failing.drop(columns=[j_k])
 
+    # Reorder so all source table columns come first, then joined/Ref_ columns
+    source_cols = [c for c in failing.columns if c in df_table.columns]
+    other_cols = [c for c in failing.columns if c not in df_table.columns]
+    failing = failing[source_cols + other_cols]
+
     # Add source indicator to columns for clarity in joins
     cols = []
     for c in failing.columns:
         if c in df_table.columns:
             cols.append(f"{table}.{c}")
         else:
-            cols.append(c) # Already prefixed or calculated
+            cols.append(c)
     failing.columns = cols
 
     return failing

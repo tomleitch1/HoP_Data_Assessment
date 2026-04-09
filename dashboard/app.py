@@ -440,16 +440,16 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         evidence_cols = []
         
         for c in df.columns:
-            if any(k in c for k in key_fields) or 'STANDARD_' in c or 'Ref_' in c:
+            bare = c.split('.', 1)[-1] if '.' in c else c
+            if any(bare == k for k in key_fields) or 'STANDARD_' in c or 'Ref_' in c:
                 evidence_cols.append(c)
         
         for c in df.columns:
             if any(base in c for base in base_cols) and c not in evidence_cols:
                 evidence_cols.append(c)
                 
-        other_cols = [c for c in df.columns if c not in evidence_cols]
-        ordered_cols = evidence_cols + other_cols
-        df = df[ordered_cols]
+        if evidence_cols:
+            df = df[evidence_cols]
 
     # ── TABLE HIGHLIGHTING & HEADERS ──
     style_data_conditional = []
@@ -796,6 +796,27 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             html.Span("GL Dimensions [dim_value]", style={'color': '#1E40AF'}),
         ])
 
+    ref_cols_to_drop = [
+        c for c in df.columns if 'Ref_' in c
+        and df[c].isna().all()
+    ]
+    if ref_cols_to_drop:
+        df = df.drop(columns=ref_cols_to_drop)
+
+    # Reorder df columns so same-source columns are consecutive,
+    # preserving the original group order (source table first, joined table second)
+    if is_prefixed:
+        def col_source_key(c):
+            if '.' in c: return c.split('.', 1)[0]
+            if 'Ref_' in c: return 'Ref_' + c[4:].split('_', 1)[0]
+            return 'SYSTEM'
+        seen = {}
+        for i, c in enumerate(df.columns):
+            key = col_source_key(c)
+            if key not in seen:
+                seen[key] = i
+        df = df[sorted(df.columns, key=lambda c: (seen[col_source_key(c)], list(df.columns).index(c)))]
+
     for c in df.columns:
         source = "SYSTEM"
         name = c
@@ -829,7 +850,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 source = "ASSET MASTER (TARGET)"
             name = c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_GROUPS.' in c:
-            if check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
+            if check_id in ['DQ-AG-X01', 'DQ-AG-X03', 'DQ-AG-X04']:
                 source = "ASSET GROUP (TARGET)"
             else:
                 source = "ASSET GROUPS"
@@ -876,6 +897,12 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             else:
                 source = "GL DIMENSIONS"
             name = c.split('.', 1)[1].replace('_', ' ').title()
+        elif 'Ref_' in c:
+            ref_start = c.index('Ref_')
+            remainder = c[ref_start + 4:]
+            parts = remainder.split('_', 1)
+            source = parts[0].upper() + " (REFERENCE)" if parts else "REFERENCE"
+            name = parts[1].replace('_', ' ').title() if len(parts) > 1 else remainder
         elif '.' in c:
             source, name = c.split('.', 1)
             source = source.replace('_', ' ').upper()
@@ -887,7 +914,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         # 1. FAILING SOURCE (Red)
         # Matches: explicitly prefixed source columns, prefixed critical-field columns,
         # or plain (unprefixed) columns whose name exactly matches a critical field.
-        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "ASSET GROUPS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower() == table_name.lower()) or (c in base_cols and source == "SYSTEM"):
+        if source in ("ASSET DEPRECIATION", "ASSET MASTER", "ASSET BALANCES", "ASSET TRANS FLAGS", "ASSET GROUPS", "AR INVOICES", "AP INVOICES", "AP HISTORY", "GL BALANCES", "GL TRANSACTIONS", "GL DIMENSIONS") or (any(base in c for base in base_cols) and source.lower().replace(' ', '_') == table_name.lower()) or (c in base_cols and source == "SYSTEM") or "REFERENCE" in source:
             style_data_conditional.append({
                 'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'
             })
@@ -968,7 +995,7 @@ def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
 
     if not check_id or not house: return None
     
-    df = get_failing_records(check_id, house, frames)
+    df = get_failing_records(check_id, house, frames, base_cols)
     return dcc.send_data_frame(df.to_csv, f"DQ_Failing_Records_{check_id}_{house}.csv", index=False)
 
 # --- Explorer Callbacks ---
