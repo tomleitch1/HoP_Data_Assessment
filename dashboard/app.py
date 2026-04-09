@@ -189,7 +189,7 @@ def drill_down_from_summary(dim_click, rag_click, master_tab):
     elif master_tab == 'suppliers':
         module_dq = dq_results[dq_results['scope_id'].isin([10, 16, 18])]
     elif master_tab == 'customers':
-        module_dq = dq_results[dq_results['scope_id'].isin([11, 17, 19])]
+        module_dq = dq_results[dq_results['scope_id'].isin([11, 17, 12])]
     else:
         module_dq = dq_results
 
@@ -995,7 +995,7 @@ def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
 
     if not check_id or not house: return None
     
-    df = get_failing_records(check_id, house, frames, base_cols)
+    df = get_failing_records(check_id, house, frames)
     return dcc.send_data_frame(df.to_csv, f"DQ_Failing_Records_{check_id}_{house}.csv", index=False)
 
 # --- Explorer Callbacks ---

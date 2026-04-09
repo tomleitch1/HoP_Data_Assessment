@@ -44,8 +44,8 @@ def render_dimension_scorecard(dq_results):
     
     return html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '24px', 'flexWrap': 'wrap'}, children=[
         kpi_card(f"{overall_pass_rate:.1f}%", 'Overall DQ Score', overall_color),
-        kpi_card(f"{best_dim['error_rate']:.1f}%", 'Cleanest Dimension', '#006548', best_dim['dimension']),
-        kpi_card(f"{worst_dim['error_rate']:.1f}%", 'Critical Dimension', '#E74C3C', worst_dim['dimension']),
+        kpi_card(f"{100 - best_dim['error_rate']:.1f}%", 'Cleanest Dimension', '#006548', best_dim['dimension']),
+        kpi_card(f"{100 - worst_dim['error_rate']:.1f}%", 'Critical Dimension', '#E74C3C', worst_dim['dimension']),
         kpi_card(int(dim_summary['failing'].sum()), 'Failing Records', '#F39C12'),
     ])
 

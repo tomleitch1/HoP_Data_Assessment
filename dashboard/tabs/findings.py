@@ -22,17 +22,18 @@ def render_findings_log(dq_results):
                 columns=[{'name': c, 'id': c} for c in tbl.columns],
                 style_table={'overflowX': 'auto', 'minHeight': '500px'},
                 style_cell={
-                    'background': '#0A1628', 'color': '#A0B8D0',
-                    'border': '1px solid #1E3352', 'padding': '10px 14px',
-                    'fontSize': '12px', 'fontFamily': 'Helvetica Neue, Arial',
+                    'background': '#FFFFFF', 'color': '#1E293B',
+                    'border': '1px solid #E2E8F0', 'padding': '10px 14px',
+                    'fontSize': '12px', 'fontFamily': 'Poppins, sans-serif',
                     'textAlign': 'left', 'whiteSpace': 'normal', 'maxWidth': '400px',
                 },
                 style_header={
-                    'background': '#071220', 'color': '#4A7FBF',
+                    'background': '#F8FAFC', 'color': '#64748B',
                     'fontWeight': '700', 'fontSize': '10px',
                     'letterSpacing': '1.5px', 'textTransform': 'uppercase',
-                    'border': '1px solid #1E3352', 'padding': '10px 14px',
+                    'border': '1px solid #E2E8F0', 'padding': '10px 14px',
                 },
+                
                 style_data_conditional=[
                     {'if': {'filter_query': '{RAG} = Red', 'column_id': 'RAG'}, 'color': RAG_HEX['Red'], 'fontWeight': '700'},
                     {'if': {'filter_query': '{RAG} = Amber', 'column_id': 'RAG'}, 'color': RAG_HEX['Amber'], 'fontWeight': '700'},
