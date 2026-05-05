@@ -34,7 +34,7 @@ A Dash/Plotly web application that executes data quality (DQ) checks against fin
 - App confirmed working with real data as of May 2026
 
 ### Getting the real data CSVs
-Run the SQL files in `sql/` against each database in SSMS (server `mdata837`). Each file has a `HOW TO RUN` header with the exact database and output filename. Copy-paste results via Excel to avoid SSMS encoding issues.
+Run the SQL files in `sql/` against each database in SSMS (server `mdata837`). Each file has a `HOW TO RUN` header with the exact database and output filename. Copy-paste results via Excel to avoid SSMS encoding issues. Place files in the correct subfolder under `data/` (see Data Folder Structure below).
 
 ---
 
@@ -93,6 +93,30 @@ Tuple format:
 
 ---
 
+## Data Folder Structure
+
+The `data/` folder is in `.gitignore` — it is **never committed**. Each machine maintains its own copy (dummy data here, real data on Parliament laptop).
+
+```
+data/
+├── suppliers/   supplier_master_HOC.csv, supplier_master_HOL.csv
+│                supplier_open_trans_HOC/HOL.csv
+│                supplier_history_HOC/HOL.csv
+├── customers/   customer_master_HOC/HOL.csv
+│                customer_open_trans_HOC/HOL.csv
+│                customer_history_HOC/HOL.csv
+├── gl/          gl_chart_of_accounts.csv, gl_dimension_values.csv
+│                gl_opening_balances.csv, gl_transact_dimensions.csv
+│                gl_journals_HOC/HOL.csv
+└── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
+                 asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
+                 asset_groups_HOC/HOL.csv
+```
+
+`data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and either `file_map` or `split_files` in `load_data()`.
+
+---
+
 ## HOC/HOL Data Split
 
 All supplier, customer, asset, and GL journal tables use **per-house split files** (`*_HOC.csv` + `*_HOL.csv`). The engine concatenates them and assigns `house` from the filename suffix — **not** from the `client` column. The `client` column contains internal Unit4 fund codes (e.g. `CA`, `CF`, `CM` for HoC; `LA` for HoL) and must not be used for house filtering anywhere.
@@ -138,6 +162,8 @@ Update `get_check_columns()` in `data_engine.py` — maps `check_id` → list of
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. This machine still uses dummy data. When column names or status codes differ from dummy data, update `COLUMN_MAP` and the relevant `*Config` constants in `config.py` here, push, and pull on the Parliament laptop.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data confirmed working. Remaining domains (customers, GL, assets) still need real CSVs extracted and placed in the correct `data/` subfolders. This machine still uses dummy data. When column names or status codes differ from dummy data, update `COLUMN_MAP` and the relevant `*Config` constants in `config.py` here, push, and pull on the Parliament laptop.
+
+**If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
 **SQL files in `sql/`** are the extraction specs — each has a `HOW TO RUN` header with the exact SSMS database and output filename. The Python rule lambdas in `rules/` are the executable equivalents of the `DATA QUALITY TESTS` sections in each SQL file.
