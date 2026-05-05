@@ -20,5 +20,5 @@ SELECT
     h.orig_reference
 
 FROM asuhistr h
-WHERE h.trans_date >= DATE_SUB(NOW(), INTERVAL 18 MONTH)
-ORDER BY h.client, h.apar_id, h.trans_date;
+WHERE h.trans_date >= DATEADD(MONTH, -18, GETDATE())
+ORDER BY h.apar_id, h.trans_date;
