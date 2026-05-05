@@ -1,6 +1,13 @@
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as supplier_history_HOC.csv
+-- Run against agresso_HoL  → save as supplier_history_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    h.client,                    // Which House - HoC or HoL
+    h.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     h.apar_id,                   // Supplier ID - links to asuheader.apar_id
     h.voucher_no,                // Unique transaction number
     h.sequence_no,               // Line number within the transaction
@@ -20,9 +27,8 @@ SELECT
     h.orig_reference             // Links credit note to original invoice voucher_no
 
 FROM asuhistr h
-WHERE h.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-  AND h.trans_date >= DATE_SUB(NOW(), INTERVAL 18 MONTH)
-ORDER BY h.client, h.apar_id, h.trans_date;
+WHERE h.trans_date >= DATEADD(MONTH, -18, GETDATE())  -- 18 month window; SQL Server syntax
+ORDER BY h.apar_id, h.trans_date;
 
 
 ## Data Quality Tests — asuhistr (AP Transaction History, 18 Months)

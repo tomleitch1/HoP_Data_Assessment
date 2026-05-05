@@ -1,6 +1,13 @@
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as supplier_master_HOC.csv
+-- Run against agresso_HoL  → save as supplier_master_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    h.client,                    // Which House - HoC or HoL
+    h.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     h.apar_id,                   // Supplier ID - primary key
     h.apar_name,                 // Supplier full name
     h.short_name,                // Abbreviated name - 10 char max
@@ -34,8 +41,7 @@ SELECT
     h.wf_state                   // Workflow state - blank=none, T=approved, W=in workflow
 
 FROM asuheader h
-WHERE h.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-ORDER BY h.client, h.apar_id;
+ORDER BY h.apar_id;
 
 
 ## supplier_master.sql
@@ -55,8 +61,8 @@ ORDER BY h.client, h.apar_id;
 | 3 | Full population used in Python for backward compatibility joins to asutrans and asuhistr |
 | 4 | Sundry suppliers (apar_once = Y) are included pending a scope decision |
 | 5 | Bank details are held exclusively on asuheader - there is no separate bank reference table |
-| 6 | Both Houses exist as separate client codes within the same Unit4 instance |
-| 7 | [HOC_CLIENT] and [HOL_CLIENT] are placeholders - actual client codes to be confirmed by Parliament |
+| 6 | HoC data lives in database Agresso_HoC on server mdata837; HoL data lives in agresso_HoL on the same server |
+| 7 | Run this query separately against each database and save as supplier_master_HOC.csv and supplier_master_HOL.csv |
 
 ---
 
@@ -134,6 +140,6 @@ ORDER BY h.client, h.apar_id;
 
 | # | Question |
 |---|---|
-| 1 | What are the client codes for House of Commons and House of Lords in Unit4? |
+| 1 | What are the internal client/fund codes used within each database — needed for any intra-house filtering |
 | 2 | Are there any suppliers Parliament considers active that have a status other than N? |
 | 3 | Are sundry suppliers (apar_once = Y) in or out of migration scope? |

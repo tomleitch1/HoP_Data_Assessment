@@ -12,9 +12,16 @@
 --          See assumptions for detail.
 -- ============================================================
 
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as gl_opening_balances_HOC.csv
+-- Run against agresso_HoL  → save as gl_opening_balances_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    y.client,                    -- Which House - HoC or HoL
+    y.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     y.account,                   -- Account code - links to aglaccounts
     y.fiscal_year,               -- Financial year this balance relates to
     y.period,                    -- Period within fiscal year - year end period TBC with Parliament
@@ -41,10 +48,9 @@ SELECT
     y.apar_type                  -- R=Customer, P=Supplier - populated on control accounts only
 
 FROM aglyearend y
-WHERE y.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-  AND y.fiscal_year = '[CURRENT_FISCAL_YEAR]'  -- e.g. 2025 for FY2025/26 - confirm format with Parliament
+WHERE y.fiscal_year = '[CURRENT_FISCAL_YEAR]'  -- e.g. 2025 for FY2025/26 - confirm format with Parliament
   AND y.period = '[YEAR_END_PERIOD]'            -- Final period of fiscal year - likely period 12 or 15 depending on adjustments
-ORDER BY y.client, y.account, y.dim_1;
+ORDER BY y.account, y.dim_1;
 
 
 ## gl_opening_balances.sql

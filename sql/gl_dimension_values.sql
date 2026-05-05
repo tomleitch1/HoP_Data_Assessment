@@ -10,6 +10,13 @@
 -- ============================================================
 
 -- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as gl_dimension_values_HOC.csv
+-- Run against agresso_HoL  → save as gl_dimension_values_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
+-- ============================================================
 -- STEP 1: Run this profile query first to identify Parliament's
 --         attribute_id codes before running the main extract
 -- ============================================================
@@ -22,9 +29,8 @@ SELECT
     SUM(CASE WHEN d.status != 'N' THEN 1 ELSE 0 END) AS inactive_count,
     MAX(d.last_update) AS last_updated
 FROM agldimvalue d
-WHERE d.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
 GROUP BY d.client, d.attribute_id
-ORDER BY d.client, value_count DESC;
+ORDER BY value_count DESC;
 
 -- ============================================================
 -- STEP 2: Main extract - run once attribute_id codes confirmed
@@ -34,7 +40,7 @@ ORDER BY d.client, value_count DESC;
 
 SELECT
     -- === IDENTITY ===
-    d.client,                    -- Which House - HoC or HoL
+    d.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     d.attribute_id,              -- Dimension type e.g. COSTC, SUBJ, ANAL1 - Parliament-specific
     d.dim_value,                 -- The segment code itself e.g. cost centre 1000
     d.description,               -- Human readable description of the segment value
@@ -53,8 +59,7 @@ SELECT
     d.wf_state                   -- Workflow state - blank=none, T=approved, W=in workflow
 
 FROM agldimvalue d
-WHERE d.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-  AND d.attribute_id IN (
+WHERE d.attribute_id IN (
       '[ACCOUNT_ATTR_ID]',       -- Account dimension - confirm from Step 1
       '[COSTC_ATTR_ID]',         -- Cost Centre dimension - confirm from Step 1
       '[SUBJ_ATTR_ID]',          -- Subjective dimension - confirm from Step 1
@@ -62,7 +67,7 @@ WHERE d.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
       '[ANAL2_ATTR_ID]'          -- Analysis 2 dimension - confirm from Step 1
                                  -- Add further attribute_ids as needed from Step 1
   )
-ORDER BY d.client, d.attribute_id, d.dim_value;
+ORDER BY d.attribute_id, d.dim_value;
 
 
 

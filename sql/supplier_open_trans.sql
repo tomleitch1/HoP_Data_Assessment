@@ -1,6 +1,13 @@
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as supplier_open_trans_HOC.csv
+-- Run against agresso_HoL  → save as supplier_open_trans_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    t.client,                    // Which House - HoC or HoL
+    t.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     t.apar_id,                   // Supplier ID - links to asuheader.apar_id
     t.voucher_no,                // Unique transaction/invoice number
     t.sequence_no,               // Line number within the transaction
@@ -42,9 +49,8 @@ SELECT
     t.wf_state                   // Workflow state
 
 FROM asutrans t
-WHERE t.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-  AND t.status != 'C'           // Exclude closed/paid - open items only
-ORDER BY t.client, t.apar_id, t.voucher_no;
+WHERE t.status != 'C'           -- Exclude closed/paid - open items only
+ORDER BY t.apar_id, t.voucher_no;
 
 
 

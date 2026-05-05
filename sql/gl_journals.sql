@@ -6,11 +6,14 @@
 -- Source table: agltransact
 -- =============================================================================
 --
--- INSTANCE & CLIENT
--- Run this script separately against the HoC instance and the HoL instance.
--- HoC clients: CA (Common Administration), CF (Miscellaneous Fund),
--- CM (Members Fund). HoL client: LA.
--- Add house column in Python after load (df['house'] = 'HOC' / 'HOL').
+-- HOW TO RUN
+-- Run against Agresso_HoC (server mdata837)  → save as gl_journals_HOC.csv
+-- Run against agresso_HoL (server mdata837)  → save as gl_journals_HOL.csv
+-- House is assigned by Python from the filename suffix, not the client column.
+--
+-- CLIENT CODES (internal fund codes within each database, NOT house identifiers)
+-- Agresso_HoC clients: CA (Common Administration), CF (Miscellaneous Fund), CM (Members Fund)
+-- agresso_HoL client:  LA
 --
 -- RELATIONSHIP TO gl_transact_dimensions.csv
 -- A separate lean extract (SELECT DISTINCT client, dim_1...dim_7) already
@@ -276,8 +279,7 @@ SELECT
 FROM
     agltransact
 WHERE
-    client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-    AND fiscal_year = [CURRENT_FISCAL_YEAR]  -- Seq 20 scope: current FY only.
+    fiscal_year = [CURRENT_FISCAL_YEAR]  -- Seq 20 scope: current FY only.
                                               -- Replace with actual year e.g. 2026.
                                               -- Confirm FY convention with Parliament
                                               -- before running.

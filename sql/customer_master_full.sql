@@ -7,9 +7,16 @@
 --          scoping, full list for backward compatibility checks
 -- ============================================================
 
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as customer_master_HOC.csv
+-- Run against agresso_HoL  → save as customer_master_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    h.client,                    // Which House - HoC or HoL
+    h.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     h.apar_id,                   // Customer ID - primary key
     h.apar_name,                 // Customer full name
     h.short_name,                // Abbreviated name - 10 char max
@@ -51,8 +58,7 @@ SELECT
     h.wf_state                   // Workflow state - blank=none, T=approved, W=in workflow
 
 FROM acuheader h
-WHERE h.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-ORDER BY h.client, h.apar_id;
+ORDER BY h.apar_id;
 
 
 ## customer_master.sql

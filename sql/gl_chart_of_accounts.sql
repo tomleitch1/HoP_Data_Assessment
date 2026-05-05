@@ -8,9 +8,16 @@
 --          against agltransact and aglyearend
 -- ============================================================
 
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as gl_chart_of_accounts_HOC.csv
+-- Run against agresso_HoL  → save as gl_chart_of_accounts_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    a.client,                    -- Which House - HoC or HoL
+    a.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     a.account,                   -- Account code - primary key
     a.description,               -- Account description
     a.account_grp,               -- Account group code - links to aglaccgrp
@@ -31,8 +38,7 @@ SELECT
     a.head_account               -- Headquarter account - links to consolidated account if used
 
 FROM aglaccounts a
-WHERE a.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-ORDER BY a.client, a.account;
+ORDER BY a.account;
 
 
 

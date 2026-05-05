@@ -8,9 +8,16 @@
 --          Python splits by pay_flag for separate migration object handling
 -- ============================================================
 
+-- ============================================================
+-- HOW TO RUN
+-- Run against Agresso_HoC  → save as customer_open_trans_HOC.csv
+-- Run against agresso_HoL  → save as customer_open_trans_HOL.csv
+-- Server: mdata837
+-- ============================================================
+
 SELECT
     -- === IDENTITY ===
-    t.client,                    // Which House - HoC or HoL
+    t.client,                    -- Internal Unit4 client/fund code (not the house identifier)
     t.apar_id,                   // Customer ID - links to acuheader.apar_id
     t.voucher_no,                // Unique transaction number
     t.sequence_no,               // Line number within the transaction
@@ -60,9 +67,8 @@ SELECT
     t.wf_state                   // Workflow state
 
 FROM acutrans t
-WHERE t.client IN ('[HOC_CLIENT]', '[HOL_CLIENT]')
-  AND t.status != 'C'           // Exclude closed/paid - open items only
-ORDER BY t.client, t.apar_id, t.voucher_no;
+WHERE t.status != 'C'           -- Exclude closed/paid - open items only
+ORDER BY t.apar_id, t.voucher_no;
 
 
 ## customer_open_trans.sql
