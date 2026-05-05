@@ -36,11 +36,18 @@ def _safe_max_date(df: pd.DataFrame, col: str) -> str | None:
     return parsed.max().strftime('%d %b %Y').lstrip('0')
 
 
+def _filter_house(df: pd.DataFrame, house: str) -> pd.DataFrame:
+    """Filter a DataFrame to a single house using the 'house' column."""
+    if df is None or df.empty or 'house' not in df.columns:
+        return pd.DataFrame()
+    return df[df['house'] == house]
+
+
 def _count_by_status(df: pd.DataFrame, house: str, col: str = 'status') -> dict:
     """Return {status_value: count} for a given house."""
     if df is None or col not in df.columns:
         return {}
-    sub = df[df['client'] == house]
+    sub = _filter_house(df, house)
     return sub[col].value_counts().to_dict()
 
 
@@ -48,14 +55,14 @@ def _sum_column(df: pd.DataFrame, house: str, col: str) -> float:
     """Return the sum of a numeric column for a given house, safely."""
     if df is None or col not in df.columns:
         return 0.0
-    sub = df[df['client'] == house]
+    sub = _filter_house(df, house)
     return pd.to_numeric(sub[col], errors='coerce').sum()
 
 
 def _record_count(df: pd.DataFrame, house: str) -> int:
     if df is None:
         return 0
-    return int((df['client'] == house).sum())
+    return int(len(_filter_house(df, house)))
 
 
 # ── Overview volumetrics ──────────────────────────────────────────────────────
@@ -93,19 +100,19 @@ def get_overview_volumetrics(frames: dict) -> dict:
     result = {}
     for house in CLIENTS:
         # ── Supplier master ───────────────────────────────────────────────────
-        sup_all      = sup[sup['client'] == house] if sup is not None else pd.DataFrame()
+        sup_all      = _filter_house(sup, house)
         sup_active   = int(sup_all['status'].isin(SupplierConfig.ACTIVE_STATUSES).sum())   if not sup_all.empty else 0
         sup_inactive = int(sup_all['status'].isin(SupplierConfig.INACTIVE_STATUSES).sum()) if not sup_all.empty else 0
         sup_total    = len(sup_all)
 
         # ── Customer master ───────────────────────────────────────────────────
-        cus_all      = cus[cus['client'] == house] if cus is not None else pd.DataFrame()
+        cus_all      = _filter_house(cus, house)
         cus_active   = int(cus_all['status'].isin(CustomerConfig.ACTIVE_STATUSES).sum())   if not cus_all.empty else 0
         cus_inactive = int(cus_all['status'].isin(CustomerConfig.INACTIVE_STATUSES).sum()) if not cus_all.empty else 0
         cus_total    = len(cus_all)
 
         # ── AP transactions ───────────────────────────────────────────────────
-        ap_h         = ap[ap['client'] == house] if ap is not None else pd.DataFrame()
+        ap_h         = _filter_house(ap, house)
         ap_open_mask = ap_h['status'].isin(APConfig.OPEN_TRANSACTION_STATUSES) if not ap_h.empty else pd.Series(dtype=bool)
         ap_open      = int(ap_open_mask.sum()) if not ap_h.empty else 0
         ap_balance   = float(
@@ -121,7 +128,7 @@ def get_overview_volumetrics(frames: dict) -> dict:
             ap_overdue = 0
 
         # ── AR transactions ───────────────────────────────────────────────────
-        ar_h         = ar[ar['client'] == house] if ar is not None else pd.DataFrame()
+        ar_h         = _filter_house(ar, house)
         ar_open_mask = ar_h['status'].isin(ARConfig.OPEN_TRANSACTION_STATUSES) if not ar_h.empty else pd.Series(dtype=bool)
         ar_open      = int(ar_open_mask.sum()) if not ar_h.empty else 0
         ar_balance   = float(
@@ -143,18 +150,18 @@ def get_overview_volumetrics(frames: dict) -> dict:
         cus_date = _safe_max_date(cus_all, 'last_update')  if not cus_all.empty else None
 
         # ── GL summary ────────────────────────────────────────────────────────
-        coa_h        = gl_coa[gl_coa['client'] == house] if gl_coa is not None else pd.DataFrame()
+        coa_h        = _filter_house(gl_coa, house)
         gl_coa_total = len(coa_h)
         gl_accounts  = int(coa_h['status'].isin(GLConfig.ACTIVE_STATUSES).sum()) if not coa_h.empty and 'status' in coa_h.columns else 0
         gl_pl        = int((coa_h['res_bal'] == 'R').sum()) if not coa_h.empty and 'res_bal' in coa_h.columns else 0
         gl_bs        = int((coa_h['res_bal'] == 'B').sum()) if not coa_h.empty and 'res_bal' in coa_h.columns else 0
-        ob_h         = gl_ob[gl_ob['client'] == house] if gl_ob is not None else pd.DataFrame()
+        ob_h         = _filter_house(gl_ob, house)
         gl_ob_total  = len(ob_h)
         gl_ob_bal    = float(pd.to_numeric(ob_h.get('amount', pd.Series(dtype=float)), errors='coerce').sum()) if not ob_h.empty else 0.0
         gl_coa_date  = _safe_max_date(coa_h, 'last_update') if not coa_h.empty else None
         # Total across all three scored GL tables (CoA + OB; dim_values counted separately)
         gl_dim_df    = frames.get('agldimvalue')
-        gl_dim_h     = gl_dim_df[gl_dim_df['client'] == house] if gl_dim_df is not None else pd.DataFrame()
+        gl_dim_h     = _filter_house(gl_dim_df, house)
         gl_total_all = gl_coa_total + gl_ob_total + len(gl_dim_h)
 
         result[house] = {
@@ -276,7 +283,7 @@ def get_tab_volumetrics(frames: dict, scope_key: str) -> dict:
 
     for house in CLIENTS:
         # ── Master data ───────────────────────────────────────────────────────
-        m = master_df[master_df['client'] == house].copy() if master_df is not None else pd.DataFrame()
+        m = _filter_house(master_df, house).copy()
 
         if not m.empty and 'status' in m.columns:
             sc         = m['status'].value_counts().to_dict()
@@ -300,7 +307,7 @@ def get_tab_volumetrics(frames: dict, scope_key: str) -> dict:
         }
 
         # ── Transactions ──────────────────────────────────────────────────────
-        t = trans_df[trans_df['client'] == house].copy() if trans_df is not None else pd.DataFrame()
+        t = _filter_house(trans_df, house).copy()
 
         if scope_key == 'gl':
             # Opening Balances (aglyearend) have no status, due_date, or rest_amount.
@@ -414,7 +421,7 @@ def get_tab_volumetrics(frames: dict, scope_key: str) -> dict:
 
         # ── Historical transactions (AP only) ─────────────────────────────────
         if hist_df is not None:
-            h_house = hist_df[hist_df['client'] == house] if 'client' in hist_df.columns else pd.DataFrame()
+            h_house = _filter_house(hist_df, house)
             hist_out[house] = {
                 'total':        len(h_house),
                 'extract_date': _safe_max_date(h_house, 'trans_date'),
@@ -423,7 +430,7 @@ def get_tab_volumetrics(frames: dict, scope_key: str) -> dict:
         # ── GL Dimension Values (GL tab only) ─────────────────────────────────
         if scope_key == 'gl':
             dim_df   = frames.get('agldimvalue')
-            dim_h    = dim_df[dim_df['client'] == house].copy() if dim_df is not None else pd.DataFrame()
+            dim_h    = _filter_house(dim_df, house).copy()
             dim_sc   = dim_h['status'].value_counts().to_dict() if not dim_h.empty and 'status' in dim_h.columns else {}
             dim_act  = int((dim_h['status'] == 'N').sum()) if not dim_h.empty and 'status' in dim_h.columns else 0
             dim_inact= int((dim_h['status'] != 'N').sum()) if not dim_h.empty and 'status' in dim_h.columns else 0
@@ -475,7 +482,7 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
     
     for house in CLIENTS:
         # 1. Supplier Logic
-        h_header = header[header['client'] == house] if not header.empty else pd.DataFrame()
+        h_header = _filter_house(header, house)
         active   = int((h_header['status'] == 'N').sum()) if not h_header.empty and 'status' in h_header.columns else 0
         inactive = int((h_header['status'] == 'C').sum()) if not h_header.empty and 'status' in h_header.columns else 0
         total_m  = len(h_header)
@@ -485,7 +492,7 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
         m_status_breakdown = h_header['status'].value_counts().to_dict() if not h_header.empty and 'status' in h_header.columns else {}
         
         # 2. Transaction Logic
-        h_trans = trans[trans['client'] == house] if not trans.empty else pd.DataFrame()
+        h_trans = _filter_house(trans, house)
         t_all_counts = h_trans['status'].value_counts().to_dict() if not h_trans.empty and 'status' in h_trans.columns else {}
         
         t_open = h_trans[h_trans['status'].isin(open_statuses)] if not h_trans.empty and 'status' in h_trans.columns else pd.DataFrame()
@@ -509,7 +516,7 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
         t_date = _safe_max_date(h_trans, 'trans_date')
         
         # 3. History Logic
-        h_hist = hist[hist['client'] == house] if not hist.empty else pd.DataFrame()
+        h_hist = _filter_house(hist, house)
         hist_total = len(h_hist)
         
         results[house] = {
@@ -562,40 +569,40 @@ def get_ar_volumetrics(df_dict: dict) -> dict:
     
     for house in CLIENTS:
         # 1. Customer Logic
-        h_header = header[header['client'] == house] if not header.empty and 'client' in header.columns else (header[header['house'] == house] if not header.empty and 'house' in header.columns else pd.DataFrame())
+        h_header = _filter_house(header, house)
         active   = int((h_header['status'] == 'N').sum()) if not h_header.empty and 'status' in h_header.columns else 0
         inactive = int((h_header['status'] == 'C').sum()) if not h_header.empty and 'status' in h_header.columns else 0
         total_m  = len(h_header)
         m_date   = _safe_max_date(h_header, 'last_update')
-        
+
         m_status_breakdown = h_header['status'].value_counts().to_dict() if not h_header.empty and 'status' in h_header.columns else {}
-        
+
         # 2. Transaction Logic
-        h_trans = trans[trans['client'] == house] if not trans.empty and 'client' in trans.columns else (trans[trans['house'] == house] if not trans.empty and 'house' in trans.columns else pd.DataFrame())
+        h_trans = _filter_house(trans, house)
         t_all_counts = h_trans['status'].value_counts().to_dict() if not h_trans.empty and 'status' in h_trans.columns else {}
-        
+
         t_open = h_trans[h_trans['status'].isin(open_statuses)] if not h_trans.empty and 'status' in h_trans.columns else pd.DataFrame()
-        
+
         open_count = len(t_open)
         balance    = float(pd.to_numeric(t_open['rest_amount'], errors='coerce').sum()) if not t_open.empty and 'rest_amount' in t_open.columns else 0.0
-        
+
         if not t_open.empty and 'due_date' in t_open.columns:
             due = pd.to_datetime(t_open['due_date'], errors='coerce')
             overdue = int((due < today).sum())
         else:
             overdue = 0
-            
+
         if not t_open.empty and 'trans_date' in t_open.columns:
             td = pd.to_datetime(t_open['trans_date'], errors='coerce')
             ages = (today - td).dt.days.dropna()
             avg_age = float(ages.mean()) if len(ages) else 0.0
         else:
             avg_age = 0.0
-            
+
         t_date = _safe_max_date(h_trans, 'trans_date')
-        
+
         # 3. History Logic
-        h_hist = hist[hist['client'] == house] if not hist.empty and 'client' in hist.columns else (hist[hist['house'] == house] if not hist.empty and 'house' in hist.columns else pd.DataFrame())
+        h_hist = _filter_house(hist, house)
         hist_total = len(h_hist)
         
         results[house] = {
@@ -644,22 +651,22 @@ def get_gl_volumetrics(df_dict: dict) -> dict:
     results = {}
     for house in CLIENTS:
         # COA
-        h_coa = coa[coa['client'] == house] if not coa.empty and 'client' in coa.columns else (coa[coa['house'] == house] if not coa.empty and 'house' in coa.columns else pd.DataFrame())
+        h_coa = _filter_house(coa, house)
         coa_active = int((h_coa['status'] == 'N').sum()) if not h_coa.empty and 'status' in h_coa.columns else 0
         coa_inactive = int((h_coa['status'] == 'C').sum()) if not h_coa.empty and 'status' in h_coa.columns else 0
         coa_types = h_coa['account_type'].value_counts().to_dict() if not h_coa.empty and 'account_type' in h_coa.columns else {}
-        
+
         # OB
-        h_ob = ob[ob['client'] == house] if not ob.empty and 'client' in ob.columns else (ob[ob['house'] == house] if not ob.empty and 'house' in ob.columns else pd.DataFrame())
+        h_ob = _filter_house(ob, house)
         if not h_ob.empty and 'amount' in h_ob.columns and 'dc_flag' in h_ob.columns:
             debits = float(pd.to_numeric(h_ob.loc[h_ob['dc_flag'] == 1, 'amount'], errors='coerce').sum())
             credits = float(pd.to_numeric(h_ob.loc[h_ob['dc_flag'] == -1, 'amount'], errors='coerce').sum())
         else:
             debits = 0.0
             credits = 0.0
-            
+
         # Dim
-        h_dim = dim[dim['client'] == house] if not dim.empty and 'client' in dim.columns else (dim[dim['house'] == house] if not dim.empty and 'house' in dim.columns else pd.DataFrame())
+        h_dim = _filter_house(dim, house)
         dim_active = int((h_dim['status'] == 'N').sum()) if not h_dim.empty and 'status' in h_dim.columns else 0
         dim_inactive = int((h_dim['status'] != 'N').sum()) if not h_dim.empty and 'status' in h_dim.columns else 0
         dim_types = h_dim['attribute_id'].value_counts().to_dict() if not h_dim.empty and 'attribute_id' in h_dim.columns else {}
@@ -714,8 +721,7 @@ def get_asset_volumetrics(df_dict: dict) -> dict:
 
     results = {}
     for house in CLIENTS:
-        h = assets[assets['client'] == house] if not assets.empty and 'client' in assets.columns else \
-            (assets[assets['house'] == house] if not assets.empty and 'house' in assets.columns else pd.DataFrame())
+        h = _filter_house(assets, house)
 
         total    = len(h)
         active   = int((h['status'] == 'N').sum())   if not h.empty and 'status' in h.columns else 0

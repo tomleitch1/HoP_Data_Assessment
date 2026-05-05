@@ -20,17 +20,14 @@ def load_data():
     """Loads all CSV files from the data directory and combines HOC/HOL."""
     frames = {}
     
-    # Mapping of filename to table name
+    # Mapping of filename to table name (GL files are single combined extracts)
     file_map = {
-        'supplier_master.csv': 'asuheader',
-        'supplier_open_trans.csv': 'asutrans',
-        'supplier_history.csv': 'asuhistr',
         'gl_chart_of_accounts.csv': 'aglaccounts',
         'gl_dimension_values.csv': 'agldimvalue',
         'gl_opening_balances.csv': 'aglyearend',
         'gl_transact_dimensions.csv': 'agltransact'
     }
-    
+
     for filename, table in file_map.items():
         path = os.path.join(DATA_DIR, filename)
         if os.path.exists(path):
@@ -39,8 +36,20 @@ def load_data():
                 df['house'] = df['client']
             frames[table] = df
 
+    # Tables where house is determined by the filename suffix (_HOC / _HOL),
+    # not by the client column. The client column contains internal Unit4 client
+    # codes that are NOT 'HOC'/'HOL'.
+    house_from_filename = {
+        'supplier_master', 'supplier_open_trans', 'supplier_history',
+        'asset_master', 'asset_depreciation', 'asset_balances',
+        'asset_trans_flags', 'asset_groups', 'gl_journals',
+    }
+
     # Load split files
     split_files = {
+        'supplier_master': 'asuheader',
+        'supplier_open_trans': 'asutrans',
+        'supplier_history': 'asuhistr',
         'customer_master': 'acuheader',
         'customer_open_trans': 'acutrans',
         'customer_history': 'acuhistr',
@@ -49,7 +58,7 @@ def load_data():
         'asset_balances': 'asset_balances',
         'asset_trans_flags': 'asset_trans_flags',
         'asset_groups': 'asset_groups',
-        'gl_journals': 'gl_journals',      # Seq 20 GL Journals (agltransact full extract)
+        'gl_journals': 'gl_journals',
     }
     for base_name, table in split_files.items():
         dfs = []
@@ -57,7 +66,7 @@ def load_data():
             path = os.path.join(DATA_DIR, f"{base_name}_{house}.csv")
             if os.path.exists(path):
                 df = pd.read_csv(path, low_memory=False)
-                if table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'asset_groups', 'gl_journals']:
+                if base_name in house_from_filename:
                     df['house'] = house
                 elif 'client' in df.columns:
                     df['house'] = df['client']
