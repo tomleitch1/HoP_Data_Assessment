@@ -1,0 +1,23 @@
+client,asset_group,description,grp_status,depr_method,depr_percent,lifetime,res_value,res_val_flag,salvage_amount,depr_start,depr_limit,depr_max_perc,frequency,switch,period_exact,nbv_rounding,index_id,index_code,ins_table_id,insurance_mode,dim_1,dim_2,dim_3,dim_4,dim_5,dim_6,dim_7,grp_last_update,grp_user_id,depr_book_id,book_status,book_depr_method,book_depr_percent,book_lifetime,book_res_value,book_res_val_flag,book_salvage_amount,book_depr_start,book_depr_limit,book_depr_max_perc,book_frequency,book_switch,book_period_exact,book_nbv_rounding,book_index_id,book_index_code,book_last_update,book_user_id
+LA,BUILD,Buildings & Land,N,LIN,0.0,50,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC123,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,BUILD,Buildings & Land,N,LIN,0.0,50,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC107,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,EQUIP,Plant & Equipment,N,LIN,0.0,10,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC123,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,EQUIP,Plant & Equipment,N,LIN,0.0,10,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC111,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,IT,IT Hardware & Software,N,LIN,0.0,5,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC117,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,IT,IT Hardware & Software,N,LIN,0.0,5,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC118,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,VEH,Motor Vehicles,N,BAL,25.0,7,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC117,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,VEH,Motor Vehicles,N,BAL,25.0,7,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC111,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,FURN,Furniture & Fittings,N,LIN,0.0,10,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC116,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,FURN,Furniture & Fittings,N,LIN,0.0,10,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC122,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,ART,Heritage Assets & Art,N,LIN,0.0,99,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC111,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,INT,Intangible Assets,N,LIN,0.0,3,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC139,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,INT,Intangible Assets,N,LIN,0.0,3,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC145,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,LEASE,Leasehold Improvements,N,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC106,,,,,,,2026-03-24,SYSTEM,FIN,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,LEASE,Leasehold Improvements,N,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,,Leasehold Improvements,N,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,GHOST,,N,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,INVALID_M,Leasehold Improvements,N,XXX,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,HIGH_PCT,Leasehold Improvements,N,BAL,150.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,NO_LIFE,Leasehold Improvements,N,LIN,0.0,0,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,INACTIVE_G,Leasehold Improvements,C,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM
+LA,DUP_DESC,Buildings & Land,N,LIN,0.0,15,0,0,0,C,0,0,M,0,1,1,,,STD,1,CC103,,,,,,,2026-03-24,SYSTEM,TAX,N,,0,0,0,,0,,0,0,,,,,,,2026-03-24,SYSTEM

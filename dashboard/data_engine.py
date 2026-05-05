@@ -16,20 +16,38 @@ DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
 SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Invoices'}
 
+# Subdirectory for each data domain within DATA_DIR
+SUBDIR = {
+    'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
+    'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
+    'gl':        ['gl_chart_of_accounts', 'gl_dimension_values', 'gl_opening_balances',
+                  'gl_transact_dimensions', 'gl_journals'],
+    'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
+                  'asset_trans_flags', 'asset_groups'],
+}
+# Reverse lookup: base_name -> subdirectory
+_SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
+
+def _data_path(base_name: str, suffix: str = '') -> str:
+    """Return the full path for a data file, respecting the subdirectory layout."""
+    filename = f"{base_name}{suffix}.csv"
+    subdir = _SUBDIR_MAP.get(base_name, '')
+    return os.path.join(DATA_DIR, subdir, filename)
+
 def load_data():
     """Loads all CSV files from the data directory and combines HOC/HOL."""
     frames = {}
-    
-    # Mapping of filename to table name (GL files are single combined extracts)
+
+    # Single combined files (GL reference tables)
     file_map = {
-        'gl_chart_of_accounts.csv': 'aglaccounts',
-        'gl_dimension_values.csv': 'agldimvalue',
-        'gl_opening_balances.csv': 'aglyearend',
-        'gl_transact_dimensions.csv': 'agltransact'
+        'gl_chart_of_accounts': 'aglaccounts',
+        'gl_dimension_values':  'agldimvalue',
+        'gl_opening_balances':  'aglyearend',
+        'gl_transact_dimensions': 'agltransact'
     }
 
-    for filename, table in file_map.items():
-        path = os.path.join(DATA_DIR, filename)
+    for base_name, table in file_map.items():
+        path = _data_path(base_name)
         if os.path.exists(path):
             df = pd.read_csv(path, low_memory=False)
             if 'client' in df.columns:
@@ -47,23 +65,23 @@ def load_data():
 
     # Load split files
     split_files = {
-        'supplier_master': 'asuheader',
+        'supplier_master':    'asuheader',
         'supplier_open_trans': 'asutrans',
-        'supplier_history': 'asuhistr',
-        'customer_master': 'acuheader',
+        'supplier_history':   'asuhistr',
+        'customer_master':    'acuheader',
         'customer_open_trans': 'acutrans',
-        'customer_history': 'acuhistr',
-        'asset_master': 'asset_master',
+        'customer_history':   'acuhistr',
+        'asset_master':       'asset_master',
         'asset_depreciation': 'asset_depreciation',
-        'asset_balances': 'asset_balances',
-        'asset_trans_flags': 'asset_trans_flags',
-        'asset_groups': 'asset_groups',
-        'gl_journals': 'gl_journals',
+        'asset_balances':     'asset_balances',
+        'asset_trans_flags':  'asset_trans_flags',
+        'asset_groups':       'asset_groups',
+        'gl_journals':        'gl_journals',
     }
     for base_name, table in split_files.items():
         dfs = []
         for house in ['HOC', 'HOL']:
-            path = os.path.join(DATA_DIR, f"{base_name}_{house}.csv")
+            path = _data_path(base_name, f'_{house}')
             if os.path.exists(path):
                 df = pd.read_csv(path, low_memory=False)
                 if base_name in house_from_filename:
