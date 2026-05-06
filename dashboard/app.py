@@ -407,7 +407,9 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
 
     # ── LEFT SIDEBAR ──
     sev_colors_light = {'Critical': '#fef2f2', 'High': '#fff7ed', 'Medium': '#fefce8', 'Low': '#f5f3ff'}
-    sev_bg   = sev_colors_light.get(row.get('severity', ''), '#f5f3ff')
+    sev_colors_dark  = {'Critical': '#ef4444', 'High': '#f97316', 'Medium': '#eab308', 'Low': '#8b5cf6'}
+    sev_bg    = sev_colors_light.get(row.get('severity', ''), '#f5f3ff')
+    sev_color = sev_colors_dark.get(row.get('severity', ''), '#8b5cf6')
 
     def _stat_card(value, label, icon, value_color, icon_color=None, extra=None):
         return html.Div(style={
@@ -1097,8 +1099,6 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     ])
 
     house_color = HOUSE_HEX.get(house, '#7c5cbf')
-    sev_colors  = {'Critical': '#ef4444', 'High': '#f97316', 'Medium': '#eab308', 'Low': '#8b5cf6'}
-    sev_color   = sev_colors.get(row.get('severity', ''), '#8b5cf6')
 
     modal_title = html.Div(style={
         'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'minWidth': 0,
