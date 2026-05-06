@@ -508,21 +508,29 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
         migration_scope = active + inactive_recent
 
         # 3. Open transactions
+        # Deduplicate by voucher_no before counting/summing — rest_amount is a
+        # header-level field repeated on every line of a multi-line invoice.
+        # Summing all rows would multiply the balance by the number of lines.
         h_trans      = _filter_house(trans, house)
-        t_all_counts = h_trans['status'].value_counts().to_dict() if not h_trans.empty and 'status' in h_trans.columns else {}
         t_open       = h_trans[h_trans['status'].isin(open_statuses)] if not h_trans.empty and 'status' in h_trans.columns else pd.DataFrame()
 
-        open_count = len(t_open)
-        balance    = float(pd.to_numeric(t_open['rest_amount'], errors='coerce').sum()) if not t_open.empty and 'rest_amount' in t_open.columns else 0.0
+        if not t_open.empty and 'voucher_no' in t_open.columns:
+            t_open_hdr = t_open.drop_duplicates(subset=['voucher_no'])
+        else:
+            t_open_hdr = t_open
 
-        if not t_open.empty and 'due_date' in t_open.columns:
-            due     = pd.to_datetime(t_open['due_date'], errors='coerce')
+        open_count   = len(t_open_hdr)
+        t_all_counts = t_open_hdr['status'].value_counts().to_dict() if not t_open_hdr.empty and 'status' in t_open_hdr.columns else {}
+        balance    = float(pd.to_numeric(t_open_hdr['rest_amount'], errors='coerce').sum()) if not t_open_hdr.empty and 'rest_amount' in t_open_hdr.columns else 0.0
+
+        if not t_open_hdr.empty and 'due_date' in t_open_hdr.columns:
+            due     = pd.to_datetime(t_open_hdr['due_date'], errors='coerce')
             overdue = int((due < today).sum())
         else:
             overdue = 0
 
-        if not t_open.empty and 'trans_date' in t_open.columns:
-            td      = pd.to_datetime(t_open['trans_date'], errors='coerce')
+        if not t_open_hdr.empty and 'trans_date' in t_open_hdr.columns:
+            td      = pd.to_datetime(t_open_hdr['trans_date'], errors='coerce')
             ages    = (today - td).dt.days.dropna()
             avg_age = float(ages.mean()) if len(ages) else 0.0
         else:
@@ -530,11 +538,11 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
 
         t_date = _safe_max_date(h_trans, 'trans_date')
 
-        # Balance broken down by transaction status
+        # Balance broken down by status — use deduplicated header rows
         balance_by_status = {}
-        if not h_trans.empty and 'status' in h_trans.columns and 'rest_amount' in h_trans.columns:
+        if not t_open_hdr.empty and 'status' in t_open_hdr.columns and 'rest_amount' in t_open_hdr.columns:
             for s in ['N', 'R', 'I', 'P']:
-                s_rows = h_trans[h_trans['status'] == s]
+                s_rows = t_open_hdr[t_open_hdr['status'] == s]
                 balance_by_status[s] = float(
                     pd.to_numeric(s_rows['rest_amount'], errors='coerce').sum()
                 ) if not s_rows.empty else 0.0
