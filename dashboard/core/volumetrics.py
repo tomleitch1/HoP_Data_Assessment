@@ -522,14 +522,9 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
         open_count   = len(t_open_hdr)
         t_all_counts = t_open_hdr['status'].value_counts().to_dict() if not t_open_hdr.empty and 'status' in t_open_hdr.columns else {}
 
-        # Apply dc_flag as sign: 1 = invoice (owe to supplier), -1 = credit note (reduces balance)
-        # rest_amount is always stored positive; dc_flag carries the debit/credit direction
-        if not t_open_hdr.empty and 'rest_amount' in t_open_hdr.columns:
-            amt  = pd.to_numeric(t_open_hdr['rest_amount'], errors='coerce').fillna(0)
-            sign = pd.to_numeric(t_open_hdr.get('dc_flag', 1), errors='coerce').fillna(1)
-            balance = float((amt * sign).sum())
-        else:
-            balance = 0.0
+        # rest_amount is already signed — positive for invoices, negative for credit notes
+        # Just sum directly; no dc_flag adjustment needed
+        balance = float(pd.to_numeric(t_open_hdr['rest_amount'], errors='coerce').sum()) if not t_open_hdr.empty and 'rest_amount' in t_open_hdr.columns else 0.0
 
         if not t_open_hdr.empty and 'due_date' in t_open_hdr.columns:
             due     = pd.to_datetime(t_open_hdr['due_date'], errors='coerce')
@@ -546,17 +541,14 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
 
         t_date = _safe_max_date(h_trans, 'trans_date')
 
-        # Balance broken down by status — apply dc_flag sign
+        # Balance broken down by status — rest_amount already signed, sum directly
         balance_by_status = {}
         if not t_open_hdr.empty and 'status' in t_open_hdr.columns and 'rest_amount' in t_open_hdr.columns:
             for s in ['N', 'R', 'I', 'P']:
                 s_rows = t_open_hdr[t_open_hdr['status'] == s]
-                if not s_rows.empty:
-                    amt  = pd.to_numeric(s_rows['rest_amount'], errors='coerce').fillna(0)
-                    sign = pd.to_numeric(s_rows.get('dc_flag', 1), errors='coerce').fillna(1)
-                    balance_by_status[s] = float((amt * sign).sum())
-                else:
-                    balance_by_status[s] = 0.0
+                balance_by_status[s] = float(
+                    pd.to_numeric(s_rows['rest_amount'], errors='coerce').sum()
+                ) if not s_rows.empty else 0.0
 
         results[house] = {
             'house': house,
