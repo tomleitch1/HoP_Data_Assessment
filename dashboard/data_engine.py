@@ -108,17 +108,39 @@ def load_data():
             if col in df.columns:
                 df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
         
-        # Date parsing — handles both real data (dd/mm/yyyy  00:00:00 from SSMS)
-        # and dummy data (YYYY-MM-DD). Try ISO format first; fall back to
-        # dd/mm/yyyy for anything that doesn't parse (real SSMS exports).
+        # Date parsing — handles three formats:
+        #   1. YYYY-MM-DD        (dummy data generated on dev laptop)
+        #   2. dd/mm/yyyy        (SSMS direct export or copy-paste as text before Excel converts)
+        #   3. Excel serial int  (e.g. 45626) when copy-pasted into Excel which stores
+        #      dates as days since 1899-12-30; Text-formatting the cell exposes the serial
+        # Tries formats in order; anything still NaT after all three is genuinely missing.
+        _EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
+        _EXCEL_MIN, _EXCEL_MAX = 36526, 55000  # approx year 2000 – 2050
+
         date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
         for col in date_cols:
             if col in df.columns:
                 s = df[col].astype(str).str.strip().str.split().str[0]
+                blank = s.isin(['nan', 'None', 'NaT', ''])
+
+                # 1. ISO format YYYY-MM-DD
                 parsed = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
-                fallback_mask = parsed.isna() & s.notna() & ~s.isin(['nan', 'None', 'NaT', ''])
-                if fallback_mask.any():
-                    parsed[fallback_mask] = pd.to_datetime(s[fallback_mask], format='%d/%m/%Y', errors='coerce')
+
+                # 2. dd/mm/yyyy
+                mask = parsed.isna() & ~blank
+                if mask.any():
+                    parsed[mask] = pd.to_datetime(s[mask], format='%d/%m/%Y', errors='coerce')
+
+                # 3. Excel serial number
+                mask = parsed.isna() & ~blank
+                if mask.any():
+                    numeric = pd.to_numeric(s[mask], errors='coerce')
+                    valid = numeric.notna() & numeric.between(_EXCEL_MIN, _EXCEL_MAX)
+                    if valid.any():
+                        parsed[mask[mask].index[valid]] = _EXCEL_ORIGIN + pd.to_timedelta(
+                            numeric[valid], unit='D'
+                        )
+
                 df[col] = parsed
         frames[table] = df
 
