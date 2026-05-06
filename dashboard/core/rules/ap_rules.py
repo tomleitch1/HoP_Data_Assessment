@@ -81,11 +81,11 @@ def get_ap_checks():
          lambda df: (~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)) & df['comp_reg_no'].notna()),
 
         ('SUP_SORT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
-         'Bank sort code format is invalid (Expected XX-XX-XX)',
-         'Validates sort codes are in the standard XX-XX-XX hyphenated format — incorrectly formatted codes will be rejected by payment systems.',
+         'Bank sort code format is invalid (Expected XX-XX-XX or XXXXXX)',
+         'Validates sort codes are in the standard XX-XX-XX hyphenated format or plain 6-digit format — other formats will be rejected by payment systems.',
          'Correct asuheader.clearing_code.', 'asuheader', None,
-         'asuheader.clearing_code NOT LIKE "__-__-__"',
-         lambda df: (~df['clearing_code'].str.match(r'^\d{2}-\d{2}-\d{2}$', na=False)) & df['clearing_code'].notna()),
+         'asuheader.clearing_code NOT LIKE "__-__-__" AND NOT LIKE "______" (6 digits)',
+         lambda df: (~df['clearing_code'].str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False)) & df['clearing_code'].notna()),
 
         ('SUP_BANK_FORMAT', 10, 'Suppliers', 'Validity', 'Critical',
          'Bank account format is invalid (Expected 8 digits)',

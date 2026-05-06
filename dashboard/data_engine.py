@@ -144,7 +144,7 @@ def load_data():
         string_cols = ['apar_id', 'vat_reg_no', 'comp_reg_no', 'bank_account', 'clearing_code', 'swift', 'iban', 'ext_inv_ref', 'voucher_no', 'account', 'dim_value', 'rel_value']
         for col in string_cols:
             if col in df.columns:
-                df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
+                df[col] = df[col].astype(str).str.strip().replace(['nan', 'None', ''], np.nan)
         
         # GL specific dimensions should be strings
         for i in range(1, 8):
@@ -561,6 +561,13 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     failing = h_df[mask].copy()
     if failing.empty:
         return failing
+
+    # asutrans has multiple rows per invoice (dimension splits via sequence_no).
+    # Filter to sequence_no == 1 so the modal shows one row per invoice.
+    if table == 'asutrans' and 'sequence_no' in failing.columns:
+        first_seq = failing[failing['sequence_no'] == 1]
+        if not first_seq.empty:
+            failing = first_seq
 
     # Enrich with context for better inspection
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
