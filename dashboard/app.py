@@ -96,37 +96,52 @@ app.layout = html.Div(style={
     # ── POPUP MODAL (Record Detail) ───────────────────────────────────────────
     html.Div(id='modal-overlay', style={
         'display': 'none', 'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%',
-        'background': 'rgba(15, 23, 42, 0.6)', 'backdropFilter': 'blur(4px)', 'zIndex': 1000,
-        'justifyContent': 'center', 'alignItems': 'center', 'padding': '20px', 'boxSizing': 'border-box'
+        'background': 'rgba(10, 6, 20, 0.72)', 'backdropFilter': 'blur(6px)', 'zIndex': 1000,
+        'justifyContent': 'center', 'alignItems': 'center', 'padding': '24px', 'boxSizing': 'border-box'
     }, children=[
         html.Div(style={
-            'background': 'white', 'width': '100%', 'maxWidth': '1400px', 'maxHeight': 'calc(100vh - 40px)',
-            'borderRadius': '12px', 'boxShadow': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            'display': 'flex', 'flexDirection': 'column', 'overflow': 'hidden'
+            'width': '100%', 'maxWidth': '1440px', 'maxHeight': 'calc(100vh - 48px)',
+            'borderRadius': '14px', 'boxShadow': '0 32px 64px -12px rgba(0,0,0,0.5)',
+            'display': 'flex', 'flexDirection': 'column', 'overflow': 'hidden',
+            'border': '1px solid #3a2f52',
         }, children=[
-            # Modal Header
+            # Dark header bar
             html.Div(style={
-                'padding': '20px 32px', 'borderBottom': '1px solid #E2E8F0', 'display': 'flex',
-                'justifyContent': 'space-between', 'alignItems': 'center', 'background': '#F8FAFC'
+                'padding': '16px 28px', 'background': '#2a1f3d',
+                'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+                'borderBottom': '1px solid #3a2f52', 'flexShrink': '0',
             }, children=[
-                html.Div([
-                    html.Div("DETAILED RECORD INSPECTION", style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px'}),
-                    html.Div(id='modal-title', style={'fontSize': '20px', 'fontWeight': '700', 'color': '#1E293B', 'display': 'flex', 'alignItems': 'center', 'gap': '12px'}),
-                ]),
-                html.Div(style={'display': 'flex', 'gap': '12px'}, children=[
-                    html.Button('📥 Export to CSV', id='btn-export-modal', n_clicks=0, style={
-                        'background': '#F1F5F9', 'color': '#475569', 'border': '1px solid #E2E8F0', 'padding': '8px 20px',
-                        'borderRadius': '6px', 'fontWeight': '700', 'cursor': 'pointer', 'fontSize': '14px'
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'}, children=[
+                    html.Span('DQ CHECK', style={
+                        'background': '#3d2f5c', 'color': '#d4c4f0',
+                        'fontSize': '9px', 'fontWeight': '800', 'letterSpacing': '0.12em',
+                        'padding': '3px 9px', 'borderRadius': '4px', 'textTransform': 'uppercase',
                     }),
-                    html.Button('✕ Close', id='btn-close-modal', n_clicks=0, style={
-                        'background': '#EF4444', 'color': 'white', 'border': 'none', 'padding': '8px 24px',
-                        'borderRadius': '6px', 'fontWeight': '700', 'cursor': 'pointer', 'fontSize': '14px'
+                    html.Div(id='modal-title', style={
+                        'display': 'flex', 'alignItems': 'center', 'gap': '10px',
                     }),
                 ]),
-                dcc.Download(id="download-modal-csv"),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'}, children=[
+                    html.Button('Export CSV', id='btn-export-modal', n_clicks=0, style={
+                        'background': '#3d2f5c', 'color': '#c8b8e8',
+                        'border': '1px solid #5a4a78', 'padding': '7px 18px',
+                        'borderRadius': '6px', 'fontWeight': '700', 'cursor': 'pointer',
+                        'fontSize': '12px', 'letterSpacing': '0.02em',
+                    }),
+                    html.Button('✕', id='btn-close-modal', n_clicks=0, style={
+                        'background': '#4a1530', 'color': '#f8a0a0',
+                        'border': '1px solid #7a2040', 'padding': '7px 14px',
+                        'borderRadius': '6px', 'fontWeight': '800', 'cursor': 'pointer',
+                        'fontSize': '14px', 'lineHeight': '1',
+                    }),
+                    dcc.Download(id="download-modal-csv"),
+                ]),
             ]),
-            # Modal Body
-            html.Div(id='modal-content', style={'padding': '32px', 'overflowY': 'auto', 'flex': '1'}),
+            # Modal body — scrollable
+            html.Div(id='modal-content', style={
+                'padding': '28px 32px', 'overflowY': 'auto', 'flex': '1',
+                'background': '#ffffff',
+            }),
         ])
     ])
 ])
@@ -354,76 +369,104 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         } for c in highlight_cols
     ]
 
-    # ── METADATA ROW 1: KPIs ──
-    kpi_bar = html.Div(style={'display': 'flex', 'gap': '24px', 'marginBottom': '24px'}, children=[
-        html.Div([
-            html.Div(style={'display': 'flex', 'alignItems': 'flex-start', 'gap': '12px'}, children=[
-                html.Div(style={'width': '3px', 'height': '32px', 'background': '#64748B', 'borderRadius': '2px', 'marginTop': '2px'}),
-                html.Div([
-                    html.Div(f"{int(row['total']):,}", style={'fontSize': '24px', 'fontWeight': '800', 'color': '#1E293B', 'lineHeight': '1.1'}),
-                    html.Div('RECORDS ASSESSED', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'letterSpacing': '1px', 'marginTop': '2px'})
-                ])
-            ])
-        ], style={'background': 'white', 'padding': '16px 24px', 'borderRadius': '8px', 'border': '1px solid #E2E8F0', 'flex': '1', 'boxShadow': '0 1px 2px rgba(0,0,0,0.05)'}),
-        
-        html.Div([
-            html.Div(style={'display': 'flex', 'alignItems': 'flex-start', 'gap': '12px'}, children=[
-                html.Div(style={'width': '3px', 'height': '32px', 'background': '#EF4444', 'borderRadius': '2px', 'marginTop': '2px'}),
-                html.Div([
-                    html.Div(f"{int(len(df)):,}", style={'fontSize': '24px', 'fontWeight': '800', 'color': '#B91C1C', 'lineHeight': '1.1'}),
-                    html.Div('FAILING RECORDS', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'letterSpacing': '1px', 'marginTop': '2px'})
-                ])
-            ])
-        ], style={'background': 'white', 'padding': '16px 24px', 'borderRadius': '8px', 'border': '1px solid #E2E8F0', 'flex': '1', 'boxShadow': '0 1px 2px rgba(0,0,0,0.05)'}),
-        
-        html.Div([
-            html.Div(style={'display': 'flex', 'alignItems': 'flex-start', 'gap': '12px'}, children=[
-                html.Div(style={'width': '3px', 'height': '32px', 'background': '#F59E0B', 'borderRadius': '2px', 'marginTop': '2px'}),
-                html.Div([
-                    html.Div(f"{row['error_rate']:.1f}%", style={'fontSize': '24px', 'fontWeight': '800', 'color': '#92400E', 'lineHeight': '1.1'}),
-                    html.Div('DATA QUALITY SCORE', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#94A3B8', 'letterSpacing': '1px', 'marginTop': '2px'})
-                ])
-            ])
-        ], style={'background': 'white', 'padding': '16px 24px', 'borderRadius': '8px', 'border': '1px solid #E2E8F0', 'flex': '1', 'boxShadow': '0 1px 2px rgba(0,0,0,0.05)'}),
+    # ── KPI STRIP ──
+    rag_color = {'Green': '#1a7a4a', 'Amber': '#d4820a', 'Red': '#c0392b'}.get(row.get('rag', 'Red'), '#c0392b')
+    pass_rate = row.get('pass_rate', 0)
+
+    def _kpi(value, label, accent, value_color='#1a1523'):
+        return html.Div(style={
+            'flex': '1', 'padding': '18px 24px', 'background': '#ffffff',
+            'borderRight': '1px solid #ede9f8',
+            'display': 'flex', 'alignItems': 'flex-start', 'gap': '14px',
+        }, children=[
+            html.Div(style={'width': '3px', 'minHeight': '36px', 'background': accent, 'borderRadius': '2px', 'marginTop': '2px', 'flexShrink': '0'}),
+            html.Div([
+                html.Div(value, style={'fontSize': '26px', 'fontWeight': '900', 'color': value_color, 'lineHeight': '1', 'fontFamily': "'Inter', sans-serif", 'letterSpacing': '-0.02em'}),
+                html.Div(label, style={'fontSize': '9px', 'fontWeight': '700', 'color': '#9080b8', 'letterSpacing': '0.1em', 'marginTop': '5px', 'textTransform': 'uppercase'}),
+            ]),
+        ])
+
+    kpi_bar = html.Div(style={
+        'display': 'flex', 'marginBottom': '24px',
+        'borderRadius': '10px', 'overflow': 'hidden',
+        'border': '1px solid #ede9f8',
+        'boxShadow': '0 1px 4px rgba(42,31,61,0.07)',
+    }, children=[
+        _kpi(f"{int(row['total']):,}", 'Records Assessed', '#7c5cbf'),
+        _kpi(f"{int(len(df)):,}", 'Failing Records', '#c0392b', '#c0392b'),
+        _kpi(f"{pass_rate:.1f}%", 'Pass Rate', rag_color, rag_color),
+        html.Div(style={
+            'flex': '1', 'padding': '18px 24px', 'background': '#ffffff',
+            'display': 'flex', 'alignItems': 'flex-start', 'gap': '14px',
+        }, children=[
+            html.Div(style={'width': '3px', 'minHeight': '36px', 'background': rag_color, 'borderRadius': '2px', 'marginTop': '2px', 'flexShrink': '0'}),
+            html.Div([
+                html.Div(row.get('rag', '—'), style={'fontSize': '26px', 'fontWeight': '900', 'color': rag_color, 'lineHeight': '1', 'fontFamily': "'Inter', sans-serif"}),
+                html.Div('RAG Status', style={'fontSize': '9px', 'fontWeight': '700', 'color': '#9080b8', 'letterSpacing': '0.1em', 'marginTop': '5px', 'textTransform': 'uppercase'}),
+            ]),
+        ]),
     ])
 
-    # ── METADATA ROW 2: ENHANCED RULE CONTEXT ──
-    tech_details = html.Div(style={'display': 'flex', 'gap': '20px', 'marginBottom': '32px'}, children=[
-        # Left: The 'What & Why'
+    # ── RULE CONTEXT ──
+    def _label(text):
+        return html.Div(text, style={
+            'fontSize': '9px', 'fontWeight': '800', 'color': '#7a6a9a',
+            'letterSpacing': '0.12em', 'textTransform': 'uppercase', 'marginBottom': '8px',
+        })
+
+    tech_details = html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '24px'}, children=[
+        # Left — purpose + rule
         html.Div(style={
-            'background': '#F8FAFC', 'padding': '24px', 'borderRadius': '12px', 
-            'border': '1px solid #E2E8F0', 'flex': '1.5'
+            'flex': '1.6', 'background': '#ffffff', 'borderRadius': '10px',
+            'border': '1px solid #ede9f8', 'overflow': 'hidden',
+            'boxShadow': '0 1px 4px rgba(42,31,61,0.06)',
         }, children=[
-            html.Div('PURPOSE', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
-            html.Div(row.get('intent', 'Purpose not articulated.'), style={
-                'fontSize': '15px', 'color': '#1E293B', 'fontWeight': '600', 'lineHeight': '1.5', 'marginBottom': '20px'
-            }),
-            
-            html.Div('RULE DEFINITION', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '8px'}),
-            html.Div(logic, style={
-                'fontFamily': 'monospace', 'fontSize': '12px', 'background': '#F1F5F9', 
-                'padding': '10px 14px', 'borderRadius': '6px', 'color': '#475569', 'border': '1px solid #E2E8F0'
-            })
+            html.Div(style={'background': '#2a1f3d', 'padding': '12px 20px'}, children=[
+                html.Span('Purpose', style={'fontSize': '11px', 'fontWeight': '700', 'color': '#c8b8e8', 'letterSpacing': '0.04em'}),
+            ]),
+            html.Div(style={'padding': '18px 20px'}, children=[
+                html.Div(row.get('intent', '—'), style={
+                    'fontSize': '14px', 'color': '#1a1523', 'fontWeight': '600',
+                    'lineHeight': '1.6', 'marginBottom': '20px',
+                }),
+                _label('Rule Definition'),
+                html.Div(logic, style={
+                    'fontFamily': "'Courier New', monospace", 'fontSize': '11px',
+                    'background': '#1a1030', 'color': '#9080b8',
+                    'padding': '12px 16px', 'borderRadius': '6px',
+                    'border': '1px solid #2a1f3d', 'lineHeight': '1.6',
+                }),
+            ]),
         ]),
 
-        # Right: The 'How & Action'
+        # Right — fields + remediation
         html.Div(style={
-            'background': '#F1F5F9', 'padding': '24px', 'borderRadius': '12px', 
-            'border': '1px solid #E2E8F0', 'flex': '1'
+            'flex': '1', 'background': '#ffffff', 'borderRadius': '10px',
+            'border': '1px solid #ede9f8', 'overflow': 'hidden',
+            'boxShadow': '0 1px 4px rgba(42,31,61,0.06)',
         }, children=[
-            html.Div('CRITICAL FIELDS', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B', 'letterSpacing': '1px', 'marginBottom': '12px'}),
-            html.Div(style={'display': 'flex', 'gap': '8px', 'flexWrap': 'wrap', 'marginBottom': '20px'}, children=[
-                html.Span(c, style={
-                    'fontSize': '11px', 'fontWeight': '700', 'color': '#475569', 'background': 'white', 
-                    'padding': '4px 14px', 'borderRadius': '20px', 'border': '1px solid #E2E8F0'
-                }) for c in base_cols
-            ] if base_cols else [html.Div("Automatic Check", style={'fontSize': '11px', 'color': '#94A3B8'})]),
+            html.Div(style={'background': '#2a1f3d', 'padding': '12px 20px'}, children=[
+                html.Span('Critical Fields & Action', style={'fontSize': '11px', 'fontWeight': '700', 'color': '#c8b8e8', 'letterSpacing': '0.04em'}),
+            ]),
+            html.Div(style={'padding': '18px 20px'}, children=[
+                _label('Critical Fields'),
+                html.Div(style={'display': 'flex', 'gap': '6px', 'flexWrap': 'wrap', 'marginBottom': '20px'}, children=[
+                    html.Span(c, style={
+                        'fontSize': '11px', 'fontWeight': '700', 'color': '#c0392b',
+                        'background': '#fef2f2', 'padding': '3px 12px',
+                        'borderRadius': '4px', 'border': '1px solid #fecaca',
+                        'fontFamily': "'Courier New', monospace",
+                    }) for c in base_cols
+                ] if base_cols else [html.Span('Automatic check', style={'fontSize': '12px', 'color': '#9080b8', 'fontStyle': 'italic'})]),
 
-            html.Div('REMEDIATION ACTION', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#92400E', 'letterSpacing': '1px', 'marginBottom': '8px'}),
-            html.Div(row['remediation'], style={
-                'fontSize': '13px', 'color': '#78350F', 'fontWeight': '600', 'lineHeight': '1.5',
-                'background': '#FFFBEB', 'padding': '12px 16px', 'borderRadius': '8px', 'border': '1px solid #FEF3C7'
-            })
+                _label('Remediation Action'),
+                html.Div(row['remediation'], style={
+                    'fontSize': '13px', 'color': '#7a4f00', 'fontWeight': '600',
+                    'lineHeight': '1.6', 'background': '#fffbeb',
+                    'padding': '12px 16px', 'borderRadius': '8px',
+                    'border': '1px solid #fde68a',
+                }),
+            ]),
         ]),
     ])
 
@@ -930,33 +973,84 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             })
 
     
+    # ── TABLE SECTION HEADER ──
+    table_header = html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px',
+        'marginBottom': '12px', 'paddingBottom': '10px',
+        'borderBottom': '1px solid #ede9f8',
+    }, children=[
+        html.Span('Failing Records', style={
+            'fontSize': '12px', 'fontWeight': '800', 'color': '#1a1523',
+            'textTransform': 'uppercase', 'letterSpacing': '0.06em',
+        }),
+        html.Span(f'{len(df):,} records', style={
+            'fontSize': '11px', 'color': '#9080b8',
+            'background': '#f0edf8', 'padding': '2px 10px',
+            'borderRadius': '10px',
+        }),
+        html.Span('Follow the join trail left to right', style={
+            'fontSize': '11px', 'color': '#9080b8', 'marginLeft': 'auto',
+            'fontStyle': 'italic',
+        }),
+    ])
+
     content = html.Div([
         kpi_bar,
         tech_details,
         join_map,
-        section_header('Chain of Evidence Inspection', 'Follow the join trail from left to right to validate the exception.'),
-        
+        table_header,
         dash_table.DataTable(
             data=df.fillna('—').to_dict('records'),
             columns=dt_cols,
             merge_duplicate_headers=True,
-            style_table={'overflowX': 'auto'},
-            style_cell={'textAlign': 'center', 'padding': '12px', 'fontSize': '12px', 'fontFamily': 'Poppins', 'minWidth': '160px'},
-            style_header={'backgroundColor': '#F1F5F9', 'fontWeight': 'bold', 'color': '#475569', 'textAlign': 'center'},
-            style_data_conditional=style_data_conditional,
+            style_table={'overflowX': 'auto', 'borderRadius': '8px', 'overflow': 'hidden', 'border': '1px solid #ede9f8'},
+            style_cell={
+                'textAlign': 'left', 'padding': '10px 14px',
+                'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
+                'minWidth': '120px', 'color': '#1a1523',
+                'borderColor': '#ede9f8',
+            },
+            style_header={
+                'backgroundColor': '#2a1f3d', 'fontWeight': '700',
+                'color': '#c8b8e8', 'textAlign': 'left',
+                'fontSize': '11px', 'letterSpacing': '0.04em',
+                'borderColor': '#3a2f52', 'padding': '10px 14px',
+            },
+            style_data={'borderColor': '#ede9f8'},
+            style_data_conditional=style_data_conditional + [
+                {'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'},
+            ],
             sort_action="native",
             filter_action="native",
-            page_size=15
+            page_size=15,
         )
     ])
 
-    house_color = HOUSE_HEX.get(house, '#64748B')
-    modal_title = html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
-        html.Div(house, style={
-            'background': house_color, 'color': 'white', 'fontSize': '11px', 'fontWeight': '800',
-            'padding': '4px 10px', 'borderRadius': '4px', 'letterSpacing': '0.5px'
+    house_color = HOUSE_HEX.get(house, '#7c5cbf')
+    sev_colors  = {'Critical': '#c0392b', 'High': '#d4820a', 'Medium': '#e6a817', 'Low': '#7c5cbf'}
+    sev_color   = sev_colors.get(row.get('severity', ''), '#7c5cbf')
+
+    modal_title = html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
+        html.Span(house, style={
+            'background': house_color, 'color': '#ffffff',
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+            'padding': '3px 10px', 'borderRadius': '4px',
         }),
-        html.Div(f"{check_id}: {row['description']}", style={'fontSize': '20px', 'fontWeight': '700', 'color': '#1E293B'})
+        html.Span(check_id, style={
+            'background': '#3d2f5c', 'color': '#d4c4f0',
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.08em',
+            'padding': '3px 10px', 'borderRadius': '4px',
+            'fontFamily': "'Courier New', monospace",
+        }),
+        html.Span(row.get('severity', ''), style={
+            'background': sev_color + '22', 'color': sev_color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.08em',
+            'padding': '3px 10px', 'borderRadius': '4px', 'textTransform': 'uppercase',
+        }),
+        html.Span(row['description'], style={
+            'fontSize': '14px', 'fontWeight': '600', 'color': '#e8e4f4',
+            'marginLeft': '4px',
+        }),
     ])
 
     return {'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)', 'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center', 'padding': '20px', 'boxSizing': 'border-box'},            modal_title,            content
