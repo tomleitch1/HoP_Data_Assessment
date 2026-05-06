@@ -44,11 +44,8 @@ def _badge(text, bg, color):
     })
 
 
-def _card_header(seq, name, source, filter_desc, type_label, is_mig):
-    return html.Div(style={
-        'background': _HDR if is_mig else _HDR2,
-        'padding': '18px 28px',
-    }, children=[
+def _card_header(seq, name, source, filter_desc, type_label, is_mig, right_content=None):
+    left = html.Div(style={'flex': '1'}, children=[
         html.Div(style={
             'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '10px',
         }, children=[
@@ -69,6 +66,11 @@ def _card_header(seq, name, source, filter_desc, type_label, is_mig):
             html.Span(filter_desc, style={'fontSize': '11px', 'color': '#7a6a9a'}),
         ]),
     ])
+    return html.Div(style={
+        'background': _HDR if is_mig else _HDR2,
+        'padding': '18px 28px',
+        'display': 'flex', 'alignItems': 'flex-start', 'gap': '24px',
+    }, children=[left, right_content] if right_content else [left])
 
 
 def _status_bar_row(status, count, total):
@@ -347,58 +349,57 @@ def _history_col(house, h):
     ])
 
 
-# ── Migration footprint banner ────────────────────────────────────────────────
+# ── Total migration banner ────────────────────────────────────────────────────
 
-def _migration_footer(hoc_m, hol_m, hoc_t, hol_t, hoc_h, hol_h):
+def _migration_footer(hoc_m, hol_m, hoc_t, hol_t):
 
-    def _house_row(house, m, t, h, border_bottom):
+    def _house_row(house, m, t, border_bottom):
         colour    = HOUSE_HEX[house]
         suppliers = m.get('migration_scope', 0)
         invoices  = t.get('open_count', 0)
-        history   = h.get('total', 0)
-        total     = suppliers + invoices + history
+        total     = suppliers + invoices
 
         items = [
-            ('Seq 10  ·  Suppliers',      suppliers),
-            ('Seq 16  ·  Open Invoices',  invoices),
-            ('History  ·  18 months',     history),
+            ('Seq 10  ·  Suppliers',     suppliers),
+            ('Seq 16  ·  Open Invoices', invoices),
         ]
 
         return html.Div(style={
             'display': 'flex', 'alignItems': 'center',
-            'padding': '18px 32px',
-            'borderBottom': f'1px solid {_DIV}' if border_bottom else 'none',
+            'padding': '16px 28px',
+            'borderBottom': f'1px solid {UI["border"]}' if border_bottom else 'none',
         }, children=[
 
-            # House badge
-            html.Div(house, style={
-                'fontSize': '11px', 'fontWeight': '800', 'letterSpacing': '0.12em',
-                'color': colour, 'minWidth': '44px',
-            }),
-
-            # Vertical divider
+            # House badge — coloured left pill
             html.Div(style={
-                'width': '1px', 'height': '36px', 'background': _DIV, 'margin': '0 28px',
-            }),
+                'background': colour, 'borderRadius': '4px',
+                'padding': '4px 10px', 'marginRight': '24px',
+            }, children=[
+                html.Span(house, style={
+                    'fontSize': '11px', 'fontWeight': '800',
+                    'color': '#ffffff', 'letterSpacing': '0.1em',
+                }),
+            ]),
 
             # Scope items
             html.Div(style={
                 'display': 'flex', 'gap': '48px', 'flex': '1', 'alignItems': 'center',
             }, children=[
-                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '3px'}, children=[
+                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
                     html.Span(f'{cnt:,}', style={
                         'fontSize': '20px', 'fontWeight': '800',
-                        'color': '#e8e4f4', 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+                        'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
                     }),
                     html.Span(label, style={
-                        'fontSize': '10px', 'color': '#7a6a9a', 'letterSpacing': '0.04em',
+                        'fontSize': '10px', 'color': UI['text_secondary'], 'letterSpacing': '0.04em',
                     }),
                 ]) for label, cnt in items
             ]),
 
             # Vertical divider
             html.Div(style={
-                'width': '1px', 'height': '36px', 'background': _DIV, 'margin': '0 32px',
+                'width': '1px', 'height': '36px',
+                'background': UI['border'], 'margin': '0 28px',
             }),
 
             # Total
@@ -407,36 +408,76 @@ def _migration_footer(hoc_m, hol_m, hoc_t, hol_t, hoc_h, hol_h):
                     'fontSize': '30px', 'fontWeight': '900', 'lineHeight': '1',
                     'color': colour, 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.02em',
                 }),
-                html.Div('total records', style={'fontSize': '11px', 'color': '#7a6a9a', 'marginTop': '3px'}),
+                html.Div('total records', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '3px',
+                }),
             ]),
         ])
 
     return html.Div(style={
         'borderRadius': '10px', 'overflow': 'hidden',
         'border': f'1px solid {UI["border"]}',
-        'boxShadow': '0 2px 16px rgba(42,31,61,0.18)',
-        'background': _HDR, 'marginTop': '16px',
+        'boxShadow': '0 2px 8px rgba(42,31,61,0.08)',
+        'background': UI['card_bg'], 'marginTop': '16px',
     }, children=[
-        # Banner label
         html.Div(style={
-            'padding': '12px 32px 10px',
-            'borderBottom': f'1px solid {_DIV}',
+            'padding': '10px 28px',
+            'borderBottom': f'1px solid {UI["border"]}',
             'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between',
+            'background': UI['card_bg_dark'],
         }, children=[
-            html.Span('Total Migration Footprint', style={
-                'fontSize': '10px', 'fontWeight': '800', 'color': '#7a6a9a',
+            html.Span('Total Migration', style={
+                'fontSize': '10px', 'fontWeight': '800', 'color': UI['text_primary'],
                 'textTransform': 'uppercase', 'letterSpacing': '0.12em',
             }),
-            html.Span('Seq 10  +  Seq 16  +  18-month history', style={
-                'fontSize': '10px', 'color': '#5a4a78',
+            html.Span('Seq 10  +  Seq 16', style={
+                'fontSize': '10px', 'color': UI['text_secondary'],
             }),
         ]),
-        _house_row('HOC', hoc_m, hoc_t, hoc_h, border_bottom=True),
-        _house_row('HOL', hol_m, hol_t, hol_h, border_bottom=False),
+        _house_row('HOC', hoc_m, hoc_t, border_bottom=True),
+        _house_row('HOL', hol_m, hol_t, border_bottom=False),
     ])
 
 
 # ── Intro assembly ────────────────────────────────────────────────────────────
+
+def _history_note(hoc_h, hol_h):
+    """Compact right-aligned history scoping note for the Seq 10 header."""
+    hoc_total = hoc_h.get('total', 0)
+    hol_total = hol_h.get('total', 0)
+    return html.Div(style={
+        'borderLeft': f'1px solid {_DIV}', 'paddingLeft': '20px',
+        'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center',
+        'minWidth': '180px',
+    }, children=[
+        html.Div('Scoping extract', style={
+            'fontSize': '9px', 'fontWeight': '700', 'color': '#7a6a9a',
+            'textTransform': 'uppercase', 'letterSpacing': '0.1em', 'marginBottom': '8px',
+        }),
+        html.Span('asuhistr  ·  18 months', style={
+            'fontSize': '10px', 'color': '#9080b8',
+            'fontFamily': "'Courier New', monospace",
+            'background': '#1a1030', 'padding': '2px 6px',
+            'borderRadius': '3px', 'display': 'inline-block', 'marginBottom': '10px',
+        }),
+        *[
+            html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'gap': '16px', 'marginBottom': '4px'}, children=[
+                html.Span(house, style={
+                    'fontSize': '10px', 'fontWeight': '700',
+                    'color': HOUSE_HEX[house], 'letterSpacing': '0.08em',
+                }),
+                html.Span(f'{count:,}', style={
+                    'fontSize': '12px', 'fontWeight': '700', 'color': '#c8b8e8',
+                    'fontFamily': DISPLAY_FONT,
+                }),
+            ])
+            for house, count in [('HOC', hoc_total), ('HOL', hol_total)]
+        ],
+        html.Div('closed transactions', style={
+            'fontSize': '10px', 'color': '#5a4a78', 'marginTop': '2px',
+        }),
+    ])
+
 
 def _render_intro(ap_vol):
     hoc_m = ap_vol.get('HOC', {}).get('master', {})
@@ -456,7 +497,8 @@ def _render_intro(ap_vol):
 
     seq10 = _card([
         _card_header('10', 'Suppliers (Headers & Sites)', 'asuheader',
-                     'Full population — no status filter', 'Migration Object', True),
+                     'Full population — no status filter', 'Migration Object', True,
+                     right_content=_history_note(hoc_h, hol_h)),
         html.Div(style={'display': 'flex'}, children=[
             _seq10_col('HOC', hoc_m),
             _seq10_col('HOL', hol_m),
@@ -472,17 +514,7 @@ def _render_intro(ap_vol):
         ]),
     ])
 
-    hist = _card([
-        _card_header(None, 'AP Transaction History', 'asuhistr',
-                     '18-month window — closed transactions', 'Scoping Extract', False),
-        html.Div(style={'display': 'flex'}, children=[
-            _history_col('HOC', hoc_h),
-            _history_col('HOL', hol_h),
-        ]),
-    ])
-
     return html.Div(style={'marginBottom': '28px'}, children=[
-        # Section heading
         html.Div(style={
             'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '14px',
         }, children=[
@@ -494,15 +526,9 @@ def _render_intro(ap_vol):
                 'fontSize': '12px', 'color': UI['text_secondary'],
             }),
         ]),
-        # Seq 10 full width
         html.Div(style={'marginBottom': '16px'}, children=[seq10]),
-        # Seq 16 (wider) + history side by side
-        html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
-            html.Div(style={'flex': '3'}, children=[seq16]),
-            html.Div(style={'flex': '2'}, children=[hist]),
-        ]),
-        # Migration footprint footer
-        _migration_footer(hoc_m, hol_m, hoc_t, hol_t, hoc_h, hol_h),
+        seq16,
+        _migration_footer(hoc_m, hol_m, hoc_t, hol_t),
     ])
 
 
