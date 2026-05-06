@@ -152,6 +152,17 @@ def load_data():
             if col in df.columns:
                 df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
         
+        # Numeric columns — strip commas from Excel-formatted numbers (e.g. "1,234.56")
+        # before any downstream pd.to_numeric calls, otherwise values >= 1000 become NaN
+        numeric_cols = ['amount', 'rest_amount', 'cur_amount', 'rest_curr', 'discount',
+                        'exch_rate', 'credit_limit', 'pay_delay', 'dc_flag', 'sequence_no']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(',', '', regex=False).str.strip(),
+                    errors='coerce'
+                )
+
         date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
         for col in date_cols:
             if col in df.columns:
