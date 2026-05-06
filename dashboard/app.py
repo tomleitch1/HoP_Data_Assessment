@@ -405,65 +405,75 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             'textTransform': 'uppercase', 'letterSpacing': '0.1em', 'marginBottom': '10px',
         })
 
-    # ── LEFT SIDEBAR — metrics only, no boxes ──
-    left_sidebar = html.Div(style={
-        'width': '176px', 'flexShrink': '0', 'padding': '28px 24px',
-        'borderRight': '1px solid #f0edf8',
-        'display': 'flex', 'flexDirection': 'column', 'gap': '0',
-    }, children=[
-        # Failing — most important, shown first
-        html.Div(style={'marginBottom': '24px'}, children=[
-            html.Div(f'{failing:,}', style={
-                'fontSize': '44px', 'fontWeight': '900', 'lineHeight': '1',
-                'color': '#c0392b', 'fontFamily': "'Inter', sans-serif",
-                'letterSpacing': '-0.03em',
-            }),
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginTop': '4px'}, children=[
-                DashIconify(icon='lucide:alert-circle', width=11, color='#c0392b'),
-                html.Span('Failing records', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
-            ]),
-        ]),
+    # ── LEFT SIDEBAR ──
+    sev_colors_light = {'Critical': '#fef2f2', 'High': '#fff7ed', 'Medium': '#fefce8', 'Low': '#f5f3ff'}
+    sev_bg   = sev_colors_light.get(row.get('severity', ''), '#f5f3ff')
 
-        # Pass rate
-        html.Div(style={'marginBottom': '20px'}, children=[
-            html.Div(f'{pass_rate:.1f}%', style={
+    def _stat_card(value, label, icon, value_color, icon_color=None, extra=None):
+        return html.Div(style={
+            'background': '#faf9fd', 'border': '1px solid #ede9f8',
+            'borderRadius': '12px', 'padding': '14px 16px', 'marginBottom': '10px',
+        }, children=[
+            html.Div(value, style={
                 'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
-                'color': rag_color, 'fontFamily': "'Inter', sans-serif",
-                'letterSpacing': '-0.02em',
+                'color': value_color, 'fontFamily': "'Inter', sans-serif",
+                'letterSpacing': '-0.02em', 'marginBottom': '6px',
             }),
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginTop': '4px'}, children=[
-                DashIconify(icon='lucide:check-circle-2', width=11, color=rag_color),
-                html.Span('Pass rate', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px'}, children=[
+                DashIconify(icon=icon, width=11, color=icon_color or '#a090c0'),
+                html.Span(label, style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
             ]),
-        ]),
+            *([extra] if extra else []),
+        ])
 
-        # RAG pill
-        html.Div(style={'marginBottom': '24px'}, children=[
-            html.Span(row.get('rag', '—'), style={
-                'fontSize': '11px', 'fontWeight': '700', 'color': rag_color,
-                'background': rag_color + '18', 'padding': '4px 12px',
-                'borderRadius': '20px', 'border': f'1px solid {rag_color}30',
+    left_sidebar = html.Div(style={
+        'width': '186px', 'flexShrink': '0', 'padding': '20px 16px',
+        'borderRight': '1px solid #f0edf8',
+        'display': 'flex', 'flexDirection': 'column',
+    }, children=[
+        # Dimension pill — above everything
+        html.Div(style={'marginBottom': '12px'}, children=[
+            html.Span(row.get('dimension', '—'), style={
+                'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
+                'background': '#ede9f8', 'padding': '4px 12px',
+                'borderRadius': '20px', 'border': '1px solid #d4c8f0',
+                'letterSpacing': '0.04em',
             }),
         ]),
 
-        html.Div(style={'height': '1px', 'background': '#f0edf8', 'marginBottom': '20px'}),
-
-        # Assessed
-        html.Div(style={'marginBottom': '16px'}, children=[
-            html.Div(f'{assessed:,}', style={
-                'fontSize': '22px', 'fontWeight': '700', 'lineHeight': '1',
-                'color': '#4a3d6b', 'fontFamily': "'Inter', sans-serif",
-            }),
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginTop': '4px'}, children=[
-                DashIconify(icon='lucide:database', width=11, color='#a090c0'),
-                html.Span('Records assessed', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
+        _stat_card(
+            f'{failing:,}', 'Failing records',
+            'lucide:alert-circle', '#c0392b', '#c0392b',
+        ),
+        _stat_card(
+            f'{pass_rate:.1f}%', 'Pass rate',
+            'lucide:check-circle-2', rag_color, rag_color,
+            extra=html.Div(style={'marginTop': '8px'}, children=[
+                html.Span(row.get('rag', '—'), style={
+                    'fontSize': '10px', 'fontWeight': '700', 'color': rag_color,
+                    'background': rag_color + '18', 'padding': '2px 10px',
+                    'borderRadius': '20px', 'border': f'1px solid {rag_color}30',
+                }),
             ]),
-        ]),
+        ),
+        _stat_card(
+            f'{assessed:,}', 'Records assessed',
+            'lucide:database', '#4a3d6b',
+        ),
 
-        # Severity
-        html.Div(style={'marginTop': 'auto', 'paddingTop': '20px', 'borderTop': '1px solid #f0edf8'}, children=[
-            html.Div(row.get('dimension', '—'), style={'fontSize': '11px', 'color': '#4a3d6b', 'fontWeight': '600', 'marginBottom': '4px'}),
-            html.Div(row.get('severity', '—'), style={'fontSize': '10px', 'color': '#a090c0'}),
+        # Criticality card at bottom
+        html.Div(style={
+            'background': sev_bg, 'border': '1px solid #ede9f8',
+            'borderRadius': '12px', 'padding': '14px 16px', 'marginTop': 'auto',
+        }, children=[
+            html.Div('Criticality', style={
+                'fontSize': '10px', 'fontWeight': '700', 'color': '#a090c0',
+                'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginBottom': '6px',
+            }),
+            html.Div(row.get('severity', '—'), style={
+                'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
+                'color': sev_color, 'fontFamily': "'Inter', sans-serif",
+            }),
         ]),
     ])
 
