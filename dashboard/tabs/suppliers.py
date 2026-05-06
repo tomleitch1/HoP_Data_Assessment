@@ -434,17 +434,17 @@ def _migration_footer(hoc_m, hol_m, hoc_t, hol_t):
         'background': UI['card_bg'], 'marginTop': '16px',
     }, children=[
         html.Div(style={
-            'padding': '10px 28px',
-            'borderBottom': f'1px solid {UI["border"]}',
-            'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between',
-            'background': UI['card_bg_dark'],
+            'padding': '14px 28px',
+            'borderBottom': f'1px solid {_DIV}',
+            'display': 'flex', 'alignItems': 'center', 'gap': '12px',
+            'background': _HDR,
         }, children=[
+            _badge('Scope', _SEQ_BG, _SEQ_TXT),
             html.Span('Total Migration', style={
-                'fontSize': '10px', 'fontWeight': '800', 'color': UI['text_primary'],
-                'textTransform': 'uppercase', 'letterSpacing': '0.12em',
+                'fontSize': '13px', 'fontWeight': '700', 'color': '#f4f0fc',
             }),
             html.Span('Seq 10  +  Seq 16', style={
-                'fontSize': '10px', 'color': UI['text_secondary'],
+                'fontSize': '11px', 'color': '#7a6a9a', 'marginLeft': 'auto',
             }),
         ]),
         _house_row('HOC', hoc_m, hoc_t, border_bottom=True),
