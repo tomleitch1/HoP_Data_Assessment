@@ -547,19 +547,31 @@ def _render_intro(ap_vol):
 
 # ── Tab renderer ──────────────────────────────────────────────────────────────
 
+def _dq_section_header():
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'baseline', 'gap': '10px',
+        'margin': '32px 0 14px',
+        'paddingTop': '8px',
+        'borderTop': f'1px solid {UI["border"]}',
+    }, children=[
+        html.Div('Data Quality Checks', style={
+            'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
+            'textTransform': 'uppercase', 'letterSpacing': '0.01em',
+        }),
+        html.Div('DQ rules applied against the extracted population', style={
+            'fontSize': '12px', 'color': UI['text_secondary'],
+        }),
+    ])
+
+
 def render_tab(dq_results, frames):
     ap_vol = get_ap_volumetrics(frames)
-    hoc_cards = render_volumetrics_card(ap_vol['HOC'])
-    hol_cards = render_volumetrics_card(ap_vol['HOL'])
     aging_results = build_aging_analysis(frames)
 
     return html.Div([
         _render_intro(ap_vol),
+        _dq_section_header(),
         render_dimension_scorecard(dq_results),
-        html.Div(style={'marginBottom': '24px'}, children=[
-            html.Div(style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}, children=hoc_cards),
-            html.Div(style={'display': 'flex', 'gap': '20px'}, children=hol_cards),
-        ]),
         render_dimension_grid(dq_results),
         render_dimensions_table(dq_results),
         render_aging(aging_results, module='ap'),
