@@ -128,6 +128,5 @@ def make_aging_chart(agg_df, house_filter='Both'):
         xaxis=dict(color='#64748B', showgrid=False),
         yaxis=dict(color='#64748B', tickprefix='£', showgrid=True, gridcolor='#F1F5F9'),
         legend=dict(orientation='h', y=-0.15, font=dict(color='#64748B')),
-        margin=dict(t=10),
     )
     return fig
