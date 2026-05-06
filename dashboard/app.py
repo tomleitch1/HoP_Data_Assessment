@@ -389,10 +389,18 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         } for c in highlight_cols
     ]
 
+    # Ensure the table only shows rows for the requested house.
+    # get_failing_records may return rows for both houses if house filtering
+    # behaves unexpectedly on the real data.
+    if 'house' in df.columns:
+        df = df[df['house'] == house]
+
     # ── COLOURS ──
     rag_color = {'Green': '#1a7a4a', 'Amber': '#d4820a', 'Red': '#c0392b'}.get(row.get('rag', 'Red'), '#c0392b')
     pass_rate = row.get('pass_rate', 0)
-    failing   = int(len(df))
+    # Use the pre-computed count from dq_results (same source as the charts)
+    # rather than len(df) which can be inflated by dimension-split rows.
+    failing   = int(row['failing'])
     assessed  = int(row['total'])
 
     # ── HELPERS ──
