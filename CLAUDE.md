@@ -200,7 +200,7 @@ Three scope cards aligned to the migration programme:
 
 **Volumetrics quirks from real Agresso data:**
 - `rest_amount` is already signed (positive = invoice owed, negative = credit note) — sum directly, no dc_flag multiplication
-- `asutrans` has multiple rows per invoice (`sequence_no` up to 840+) representing dimension splits; `rest_amount` is the header-level amount for the whole invoice NOT the line amount — do NOT deduplicate by `voucher_no` as null voucher_nos cause mass row collapse. Sum all rows directly.
+- `asutrans` unique key is `(client, apar_id, voucher_no, sequence_no)`. One invoice (`apar_id + voucher_no`) splits into multiple rows — one per fund/dimension allocation (`client` code) each with its own `sequence_no` (1 to 840+). Header-level fields (`due_date`, `amount`, `status`, `rest_amount`) are identical across all rows for the same invoice. **For DQ modal display**: `app.py` calls `df.drop_duplicates()` after column selection so each invoice appears once. **For balance calculations**: sum `rest_amount` directly across all rows — do NOT deduplicate by `voucher_no` as null voucher_nos collapse multiple invoices to one row.
 - `rest_amount` values from SSMS via Excel may arrive as comma-formatted strings (`1,234.56`) — `data_engine.py` strips commas in the numeric column pre-processing step
 - Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats
 
