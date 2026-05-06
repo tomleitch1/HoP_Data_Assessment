@@ -148,6 +148,44 @@ Update `get_check_columns()` in `data_engine.py` — maps `check_id` → list of
 
 ---
 
+## Migration Scope
+
+**Target go-live: 1 July 2028 (Period 4, FY 2028/29).** Unit4 remains system of record for FY 2027/28 close (Periods 13–15). The new ERP takes opening balances from the Period 3 close (30 June 2028) and requires Periods 1–3 current-year journals to support Budget vs Actual from Day 1.
+
+The DQ assessment covers the data objects below. Sequence numbers are used throughout the codebase as scope identifiers.
+
+| Seq | Category | Data Object | Key Migration Scope |
+|-----|----------|-------------|-------------------|
+| 1 | Foundation | Chart of Accounts | Full CoA — all active segments from both houses |
+| 2 | Foundation | Exchange Rates | Current FY daily rates + historical covering open balances period |
+| 3 | Foundation | Tax Configuration Rules | All active tax codes (VAT 20%, 5%, 0%, COS s41) |
+| 4 | Foundation | Fiscal Calendars & Periods | Current FY (2028/29) + next FY (2029/30) period structures |
+| 5 | Banking | Banks & Bank Branches | Derived from supplier master (asuheader) — no central bank table in Unit4 |
+| 6 | Banking | Bank Accounts (Parliament) | All live Parliament bank accounts (HoC & HoL) |
+| 7 | Banking | Outstanding/Unreconciled Bank Items | Uncleared cheques and deposits at 30 June 2028 |
+| 8 | Master Data | Finance System Users | Active finance users only — iTrent remains HR system of record |
+| 9 | Master Data | Finance Approvers | Active approvers; inactive if approved transactions in current FY |
+| 10 | Master Data | Suppliers (Headers & Sites) | Active suppliers with activity in last 18 months or open transactions |
+| 11 | Master Data | AR Customers (Headers & Sites) | Active customers transacted in last 18 months or with open transactions |
+| 12 | Master Data | Fixed Asset Registry | All active assets — capitalised, non-capitalised, and leased (IFRS16) |
+| 13 | Master Data | Asset Depreciation Rules | Active methods, useful lives, residual values by category |
+| 14 | Balances | GL Balances | Opening balances at 30 June 2028 — must net to zero across all entities |
+| 15 | Open Items | Open Purchase Orders | Approved and open POs with uninvoiced/outstanding balance only |
+| 16 | Open Items | Unpaid/Open AP Invoices | All unpaid/partially paid invoices and credit notes at cutover |
+| 17 | Open Items | Members' Finance Allowances & Expenses | Unpaid allowance claims and expenses at cutover |
+| 18 | Open Items | Open AR Transactions | All open AR invoices and credit/debit memos at cutover |
+| 19 | Open Items | Unapplied Cash/Receipts | All open unapplied or on-account receipts at cutover |
+| 20 | Balances | Asset Balances | NBV, accumulated depreciation, original cost at 30 June 2028 |
+| 21 | Current Year | Current Year Journals | Periods 1–3 (Apr–Jun 2028) journals — required for Budget vs Actual from Day 1 |
+| 22 | Current Year | Active Project Transaction History | Full history for projects active at cutover |
+| 23 | Budgets | GL Budgets & Forecasts | Current FY (2028/29) budgets and forecasts by period |
+
+**Key dependencies:** CoA (1) → GL Balances (14) → sub-ledgers (16, 18). Banks (5) → Suppliers (10). Asset Rules (13) → Asset Balances (20). GL Balances must reconcile to AP (16), AR (18), and Asset (20) sub-ledger totals before go-live.
+
+**What this dashboard assesses:** Sequences 10 (Suppliers), 11 (Customers), 16 (AP Invoices), 18 (AR Invoices), 20 (Asset Balances), and the GL foundation objects (1, 14). PBF/budgets and Members' expenses are not yet in scope.
+
+---
+
 ## Current State (as of May 2026)
 
 **Implemented and tested with dummy data:**
