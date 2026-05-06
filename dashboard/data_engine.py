@@ -562,12 +562,11 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     if failing.empty:
         return failing
 
-    # asutrans has multiple rows per invoice (dimension splits via sequence_no).
-    # Filter to sequence_no == 1 so the modal shows one row per invoice.
-    if table == 'asutrans' and 'sequence_no' in failing.columns:
-        first_seq = failing[failing['sequence_no'] == 1]
-        if not first_seq.empty:
-            failing = first_seq
+    # asutrans: one row per invoice for modal display.
+    # Each invoice may appear multiple times (dimension splits, multiple sequence_no rows).
+    # Deduplicate by (apar_id, voucher_no) — the user confirmed this is the unique invoice key.
+    if table in ('asutrans', 'acutrans') and 'apar_id' in failing.columns and 'voucher_no' in failing.columns:
+        failing = failing.drop_duplicates(subset=['apar_id', 'voucher_no'], keep='first')
 
     # Enrich with context for better inspection
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
