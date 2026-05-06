@@ -562,11 +562,18 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     if failing.empty:
         return failing
 
-    # asutrans: one row per invoice for modal display.
-    # Each invoice may appear multiple times (dimension splits, multiple sequence_no rows).
-    # Deduplicate by (apar_id, voucher_no) — the user confirmed this is the unique invoice key.
+    # asutrans/acutrans: show one row per invoice.
+    # The unique key is (apar_id, voucher_no). Multiple rows per invoice exist because
+    # Agresso stores one row per dimension split (sequence_no 1..N).
+    # Normalise both columns to plain strings before deduplicating so that float
+    # formatting differences ('400001' vs '400001.0') don't prevent the dedup.
     if table in ('asutrans', 'acutrans') and 'apar_id' in failing.columns and 'voucher_no' in failing.columns:
-        failing = failing.drop_duplicates(subset=['apar_id', 'voucher_no'], keep='first')
+        def _norm(s):
+            return s.astype(str).str.strip().str.replace(r'\.0+$', '', regex=True)
+        failing = failing.assign(
+            _k1=_norm(failing['apar_id']),
+            _k2=_norm(failing['voucher_no']),
+        ).drop_duplicates(subset=['_k1', '_k2'], keep='first').drop(columns=['_k1', '_k2'])
 
     # Enrich with context for better inspection
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
