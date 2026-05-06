@@ -530,6 +530,15 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
 
         t_date = _safe_max_date(h_trans, 'trans_date')
 
+        # Balance broken down by transaction status
+        balance_by_status = {}
+        if not h_trans.empty and 'status' in h_trans.columns and 'rest_amount' in h_trans.columns:
+            for s in ['N', 'R', 'I', 'P']:
+                s_rows = h_trans[h_trans['status'] == s]
+                balance_by_status[s] = float(
+                    pd.to_numeric(s_rows['rest_amount'], errors='coerce').sum()
+                ) if not s_rows.empty else 0.0
+
         results[house] = {
             'house': house,
             'master': {
@@ -543,12 +552,13 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
                 'extract_date':     m_date,
             },
             'transactions': {
-                'open_count':     open_count,
-                'balance':        balance,
-                'overdue_count':  overdue,
-                'avg_days_old':   avg_age,
+                'open_count':       open_count,
+                'balance':          balance,
+                'balance_by_status': balance_by_status,
+                'overdue_count':    overdue,
+                'avg_days_old':     avg_age,
                 'status_breakdown': t_all_counts,
-                'extract_date':   t_date,
+                'extract_date':     t_date,
             },
             'history': {
                 'total': hist_total,
