@@ -554,11 +554,6 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 
         if evidence_cols:
             df = df[evidence_cols]
-            # After column selection the displayed rows may be identical (e.g. one
-            # invoice with multiple status/sequence rows all showing the same
-            # apar_id, voucher_no and due_date). Drop exact duplicate rows so
-            # each unique displayed record appears only once.
-            df = df.drop_duplicates()
 
     # ── TABLE HIGHLIGHTING & HEADERS ──
     style_data_conditional = []
