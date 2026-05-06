@@ -251,9 +251,9 @@ def _seq16_col(house, t):
     colour  = HOUSE_HEX[house]
     count   = t.get('open_count', 0)
     sb      = t.get('status_breakdown', {})
-    bb      = t.get('balance_by_status', {})
-    total_b = t.get('balance', 0.0)
+    bb       = t.get('balance_by_status', {})
     statuses = [s for s in ['N', 'R', 'I', 'P'] if sb.get(s, 0) > 0]
+    total_b  = sum(bb.get(s, 0.0) for s in statuses)  # denominator from breakdown, not overall total
 
     # Balance by status rows
     def _bal_row(status):
