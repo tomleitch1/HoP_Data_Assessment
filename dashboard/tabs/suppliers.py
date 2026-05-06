@@ -116,6 +116,48 @@ def _status_bar_row(status, count, total):
     ])
 
 
+def _balance_bar_row(status, bal, total_b):
+    """Status bar row for monetary values — identical structure to _status_bar_row."""
+    cfg   = _STATUS.get(status, {'color': '#94a3b8', 'label': status, 'risk': None})
+    pct   = (bal / total_b * 100) if total_b > 0 else 0
+    color = cfg['color']
+    risk  = cfg['risk']
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'padding': '5px 0',
+    }, children=[
+        html.Span(status, style={
+            'background': color + '1a', 'color': color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
+            'padding': '2px 7px', 'borderRadius': '3px',
+            'minWidth': '22px', 'textAlign': 'center',
+        }),
+        html.Span(cfg['label'], style={
+            'fontSize': '11px', 'color': UI['text_secondary'], 'minWidth': '88px',
+        }),
+        html.Div(style={
+            'flex': '1', 'height': '7px', 'background': _BAR_BG,
+            'borderRadius': '4px', 'overflow': 'hidden',
+        }, children=[
+            html.Div(style={
+                'height': '100%',
+                'width': f'{min(pct, 100):.1f}%',
+                'background': color,
+                'borderRadius': '4px',
+                'minWidth': '3px' if bal > 0 else '0',
+            })
+        ]),
+        html.Span(_fmt_bal(bal), style={
+            'fontSize': '12px', 'fontWeight': '700',
+            'minWidth': '52px', 'textAlign': 'right',
+            'color': color if risk == 'high' else UI['text_primary'],
+        }),
+        html.Span(f'{pct:.0f}%', style={
+            'fontSize': '10px', 'color': UI['text_secondary'], 'minWidth': '34px',
+        }),
+        html.Div(style={'minWidth': '14px'}),
+    ])
+
+
 def _section_label(text):
     return html.Div(text, style={
         'fontSize': '10px', 'fontWeight': '700', 'color': UI['text_secondary'],
@@ -253,38 +295,7 @@ def _seq16_col(house, t):
     sb      = t.get('status_breakdown', {})
     bb       = t.get('balance_by_status', {})
     statuses = [s for s in ['N', 'R', 'I', 'P'] if sb.get(s, 0) > 0]
-    total_b  = sum(bb.get(s, 0.0) for s in statuses)  # denominator from breakdown, not overall total
-
-    # Balance by status rows
-    def _bal_row(status):
-        cfg = _STATUS.get(status, {'color': '#94a3b8'})
-        bal = bb.get(status, 0.0)
-        pct = (bal / total_b * 100) if total_b > 0 else 0
-        return html.Div(style={
-            'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'padding': '4px 0',
-        }, children=[
-            html.Span(status, style={
-                'background': cfg['color'] + '1a', 'color': cfg['color'],
-                'fontSize': '10px', 'fontWeight': '800',
-                'padding': '1px 6px', 'borderRadius': '3px',
-                'minWidth': '22px', 'textAlign': 'center',
-            }),
-            html.Div(style={
-                'flex': '1', 'height': '5px', 'background': _BAR_BG,
-                'borderRadius': '3px', 'overflow': 'hidden',
-            }, children=[
-                html.Div(style={
-                    'height': '100%', 'width': f'{min(pct, 100):.1f}%',
-                    'background': cfg['color'], 'borderRadius': '3px',
-                    'minWidth': '2px' if bal > 0 else '0',
-                })
-            ]),
-            html.Span(_fmt_bal(bal), style={
-                'fontSize': '12px', 'fontWeight': '700',
-                'color': cfg['color'] if cfg.get('risk') == 'high' else UI['text_primary'],
-                'minWidth': '52px', 'textAlign': 'right',
-            }),
-        ])
+    total_b  = sum(bb.get(s, 0.0) for s in statuses)
 
     return html.Div(style={
         'flex': '1', 'padding': '24px 28px',
@@ -317,7 +328,7 @@ def _seq16_col(house, t):
 
         # Outstanding balance by status
         _section_label('Outstanding balance by status'),
-        html.Div([_bal_row(s) for s in statuses]) if statuses else html.Div(),
+        html.Div([_balance_bar_row(s, bb.get(s, 0.0), total_b) for s in statuses]) if statuses else html.Div(),
     ])
 
 
