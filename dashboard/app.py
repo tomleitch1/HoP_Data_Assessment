@@ -414,7 +414,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     def _stat_card(value, label, icon, value_color, icon_color=None, extra=None):
         return html.Div(style={
             'background': '#faf9fd', 'border': '1px solid #ede9f8',
-            'borderRadius': '12px', 'padding': '14px 16px', 'marginBottom': '10px',
+            'borderRadius': '12px', 'padding': '16px 18px',
         }, children=[
             html.Div(value, style={
                 'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
@@ -429,105 +429,91 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         ])
 
     left_sidebar = html.Div(style={
-        'width': '186px', 'flexShrink': '0', 'padding': '20px 16px',
+        'width': '320px', 'flexShrink': '0', 'padding': '20px 20px',
         'borderRight': '1px solid #f0edf8',
-        'display': 'flex', 'flexDirection': 'column',
+        'display': 'flex', 'flexDirection': 'column', 'gap': '12px',
     }, children=[
-        # Dimension pill — above everything
-        html.Div(style={'marginBottom': '12px'}, children=[
-            html.Span(row.get('dimension', '—'), style={
-                'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
-                'background': '#ede9f8', 'padding': '4px 12px',
-                'borderRadius': '20px', 'border': '1px solid #d4c8f0',
-                'letterSpacing': '0.04em',
-            }),
-        ]),
+        # Dimension pill
+        html.Span(row.get('dimension', '—'), style={
+            'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
+            'background': '#ede9f8', 'padding': '4px 12px',
+            'borderRadius': '20px', 'border': '1px solid #d4c8f0',
+            'letterSpacing': '0.04em', 'alignSelf': 'flex-start',
+        }),
 
-        _stat_card(
-            f'{failing:,}', 'Failing records',
-            'lucide:alert-circle', '#c0392b', '#c0392b',
-        ),
-        _stat_card(
-            f'{pass_rate:.1f}%', 'Pass rate',
-            'lucide:check-circle-2', rag_color, rag_color,
-            extra=html.Div(style={'marginTop': '8px'}, children=[
-                html.Span(row.get('rag', '—'), style={
-                    'fontSize': '10px', 'fontWeight': '700', 'color': rag_color,
-                    'background': rag_color + '18', 'padding': '2px 10px',
-                    'borderRadius': '20px', 'border': f'1px solid {rag_color}30',
-                }),
-            ]),
-        ),
-        _stat_card(
-            f'{assessed:,}', 'Records assessed',
-            'lucide:database', '#4a3d6b',
-        ),
-
-        # Criticality card at bottom
+        # 2x2 grid of stat cards
         html.Div(style={
-            'background': sev_bg, 'border': '1px solid #ede9f8',
-            'borderRadius': '12px', 'padding': '14px 16px', 'marginTop': 'auto',
+            'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '10px',
+            'flex': '1',
         }, children=[
-            html.Div('Criticality', style={
-                'fontSize': '10px', 'fontWeight': '700', 'color': '#a090c0',
-                'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginBottom': '6px',
-            }),
-            html.Div(row.get('severity', '—'), style={
-                'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
-                'color': sev_color, 'fontFamily': "'Inter', sans-serif",
-            }),
+            _stat_card(f'{failing:,}', 'Failing records', 'lucide:alert-circle', '#c0392b', '#c0392b'),
+            _stat_card(
+                f'{pass_rate:.1f}%', 'Pass rate', 'lucide:check-circle-2', rag_color, rag_color,
+                extra=html.Div(style={'marginTop': '6px'}, children=[
+                    html.Span(row.get('rag', '—'), style={
+                        'fontSize': '10px', 'fontWeight': '700', 'color': rag_color,
+                        'background': rag_color + '18', 'padding': '2px 8px',
+                        'borderRadius': '20px', 'border': f'1px solid {rag_color}30',
+                    }),
+                ]),
+            ),
+            _stat_card(f'{assessed:,}', 'Records assessed', 'lucide:database', '#4a3d6b'),
+            html.Div(style={
+                'background': sev_bg, 'border': '1px solid #ede9f8',
+                'borderRadius': '12px', 'padding': '16px 18px',
+            }, children=[
+                html.Div(row.get('severity', '—'), style={
+                    'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
+                    'color': sev_color, 'fontFamily': "'Inter', sans-serif",
+                    'letterSpacing': '-0.02em', 'marginBottom': '6px',
+                }),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px'}, children=[
+                    DashIconify(icon='lucide:shield-alert', width=11, color=sev_color),
+                    html.Span('Criticality', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
+                ]),
+            ]),
         ]),
     ])
 
-    # ── RIGHT CONTENT — flat, clean, no card fills ──
-    right_content = html.Div(style={'flex': '1', 'padding': '28px 32px', 'minWidth': 0}, children=[
+    # ── RIGHT CONTENT ──
+    right_content = html.Div(style={'flex': '1', 'padding': '24px 32px', 'minWidth': 0}, children=[
 
-        # Purpose
+        # Why this matters — full width
         _section_title('Why this matters'),
         html.Div(row.get('intent', '—'), style={
             'fontSize': '15px', 'color': '#1a1523', 'fontWeight': '500',
-            'lineHeight': '1.7',
+            'lineHeight': '1.7', 'marginBottom': '0',
         }),
 
         _divider(),
 
-        # Rule
-        _section_title('Rule definition'),
-        html.Div(logic, style={
-            'fontFamily': "'Courier New', monospace", 'fontSize': '12px',
-            'background': '#f7f5fb', 'color': '#4a3d6b',
-            'padding': '12px 16px', 'borderRadius': '8px',
-            'border': '1px solid #ede9f8', 'lineHeight': '1.7',
-            'wordBreak': 'break-all',
-        }),
-
-        _divider(),
-
-        # Critical fields
-        _section_title('Critical fields'),
-        html.Div(style={'display': 'flex', 'gap': '6px', 'flexWrap': 'wrap'}, children=[
-            html.Span(c, style={
-                'fontSize': '12px', 'fontWeight': '600', 'color': '#4a3d6b',
-                'background': '#f0edf8', 'padding': '4px 12px',
-                'borderRadius': '5px', 'border': '1px solid #ded8f0',
-                'fontFamily': "'Courier New', monospace",
-            }) for c in base_cols
-        ] if base_cols else [
-            html.Span('Automatic check — no specific field', style={
-                'fontSize': '12px', 'color': '#a090c0', 'fontStyle': 'italic',
-            })
-        ]),
-
-        _divider(),
-
-        # Remediation
-        _section_title('Remediation'),
-        html.Div(style={'display': 'flex', 'gap': '12px', 'alignItems': 'flex-start'}, children=[
-            html.Div(style={'width': '3px', 'background': '#d4820a', 'borderRadius': '2px', 'flexShrink': '0', 'alignSelf': 'stretch', 'minHeight': '20px'}),
-            html.Div(row['remediation'], style={
-                'fontSize': '13px', 'color': '#4a3200', 'fontWeight': '500',
-                'lineHeight': '1.6',
-            }),
+        # Rule definition + Critical fields — side by side
+        html.Div(style={'display': 'flex', 'gap': '24px', 'alignItems': 'flex-start'}, children=[
+            html.Div(style={'flex': '1.4', 'minWidth': 0}, children=[
+                _section_title('Rule definition'),
+                html.Div(logic, style={
+                    'fontFamily': "'Courier New', monospace", 'fontSize': '12px',
+                    'background': '#f7f5fb', 'color': '#4a3d6b',
+                    'padding': '12px 16px', 'borderRadius': '8px',
+                    'border': '1px solid #ede9f8', 'lineHeight': '1.7',
+                    'wordBreak': 'break-all',
+                }),
+            ]),
+            html.Div(style={'flex': '1', 'minWidth': 0}, children=[
+                _section_title('Critical fields'),
+                html.Div(style={'display': 'flex', 'gap': '6px', 'flexWrap': 'wrap'}, children=[
+                    html.Span(c, style={
+                        'fontSize': '12px', 'fontWeight': '600', 'color': '#4a3d6b',
+                        'background': '#f0edf8', 'padding': '4px 12px',
+                        'borderRadius': '5px', 'border': '1px solid #ded8f0',
+                        'fontFamily': "'Courier New', monospace",
+                    }) for c in base_cols
+                ] if base_cols else [
+                    html.Span('Automatic check', style={
+                        'fontSize': '12px', 'color': '#a090c0', 'fontStyle': 'italic',
+                    })
+                ]),
+            ]),
         ]),
     ])
 
