@@ -29,9 +29,9 @@ A Dash/Plotly web application that executes data quality (DQ) checks against fin
 ### Parliament laptop setup (already done)
 - Server: `mdata837`, databases: `Agresso_HoC` and `agresso_HoL`
 - Git installed, repo cloned to `C:\Users\leitchtb\HoP_Data_Assessment`
-- Dependencies installed: `pip install dash plotly pandas faker python-dotenv`
+- Dependencies installed: `pip install dash plotly pandas faker python-dotenv dash-iconify`
 - Real CSVs live in `data/` on the Parliament laptop — **never commit the `data/` folder**
-- App confirmed working with real data as of May 2026
+- App confirmed working with real supplier data as of May 2026
 
 ### Getting the real data CSVs
 Run the SQL files in `sql/` against each database in SSMS (server `mdata837`). Each file has a `HOW TO RUN` header with the exact database and output filename. Copy-paste results via Excel to avoid SSMS encoding issues. Place files in the correct subfolder under `data/` (see Data Folder Structure below).
@@ -186,6 +186,41 @@ The DQ assessment covers the data objects below. Sequence numbers are used throu
 
 ---
 
+## Suppliers Tab — Design Details
+
+The suppliers tab has a distinctive layout that other tabs will eventually follow:
+
+**Intro section** (`dashboard/tabs/suppliers.py` — `_render_intro`)
+Three scope cards aligned to the migration programme:
+- **Seq 10 full-width card** — supplier master breakdown with HOC/HOL columns each showing: migration scope headline number, scope progress bar, Active/Inactive+recent composition tiles, N/P/T status bars with proportional fill, archive candidates. Scoping extract (asuhistr) summary shown as a compact right-aligned note in the dark card header.
+- **Seq 16 card** — open AP invoices with per-house status bars (N/R/I/P) and outstanding balance broken down by status with proportional bars.
+- **Total Migration banner** — white card with house-coloured pills, Seq 10 + Seq 16 record counts per house with totals.
+
+**Section header** — "Data Quality Checks" with thin top border separates the intro from the DQ analysis below. The old volumetrics cards (duplicates of the scope section) have been removed.
+
+**Volumetrics quirks from real Agresso data:**
+- `rest_amount` is already signed (positive = invoice owed, negative = credit note) — sum directly, no dc_flag multiplication
+- `asutrans` has multiple rows per invoice (`sequence_no` up to 840+) representing dimension splits; `rest_amount` is the header-level amount for the whole invoice NOT the line amount — do NOT deduplicate by `voucher_no` as null voucher_nos cause mass row collapse. Sum all rows directly.
+- `rest_amount` values from SSMS via Excel may arrive as comma-formatted strings (`1,234.56`) — `data_engine.py` strips commas in the numeric column pre-processing step
+- Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats
+
+---
+
+## Modal Drill-Down Inspector
+
+Triggered by clicking any bar in a dimension chart or any row in a DQ results table. Renders via `handle_modal_logic` callback in `app.py`.
+
+**Layout:**
+- Single dark header bar (`#1e1528`) — one dark element, everything else white
+- Left sidebar (186px): dimension pill → failing count card → pass rate + RAG card → assessed card → criticality card. All stats at 28px/800 weight for consistency. Rounded cards (`borderRadius: 12px`).
+- Right panel: flat sections separated by 1px dividers — "Why this matters" / rule definition (light grey code block) / critical fields (monospace pills) / remediation (amber left-border stripe)
+- Table strip: dark header strip showing record count
+- Failing records table: dark column headers, alternating rows, surgical column highlighting (red=source, blue=target, grey=bridge)
+
+Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circle-2`, `lucide:database`, `lucide:table-2`, `lucide:download`, `lucide:x`, `lucide:arrow-right`).
+
+---
+
 ## Current State (as of May 2026)
 
 **Implemented and tested with dummy data:**
@@ -194,8 +229,8 @@ The DQ assessment covers the data objects below. Sequence numbers are used throu
 - Customers / AR (master, open transactions, history)
 - Fixed Assets (master, depreciation, balances, groups, transactions)
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
-- Modal drill-down inspector (failing record detail with surgical column highlighting)
-- Aging analysis (AP and AR)
+- Modal drill-down inspector (redesigned — dark header, sidebar metrics, flat content panels)
+- Aging analysis (AP and AR) with HOC/HOL/Both toggle
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
