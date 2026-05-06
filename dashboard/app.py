@@ -1063,6 +1063,22 @@ def export_all_checks(n_clicks):
 # --- Aging Callbacks ---
 
 @app.callback(
+    Output('aging-ap-graph', 'figure'),
+    Input('aging-ap-chart-toggle', 'value'),
+)
+def update_aging_ap_chart(house_filter):
+    from dashboard.tabs.aging import make_aging_chart
+    return make_aging_chart(aging_results.get('AP', pd.DataFrame()), house_filter or 'Both')
+
+@app.callback(
+    Output('aging-ar-graph', 'figure'),
+    Input('aging-ar-chart-toggle', 'value'),
+)
+def update_aging_ar_chart(house_filter):
+    from dashboard.tabs.aging import make_aging_chart
+    return make_aging_chart(aging_results.get('AR', pd.DataFrame()), house_filter or 'Both')
+
+@app.callback(
     [Output('aging-ap-table', 'data'),
      Output('aging-ap-table', 'columns')],
     [Input('aging-ap-house', 'value'),
