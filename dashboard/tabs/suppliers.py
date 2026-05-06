@@ -28,11 +28,13 @@ _STATUS = {
 
 
 def _fmt_bal(v):
-    if abs(v) >= 1_000_000:
-        return f'£{v / 1_000_000:.1f}m'
-    if abs(v) >= 1_000:
-        return f'£{v / 1_000:.0f}k'
-    return f'£{v:,.0f}'
+    sign = '-' if v < 0 else ''
+    a = abs(v)
+    if a >= 1_000_000:
+        return f'{sign}£{a / 1_000_000:.1f}m'
+    if a >= 1_000:
+        return f'{sign}£{a / 1_000:.0f}k'
+    return f'{sign}£{a:,.0f}'
 
 
 def _badge(text, bg, color):
@@ -119,7 +121,7 @@ def _status_bar_row(status, count, total):
 def _balance_bar_row(status, bal, total_b):
     """Status bar row for monetary values — identical structure to _status_bar_row."""
     cfg   = _STATUS.get(status, {'color': '#94a3b8', 'label': status, 'risk': None})
-    pct   = (bal / total_b * 100) if total_b > 0 else 0
+    pct   = (abs(bal) / abs(total_b) * 100) if total_b != 0 else 0
     color = cfg['color']
     risk  = cfg['risk']
     return html.Div(style={
@@ -295,7 +297,7 @@ def _seq16_col(house, t):
     sb      = t.get('status_breakdown', {})
     bb       = t.get('balance_by_status', {})
     statuses = [s for s in ['N', 'R', 'I', 'P'] if sb.get(s, 0) > 0]
-    total_b  = sum(bb.get(s, 0.0) for s in statuses)
+    total_b  = sum(bb.get(s, 0.0) for s in statuses)  # may be negative if credits > invoices
 
     return html.Div(style={
         'flex': '1', 'padding': '24px 28px',
