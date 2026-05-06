@@ -34,6 +34,50 @@ def _data_path(base_name: str, suffix: str = '') -> str:
     subdir = _SUBDIR_MAP.get(base_name, '')
     return os.path.join(DATA_DIR, subdir, filename)
 
+_EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
+_EXCEL_MIN, _EXCEL_MAX = 36526, 55000  # approx year 2000 – 2050
+
+def _parse_dates(series: pd.Series) -> pd.Series:
+    """
+    Parse a date column that may arrive in three formats:
+      1. YYYY-MM-DD          — dummy data from dev scripts
+      2. dd/mm/yyyy          — SSMS plain text export
+      3. Excel serial float  — e.g. 45626.0 or 45626.614 when Excel
+         formats date cells as Text. Floor to integer to discard the
+         sub-day time fraction before converting.
+    Returns datetime64[us] throughout to avoid pandas dtype mismatches
+    between ns and s precision on different Python/pandas versions.
+    """
+    s = series.astype(str).str.strip().str.split().str[0]
+    blank = s.isin(['nan', 'None', 'NaT', ''])
+    result = pd.Series(pd.NaT, index=series.index, dtype='datetime64[us]')
+
+    # 1. ISO YYYY-MM-DD
+    iso = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
+    hit = iso.notna()
+    if hit.any():
+        result[hit] = iso[hit].dt.as_unit('us')
+
+    # 2. dd/mm/yyyy
+    need = result.isna() & ~blank
+    if need.any():
+        dmy = pd.to_datetime(s[need], format='%d/%m/%Y', errors='coerce')
+        hit2 = dmy.notna()
+        if hit2.any():
+            result[need[need].index[hit2]] = dmy[hit2].dt.as_unit('us')
+
+    # 3. Excel serial — floor removes fractional time component
+    need = result.isna() & ~blank
+    if need.any():
+        numeric = pd.to_numeric(s[need], errors='coerce').dropna()
+        in_range = numeric[numeric.between(_EXCEL_MIN, _EXCEL_MAX)]
+        if not in_range.empty:
+            converted = (_EXCEL_ORIGIN + pd.to_timedelta(in_range.astype(int), unit='D')).dt.as_unit('us')
+            result[in_range.index] = converted
+
+    return result
+
+
 def load_data():
     """Loads all CSV files from the data directory and combines HOC/HOL."""
     frames = {}
@@ -108,40 +152,10 @@ def load_data():
             if col in df.columns:
                 df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
         
-        # Date parsing — handles three formats:
-        #   1. YYYY-MM-DD        (dummy data generated on dev laptop)
-        #   2. dd/mm/yyyy        (SSMS direct export or copy-paste as text before Excel converts)
-        #   3. Excel serial int  (e.g. 45626) when copy-pasted into Excel which stores
-        #      dates as days since 1899-12-30; Text-formatting the cell exposes the serial
-        # Tries formats in order; anything still NaT after all three is genuinely missing.
-        _EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
-        _EXCEL_MIN, _EXCEL_MAX = 36526, 55000  # approx year 2000 – 2050
-
         date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
         for col in date_cols:
             if col in df.columns:
-                s = df[col].astype(str).str.strip().str.split().str[0]
-                blank = s.isin(['nan', 'None', 'NaT', ''])
-
-                # 1. ISO format YYYY-MM-DD
-                parsed = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
-
-                # 2. dd/mm/yyyy
-                mask = parsed.isna() & ~blank
-                if mask.any():
-                    parsed[mask] = pd.to_datetime(s[mask], format='%d/%m/%Y', errors='coerce')
-
-                # 3. Excel serial number
-                mask = parsed.isna() & ~blank
-                if mask.any():
-                    numeric = pd.to_numeric(s[mask], errors='coerce')
-                    valid = numeric.notna() & numeric.between(_EXCEL_MIN, _EXCEL_MAX)
-                    if valid.any():
-                        parsed[mask[mask].index[valid]] = _EXCEL_ORIGIN + pd.to_timedelta(
-                            numeric[valid], unit='D'
-                        )
-
-                df[col] = parsed
+                df[col] = _parse_dates(df[col])
         frames[table] = df
 
     return frames
