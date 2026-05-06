@@ -108,11 +108,18 @@ def load_data():
             if col in df.columns:
                 df[col] = df[col].astype(str).replace(['nan', 'None', ''], np.nan)
         
-        # Basic date parsing
+        # Date parsing — handles both real data (dd/mm/yyyy  00:00:00 from SSMS)
+        # and dummy data (YYYY-MM-DD). Try ISO format first; fall back to
+        # dd/mm/yyyy for anything that doesn't parse (real SSMS exports).
         date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
         for col in date_cols:
             if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
+                s = df[col].astype(str).str.strip().str.split().str[0]
+                parsed = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
+                fallback_mask = parsed.isna() & s.notna() & ~s.isin(['nan', 'None', 'NaT', ''])
+                if fallback_mask.any():
+                    parsed[fallback_mask] = pd.to_datetime(s[fallback_mask], format='%d/%m/%Y', errors='coerce')
+                df[col] = parsed
         frames[table] = df
 
     return frames
