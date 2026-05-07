@@ -532,7 +532,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table in ['asutrans', 'acutrans']:
-        h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['N','R','I']))]
+        h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
     elif table in ['asuhistr', 'acuhistr']:
         h_df = df_table[df_table['house'] == house]
     elif table == 'aglaccounts':
