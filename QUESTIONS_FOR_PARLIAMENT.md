@@ -17,6 +17,8 @@ The actual payment method codes in the system are:
 - Which represent **domestic electronic payments** that require a sort code and bank account number?
 - Even partial mappings are helpful — e.g. "IN = International, DD = Direct Debit"
 
+**Assumed for now:** `IN` = International (requires IBAN), `DD` = Direct Debit/domestic (requires sort code + bank account). Rules updated on this basis — confirm and adjust if incorrect.
+
 **Checks affected:** `SUP_INT_NO_IBAN`, `SUP_BACS_NO_BANK` in `dashboard/core/rules/ap_rules.py`
 
 ---

@@ -33,8 +33,8 @@ def get_ap_checks():
 
         ('SUP_PAY_METHOD_MISSING', 10, 'Suppliers', 'Completeness', 'Critical',
          'Active supplier missing default payment method',
-         'Flags suppliers with no payment method assigned — without BACS or INT, the automated payment run cannot process settlements for this supplier.',
-         'Assign asuheader.pay_method (BACS/INT).', 'asuheader', None,
+         'Flags suppliers with no payment method assigned — without DD or IN, the automated payment run cannot process settlements for this supplier.',
+         'Assign asuheader.pay_method (DD/IN).', 'asuheader', None,
          'asuheader.pay_method IS NULL',
          lambda df: df['pay_method'].isna()),
 
@@ -116,18 +116,18 @@ def get_ap_checks():
          lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
 
         ('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
-         'Payment method set to BACS but bank details are missing',
-         'Finds suppliers set to BACS payment but missing their bank account or sort code — the payment run will fail without these details.',
+         'Payment method set to Direct Debit (DD) but bank details are missing',
+         'Finds suppliers set to DD payment but missing their bank account or sort code — the payment run will fail without these details.',
          'Provide bank details in asuheader.', 'asuheader', None,
-         'asuheader.pay_method = "BACS" AND (bank_account IS NULL OR clearing_code IS NULL)',
-         lambda df: (df['pay_method'] == 'BACS') & (df['bank_account'].isna() | df['clearing_code'].isna())),
+         'asuheader.pay_method = "DD" AND (bank_account IS NULL OR clearing_code IS NULL)',
+         lambda df: (df['pay_method'] == 'DD') & (df['bank_account'].isna() | df['clearing_code'].isna())),
 
         ('SUP_INT_NO_IBAN', 10, 'Suppliers', 'Consistency', 'Critical',
-         'Payment method set to International but IBAN is missing',
+         'Payment method set to International (IN) but IBAN is missing',
          'Flags international payment suppliers with no IBAN — required for cross-border electronic payments.',
          'Provide asuheader.iban.', 'asuheader', None,
-         'asuheader.pay_method = "INT" AND asuheader.iban IS NULL',
-         lambda df: (df['pay_method'] == 'INT') & df['iban'].isna()),
+         'asuheader.pay_method = "IN" AND asuheader.iban IS NULL',
+         lambda df: (df['pay_method'] == 'IN') & df['iban'].isna()),
 
         ('SUP_NAME_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
          'Duplicate supplier name exists within the same House',
