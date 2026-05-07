@@ -22,31 +22,18 @@ def render_dimension_scorecard(dq_results):
         ])
 
     scored_dq = dq_results[dq_results['severity'] != 'Info']
-    if not scored_dq.empty and scored_dq['total'].sum() > 0:
-        overall_pass_rate = (scored_dq['total'].sum() - scored_dq['failing'].sum()) / scored_dq['total'].sum() * 100
-    else:
-        overall_pass_rate = 0.0
-    
-    overall_color = RAG_HEX['Green'] if overall_pass_rate >= 90 else RAG_HEX['Amber'] if overall_pass_rate >= 70 else RAG_HEX['Red']
 
-    dim_summary = dq_results.groupby('dimension').agg({
-        'error_rate': 'mean',
-        'failing': 'sum',
-        'total': 'sum',
-        'check_id': 'count'
-    }).reset_index().sort_values('error_rate', ascending=False)
-    
-    if dim_summary.empty:
-        return html.Div()
-        
-    worst_dim = dim_summary.iloc[0]
-    best_dim = dim_summary.iloc[-1]
-    
+    total_checks    = len(scored_dq)
+    checks_failing  = int((scored_dq['failing'] > 0).sum())
+    checks_passing  = int((scored_dq['rag'] == 'Green').sum())
+    overall_pct     = round(checks_passing / total_checks * 100, 1) if total_checks > 0 else 0.0
+    overall_color   = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+
     return html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '24px', 'flexWrap': 'wrap'}, children=[
-        kpi_card(f"{overall_pass_rate:.1f}%", 'Overall DQ Score', overall_color),
-        kpi_card(f"{100 - best_dim['error_rate']:.1f}%", 'Cleanest Dimension', '#006548', best_dim['dimension']),
-        kpi_card(f"{100 - worst_dim['error_rate']:.1f}%", 'Critical Dimension', '#E74C3C', worst_dim['dimension']),
-        kpi_card(int(dim_summary['failing'].sum()), 'Failing Records', '#F39C12'),
+        kpi_card(f"{overall_pct:.1f}%", 'Overall DQ Score', overall_color),
+        kpi_card(f"{total_checks:,}",   'Total Checks',         '#4a3d6b'),
+        kpi_card(f"{checks_failing:,}", 'Checks With Failures', '#c0392b'),
+        kpi_card(f"{checks_passing:,}", 'Checks Passing',       '#006548'),
     ])
 
 def render_dimension_grid(dq_results):
