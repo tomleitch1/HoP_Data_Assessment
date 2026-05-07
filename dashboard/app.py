@@ -367,6 +367,8 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         return current_style, dash.no_update, dash.no_update
 
     # ── RENDER CONTENT ──
+    _XHOUSE_CHECKS = {'SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP', 'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP'}
+    is_xhouse = check_id in _XHOUSE_CHECKS
     df = get_failing_records(check_id, house, frames)
     check_info = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
     
@@ -392,7 +394,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     # Ensure the table only shows rows for the requested house.
     # get_failing_records may return rows for both houses if house filtering
     # behaves unexpectedly on the real data.
-    if 'house' in df.columns:
+    if not is_xhouse and 'house' in df.columns:
         df = df[df['house'] == house]
 
     # ── COLOURS ──
@@ -539,7 +541,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                        'GL_BALANCES.', 'GL_ACCOUNTS.', 'GL_TRANSACTIONS.', 'GL_DIMENSIONS.']
     is_prefixed = any(any(p in c for p in prefixed_tables) for c in df.columns)
 
-    if not is_prefixed:
+    if not is_xhouse and not is_prefixed:
         key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'client', 'sequence_no', 'status', 'BRIDGE_Asset_Group']
         evidence_cols = []
         
@@ -1058,38 +1060,80 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         ]),
     ])
 
-    content = html.Div([
-        tech_details,
-        join_map,
-        table_strip,
-        html.Div(style={'padding': '0'}, children=[
+    _dt_shared_style = dict(
+        style_table={'overflowX': 'auto', 'border': 'none'},
+        style_cell={
+            'textAlign': 'left', 'padding': '10px 16px',
+            'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
+            'minWidth': '100px', 'color': '#1a1523',
+            'borderColor': '#f0edf8', 'borderLeft': 'none', 'borderRight': 'none',
+        },
+        style_header={
+            'backgroundColor': '#1e1528', 'fontWeight': '600',
+            'color': 'rgba(255,255,255,0.65)', 'textAlign': 'left',
+            'fontSize': '11px', 'letterSpacing': '0.05em',
+            'borderColor': '#2a1f3d', 'padding': '10px 16px',
+            'textTransform': 'uppercase',
+        },
+        style_data={'borderColor': '#f0edf8'},
+        sort_action='native',
+        page_size=15,
+    )
+
+    if is_xhouse and not df.empty:
+        show_cols = list(dict.fromkeys(
+            ['client', 'apar_id', 'status', 'apar_name'] +
+            [c for c in base_cols if c != 'apar_name']
+        ))
+        hoc_df = df[df['house'] == 'HOC'][[c for c in show_cols if c in df.columns]].fillna('—').reset_index(drop=True)
+        hol_df = df[df['house'] == 'HOL'][[c for c in show_cols if c in df.columns]].fillna('—').reset_index(drop=True)
+        xh_cols = [{'name': c.replace('_', ' ').title(), 'id': c} for c in hoc_df.columns]
+        xh_style = [
+            {'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'}
+            for c in base_cols if c in hoc_df.columns
+        ] + [{'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'}]
+
+        def _xh_table(hdf):
+            return dash_table.DataTable(data=hdf.to_dict('records'), columns=xh_cols,
+                                        style_data_conditional=xh_style, **_dt_shared_style)
+
+        table_body = html.Div(style={'padding': '12px 16px 16px', 'display': 'flex', 'gap': '16px'}, children=[
+            html.Div(style={'flex': '1', 'minWidth': 0}, children=[
+                html.Div('HOC', style={
+                    'background': '#00703c', 'color': '#fff',
+                    'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+                    'padding': '5px 12px', 'borderRadius': '4px 4px 0 0', 'display': 'inline-block',
+                }),
+                _xh_table(hoc_df),
+            ]),
+            html.Div(style={'flex': '1', 'minWidth': 0}, children=[
+                html.Div('HOL', style={
+                    'background': '#9b2335', 'color': '#fff',
+                    'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+                    'padding': '5px 12px', 'borderRadius': '4px 4px 0 0', 'display': 'inline-block',
+                }),
+                _xh_table(hol_df),
+            ]),
+        ])
+    else:
+        table_body = html.Div(style={'padding': '0'}, children=[
             dash_table.DataTable(
                 data=df.fillna('—').to_dict('records'),
                 columns=dt_cols,
                 merge_duplicate_headers=True,
-                style_table={'overflowX': 'auto', 'border': 'none'},
-                style_cell={
-                    'textAlign': 'left', 'padding': '10px 16px',
-                    'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
-                    'minWidth': '120px', 'color': '#1a1523',
-                    'borderColor': '#f0edf8', 'borderLeft': 'none', 'borderRight': 'none',
-                },
-                style_header={
-                    'backgroundColor': '#1e1528', 'fontWeight': '600',
-                    'color': 'rgba(255,255,255,0.65)', 'textAlign': 'left',
-                    'fontSize': '11px', 'letterSpacing': '0.05em',
-                    'borderColor': '#2a1f3d', 'padding': '10px 16px',
-                    'textTransform': 'uppercase',
-                },
-                style_data={'borderColor': '#f0edf8'},
                 style_data_conditional=style_data_conditional + [
                     {'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'},
                 ],
-                sort_action='native',
                 filter_action='native',
-                page_size=15,
+                **_dt_shared_style,
             ),
-        ]),
+        ])
+
+    content = html.Div([
+        tech_details,
+        join_map,
+        table_strip,
+        table_body,
     ])
 
     house_color = HOUSE_HEX.get(house, '#7c5cbf')

@@ -551,7 +551,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         failing = both[mask].copy()
         if failing.empty:
             return failing
-        display_cols = list(dict.fromkeys(['house', 'client', 'apar_id', 'apar_name'] + [c for c in id_cols if c in failing.columns]))
+        display_cols = list(dict.fromkeys(['house', 'client', 'apar_id', 'apar_name', 'status'] + [c for c in id_cols if c in failing.columns]))
         result = failing[[c for c in display_cols if c in failing.columns]]
         sort_by = [c for c in id_cols if c in result.columns] + ['house']
         return result.sort_values(sort_by).reset_index(drop=True)
