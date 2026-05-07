@@ -199,7 +199,7 @@ def run_dq_analysis(frames):
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
             elif table in ['asutrans', 'acutrans']:
-                h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+                h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['N','R','I']))]
             elif table in ['asuhistr', 'acuhistr']:
                 h_df = df_table[df_table['house'] == house]
             elif table == 'aglaccounts':
@@ -532,7 +532,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table in ['asutrans', 'acutrans']:
-        h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+        h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['N','R','I']))]
     elif table in ['asuhistr', 'acuhistr']:
         h_df = df_table[df_table['house'] == house]
     elif table == 'aglaccounts':
@@ -561,15 +561,6 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     failing = h_df[mask].copy()
     if failing.empty:
         return failing
-
-    # asutrans/acutrans: deduplicate on the Agresso unique key so the modal
-    # shows exactly one row per distinct transaction.
-    # Unique key: (client, apar_id, voucher_no, sequence_no).
-    # Use whichever of those columns are present in the data.
-    if table in ('asutrans', 'acutrans'):
-        dedup_key = [c for c in ('client', 'apar_id', 'voucher_no', 'sequence_no') if c in failing.columns]
-        if dedup_key:
-            failing = failing.drop_duplicates(subset=dedup_key, keep='first')
 
     # Enrich with context for better inspection
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
