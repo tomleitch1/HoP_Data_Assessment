@@ -1364,19 +1364,21 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return failing[[c for c in cols if c in failing.columns]]
 
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
-        # Join to master to get supplier name — deduplicate first so each
-        # apar_id contributes exactly one row (asuheader has one row per
-        # client code, so without dedup every failing row gets multiplied).
-        master = frames['asuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
-        master = master.drop_duplicates(subset=['house', 'apar_id'])
-        master.columns = ['house', 'apar_id', 'Master_Supplier_Name', 'Master_Status']
-        failing = failing.merge(master, on=['house', 'apar_id'], how='left')
+        # asuheader unique key is (client, apar_id) — one row per supplier per
+        # client code. Join on (client, apar_id) to get the exact supplier name
+        # for each transaction row's client allocation.
+        join_cols = ['client', 'apar_id'] if 'client' in failing.columns else ['house', 'apar_id']
+        master = frames['asuheader'][join_cols + ['apar_name', 'status']].copy()
+        master = master.drop_duplicates(subset=join_cols)
+        master.columns = join_cols + ['Master_Supplier_Name', 'Master_Status']
+        failing = failing.merge(master, on=join_cols, how='left')
 
     if table in ['acutrans', 'acuhistr'] and 'acuheader' in frames:
-        master = frames['acuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
-        master = master.drop_duplicates(subset=['house', 'apar_id'])
-        master.columns = ['house', 'apar_id', 'Master_Customer_Name', 'Master_Status']
-        failing = failing.merge(master, on=['house', 'apar_id'], how='left')
+        join_cols = ['client', 'apar_id'] if 'client' in failing.columns else ['house', 'apar_id']
+        master = frames['acuheader'][join_cols + ['apar_name', 'status']].copy()
+        master = master.drop_duplicates(subset=join_cols)
+        master.columns = join_cols + ['Master_Customer_Name', 'Master_Status']
+        failing = failing.merge(master, on=join_cols, how='left')
 
     if table == 'aglyearend' and check_id == 'GL_BAL_ORPHAN_ACC':
         failing = failing.rename(columns={
