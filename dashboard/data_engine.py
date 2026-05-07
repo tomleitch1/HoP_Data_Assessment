@@ -318,6 +318,7 @@ def get_check_columns():
         'SUP_WF_STUCK': ['wf_state'],
         'SUP_BACS_NO_BANK': ['pay_method', 'bank_account', 'clearing_code'],
         'SUP_INT_NO_IBAN': ['pay_method', 'iban'],
+        'SUP_CLIENT_APAR_DUP': ['client', 'apar_id'],
         'SUP_NAME_DUP': ['apar_name', 'client'],
         'SUP_VAT_DUP': ['vat_reg_no', 'client'],
         'SUP_STALE': ['last_update'],

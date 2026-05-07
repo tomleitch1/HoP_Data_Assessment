@@ -143,6 +143,13 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY client, vat_reg_no) > 1',
          lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna()),
 
+        ('SUP_CLIENT_APAR_DUP', 10, 'Suppliers', 'Uniqueness', 'Critical',
+         'Duplicate (client, apar_id) combination found in supplier master',
+         'Flags rows where the same client and apar_id appear more than once in asuheader — since (client, apar_id) is the unique key, any duplicate indicates a data integrity error that must be resolved before migration.',
+         'Investigate and remove duplicate rows in asuheader.', 'asuheader', None,
+         'COUNT(*) OVER(PARTITION BY client, apar_id) > 1',
+         lambda df: df.duplicated(subset=['client', 'apar_id'], keep=False)),
+
         ('SUP_STALE', 10, 'Suppliers', 'Timeliness', 'Low',
          'Stale record: Supplier has not been updated in over 3 years',
          'Surfaces supplier records that have not been updated in over 3 years — candidates for review and potential decommissioning.',
