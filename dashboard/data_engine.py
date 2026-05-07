@@ -1364,14 +1364,17 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return failing[[c for c in cols if c in failing.columns]]
 
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
-        # Join to master to get supplier name for transaction errors
+        # Join to master to get supplier name — deduplicate first so each
+        # apar_id contributes exactly one row (asuheader has one row per
+        # client code, so without dedup every failing row gets multiplied).
         master = frames['asuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
+        master = master.drop_duplicates(subset=['house', 'apar_id'])
         master.columns = ['house', 'apar_id', 'Master_Supplier_Name', 'Master_Status']
         failing = failing.merge(master, on=['house', 'apar_id'], how='left')
-    
+
     if table in ['acutrans', 'acuhistr'] and 'acuheader' in frames:
-        # Join to master to get customer name for transaction errors
         master = frames['acuheader'][['house', 'apar_id', 'apar_name', 'status']].copy()
+        master = master.drop_duplicates(subset=['house', 'apar_id'])
         master.columns = ['house', 'apar_id', 'Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=['house', 'apar_id'], how='left')
 
