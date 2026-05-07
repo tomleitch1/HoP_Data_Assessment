@@ -117,7 +117,7 @@ def get_ar_checks():
          'Finds standard AR invoices with a negative amount — these should be credit notes, not invoices.',
          'Correct acutrans.voucher_type.', 'acutrans', None,
          'acutrans.amount < 0 AND acutrans.voucher_type NOT LIKE "%CREDIT%"',
-         lambda df: (df['amount'] < 0) & (~df['voucher_type'].str.contains('CREDIT', case=False, na=False))),
+         lambda df: (df['amount'] < 0) & (df['voucher_type'] != 'CN')),
 
         ('AR_REST_ZERO', 17, 'AR Invoices', 'Consistency', 'Medium',
          'Outstanding balance is zero but the item is still flagged as OPEN',

@@ -202,14 +202,14 @@ def get_ap_checks():
          'Finds credit notes with no reference back to the original invoice — breaks the audit trail between the credit and the charge it is offsetting.',
          'Populate asutrans.orig_reference.', 'asutrans', None,
          'asutrans.voucher_type LIKE "%CREDIT%" AND asutrans.orig_reference IS NULL',
-         lambda df: (df['voucher_type'].str.contains('CREDIT', case=False, na=False)) & df['orig_reference'].isna()),
+         lambda df: (df['voucher_type'] == 'CN') & df['orig_reference'].isna()),
 
         ('AP_NEG_INV', 16, 'AP Invoices', 'Validity', 'Medium',
          'Negative amount found on a standard invoice voucher type',
          'Identifies standard invoice vouchers with a negative amount — negative values should be credit notes, not invoices.',
          'Correct asutrans.voucher_type.', 'asutrans', None,
          'asutrans.amount < 0 AND asutrans.voucher_type NOT LIKE "%CREDIT%"',
-         lambda df: (df['amount'] < 0) & (~df['voucher_type'].str.contains('CREDIT', case=False, na=False))),
+         lambda df: (df['amount'] < 0) & (~df['voucher_type'] == 'CN')),
 
         ('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
          'Foreign currency invoice missing its transaction currency amount',
@@ -265,7 +265,7 @@ def get_ap_checks():
          'Finds credit notes linked to an invoice reference that no longer exists as an open item — the credit is floating with nothing to offset.',
          'Review asutrans.orig_reference.', 'asutrans', None,
          'asutrans.voucher_type LIKE "%CREDIT%" AND asutrans.orig_reference NOT IN (SELECT voucher_no FROM asutrans)',
-         lambda df: (df['voucher_type'].str.contains('CREDIT', case=False, na=False)) & (~df['orig_reference'].isin(df['voucher_no'])) & df['orig_reference'].notna()),
+         lambda df: (df['voucher_type'] == 'CN') & (~df['orig_reference'].isin(df['voucher_no'])) & df['orig_reference'].notna()),
 
         ('AP_ORPHANED_TRANS', 16, 'AP Invoices', 'Referential Integrity', 'Critical',
          'Open transaction references a Supplier ID that does not exist',
@@ -305,7 +305,7 @@ def get_ap_checks():
          'Flags historical credit notes with no link to the original invoice — without this, the audit trail between the credit and the original charge is broken.',
          'Populate asuhistr.orig_reference.', 'asuhistr', None,
          'asuhistr.voucher_type LIKE "%CREDIT%" AND asuhistr.orig_reference IS NULL',
-         lambda df: (df['voucher_type'].str.contains('CREDIT', case=False, na=False)) & df['orig_reference'].isna()),
+         lambda df: (df['voucher_type'] == 'CN') & df['orig_reference'].isna()),
 
         ('HIS_DUP', 18, 'AP History', 'Uniqueness', 'High',
          'Duplicate voucher and sequence number found in history',
