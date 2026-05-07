@@ -334,6 +334,7 @@ def get_check_columns():
         'AP_FX_NO_CUR_AMT': ['currency', 'cur_amount'],
         'AP_REST_ZERO': ['rest_amount'],
         'AP_REST_OVER_AMT': ['rest_amount', 'amount'],
+        'AP_OVERDUE': ['due_date'],
         'AP_WF_STUCK': ['wf_state'],
         'AP_EXT_REF_DUP': ['ext_inv_ref', 'apar_id'],
         'AP_NET_NEGATIVE_SUP': ['rest_amount', 'apar_id'],
