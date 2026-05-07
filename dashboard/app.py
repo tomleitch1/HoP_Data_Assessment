@@ -540,7 +540,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     is_prefixed = any(any(p in c for p in prefixed_tables) for c in df.columns)
 
     if not is_prefixed:
-        key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'client', 'sequence_no', 'BRIDGE_Asset_Group']
+        key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'client', 'sequence_no', 'status', 'BRIDGE_Asset_Group']
         evidence_cols = []
         
         for c in df.columns:
