@@ -1085,8 +1085,15 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             ['client', 'apar_id', 'status', 'apar_name'] +
             [c for c in base_cols if c != 'apar_name']
         ))
-        hoc_df = df[df['house'] == 'HOC'][[c for c in show_cols if c in df.columns]].fillna('—').reset_index(drop=True)
-        hol_df = df[df['house'] == 'HOL'][[c for c in show_cols if c in df.columns]].fillna('—').reset_index(drop=True)
+        avail_cols = [c for c in show_cols if c in df.columns]
+        dedup_cols = [c for c in base_cols if c in df.columns]
+        hoc_df = df[df['house'] == 'HOC'][avail_cols].copy()
+        hol_df = df[df['house'] == 'HOL'][avail_cols].copy()
+        if dedup_cols:
+            hoc_df = hoc_df.drop_duplicates(subset=dedup_cols).sort_values(dedup_cols)
+            hol_df = hol_df.drop_duplicates(subset=dedup_cols).sort_values(dedup_cols)
+        hoc_df = hoc_df.fillna('—').reset_index(drop=True)
+        hol_df = hol_df.fillna('—').reset_index(drop=True)
         xh_cols = [{'name': c.replace('_', ' ').title(), 'id': c} for c in hoc_df.columns]
         xh_style = [
             {'if': {'column_id': c}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B', 'fontWeight': 'bold'}
