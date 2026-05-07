@@ -150,6 +150,82 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY client, apar_id) > 1',
          lambda df: df.duplicated(subset=['client', 'apar_id'], keep=False)),
 
+        # ======================================================================
+        # --- CROSS-HOUSE UNIQUENESS (asuheader) ---
+        # ======================================================================
+
+        ('SUP_XHOUSE_VAT_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
+         'VAT registration number exists in both Houses',
+         'Finds non-closed suppliers sharing a VAT registration number across both Houses — since a VAT number is unique to a legal entity, this indicates the same supplier is registered in both systems and may create duplicate records in the new ERP.',
+         'Review asuheader.vat_reg_no across both Houses and consolidate or map to a single record.', 'asuheader', None,
+         'vat_reg_no IN (SELECT vat_reg_no FROM asuheader GROUP BY vat_reg_no HAVING COUNT(DISTINCT house) > 1)',
+         lambda df, frames: df['vat_reg_no'].isin(
+             (lambda f:
+                 f[f['vat_reg_no'].notna() & (f['status'] != 'C')]
+                 .groupby('vat_reg_no')['house'].nunique()
+                 .pipe(lambda s: s[s > 1].index)
+             )(frames.get('asuheader', pd.DataFrame()))
+         ) & df['vat_reg_no'].notna()),
+
+        ('SUP_XHOUSE_COMP_REG_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
+         'Company registration number exists in both Houses',
+         'Finds non-closed suppliers sharing a Companies House number across both Houses — a company registration number uniquely identifies a legal entity, so the same number in both Houses indicates the same supplier is held twice.',
+         'Review asuheader.comp_reg_no across both Houses and consolidate or map to a single record.', 'asuheader', None,
+         'comp_reg_no IN (SELECT comp_reg_no FROM asuheader GROUP BY comp_reg_no HAVING COUNT(DISTINCT house) > 1)',
+         lambda df, frames: df['comp_reg_no'].isin(
+             (lambda f:
+                 f[f['comp_reg_no'].notna() & (f['status'] != 'C')]
+                 .groupby('comp_reg_no')['house'].nunique()
+                 .pipe(lambda s: s[s > 1].index)
+             )(frames.get('asuheader', pd.DataFrame()))
+         ) & df['comp_reg_no'].notna()),
+
+        ('SUP_XHOUSE_IBAN_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
+         'IBAN exists in both Houses',
+         'Finds non-closed suppliers sharing an IBAN across both Houses — an IBAN uniquely identifies a bank account, so the same IBAN appearing in both Houses strongly indicates the same payee is registered twice.',
+         'Review asuheader.iban across both Houses and confirm whether a single master record is needed.', 'asuheader', None,
+         'iban IN (SELECT iban FROM asuheader GROUP BY iban HAVING COUNT(DISTINCT house) > 1)',
+         lambda df, frames: df['iban'].isin(
+             (lambda f:
+                 f[f['iban'].notna() & (f['status'] != 'C')]
+                 .groupby('iban')['house'].nunique()
+                 .pipe(lambda s: s[s > 1].index)
+             )(frames.get('asuheader', pd.DataFrame()))
+         ) & df['iban'].notna()),
+
+        ('SUP_XHOUSE_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
+         'Bank account and sort code combination exists in both Houses',
+         'Finds non-closed suppliers sharing the same bank account number and sort code across both Houses — the same payment destination appearing in both systems may indicate a duplicate supplier registration.',
+         'Review asuheader.bank_account and clearing_code across both Houses.', 'asuheader', None,
+         'bank_account||clearing_code IN (SELECT bank_account||clearing_code FROM asuheader GROUP BY bank_account, clearing_code HAVING COUNT(DISTINCT house) > 1)',
+         lambda df, frames: (
+             df['bank_account'].notna() & df['clearing_code'].notna() &
+             (df['bank_account'] + '|' + df['clearing_code']).isin(
+                 (lambda f:
+                     (lambda fa:
+                         fa.assign(_k=fa['bank_account'] + '|' + fa['clearing_code'])
+                         .groupby('_k')['house'].nunique()
+                         .pipe(lambda s: s[s > 1].index)
+                     )(f[f['bank_account'].notna() & f['clearing_code'].notna() & (f['status'] != 'C')])
+                 )(frames.get('asuheader', pd.DataFrame()))
+             )
+         )),
+
+        ('SUP_XHOUSE_NAME_DUP', 10, 'Suppliers', 'Uniqueness', 'Low',
+         'Supplier name (case-insensitive) exists in both Houses',
+         'Finds non-closed suppliers sharing the same name across both Houses — an identical name in both systems may indicate a duplicate registration, though common payees (e.g. HMRC) will appear legitimately in both.',
+         'Review asuheader.apar_name matches across Houses and confirm whether records relate to the same legal entity.', 'asuheader', None,
+         'UPPER(apar_name) IN (SELECT UPPER(apar_name) FROM asuheader GROUP BY UPPER(apar_name) HAVING COUNT(DISTINCT house) > 1)',
+         lambda df, frames: df['apar_name'].notna() & df['apar_name'].str.strip().str.upper().isin(
+             (lambda f:
+                 (lambda fa:
+                     fa.assign(_n=fa['apar_name'].str.strip().str.upper())
+                     .groupby('_n')['house'].nunique()
+                     .pipe(lambda s: s[s > 1].index)
+                 )(f[f['apar_name'].notna() & (f['status'] != 'C')])
+             )(frames.get('asuheader', pd.DataFrame()))
+         )),
+
         ('SUP_STALE', 10, 'Suppliers', 'Timeliness', 'Low',
          'Stale record: Supplier has not been updated in over 3 years',
          'Surfaces supplier records that have not been updated in over 3 years — candidates for review and potential decommissioning.',
