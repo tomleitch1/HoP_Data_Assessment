@@ -61,6 +61,14 @@ a{color:inherit;text-decoration:none}
 .nav-link{color:#c4b5db;font-size:12px;font-weight:600;padding:5px 14px;
           border-radius:20px;border:1px solid #3d2f5a;white-space:nowrap}
 .nav-link:hover{background:#2d2040;color:#fff}
+.house-toggle{display:flex;gap:6px;align-items:center}
+.htoggle{font-size:12px;font-weight:700;padding:5px 16px;border-radius:20px;
+         border:2px solid transparent;cursor:pointer;transition:all .15s}
+.htoggle.both{background:#3d2f5a;color:#e0d4f5;border-color:#5a4080}
+.htoggle.hoc{background:#1E3A5F;color:#fff;border-color:#2d5a8f}
+.htoggle.hol{background:#5C1A3A;color:#fff;border-color:#8c2a5a}
+.htoggle.inactive{background:transparent;color:#7a6a9a;border-color:#3d2f5a}
+.htoggle:hover{opacity:.85}
 
 .page{max-width:1380px;margin:0 auto;padding:28px 20px}
 
@@ -252,7 +260,7 @@ def render_house_block(check_id, house, row, frames, highlight_cols):
     rem_html = f'<div class="remediation"><strong>Remediation</strong>{H(rem)}</div>' if rem and rem not in ('nan','None') else ''
 
     return f'''
-<div class="hblock">
+<div class="hblock" data-house="{house}">
   <div class="hblock-hdr" style="background:{HOUSE_BG[house]}">
     <span class="hblock-title">{house}</span>
     <span class="hblock-pct" style="background:{bg};color:{fg}">{prate:.1f}%</span>
@@ -408,6 +416,23 @@ def build_html(dq_results, frames, check_col_map):
         f'<a href="#{lbl.lower().replace(" ","-")}" class="nav-link">{H(lbl)}</a>'
         for lbl in SCOPE_LABELS.values()
     )
+    toggle_js = """
+<script>
+function setHouse(h){
+  document.querySelectorAll('.hblock').forEach(function(el){
+    el.style.display = (h==='Both' || el.dataset.house===h) ? '' : 'none';
+  });
+  // also hide/show the houses-row grid lines when one side is hidden
+  document.querySelectorAll('.houses-row').forEach(function(el){
+    var visible = el.querySelectorAll('.hblock:not([style*="none"])').length;
+    el.style.gridTemplateColumns = visible===1 ? '1fr' : '1fr 1fr';
+  });
+  ['HOC','HOL','Both'].forEach(function(x){
+    var btn = document.getElementById('btn-'+x);
+    btn.className = 'htoggle ' + (x===h ? x.toLowerCase() : 'inactive');
+  });
+}
+</script>"""
 
     sections = [render_summary_section(scope_results)]
     for sid, slabel in SCOPE_LABELS.items():
@@ -423,10 +448,16 @@ def build_html(dq_results, frames, check_col_map):
 <style>{CSS}</style>
 </head>
 <body>
+{toggle_js}
 <div class="topbar">
   <span class="topbar-title">Parliament Finance Systems — Supplier &amp; AP Data Quality Assessment</span>
   <a href="#summary" class="nav-link">Summary</a>
   {nav}
+  <div class="house-toggle">
+    <button id="btn-HOC" class="htoggle inactive" onclick="setHouse('HOC')">HOC</button>
+    <button id="btn-HOL" class="htoggle inactive" onclick="setHouse('HOL')">HOL</button>
+    <button id="btn-Both" class="htoggle both" onclick="setHouse('Both')">Both</button>
+  </div>
   <span class="topbar-date">Generated {TODAY}</span>
 </div>
 <div class="page">
