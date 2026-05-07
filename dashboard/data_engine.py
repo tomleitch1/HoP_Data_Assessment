@@ -35,7 +35,7 @@ def _data_path(base_name: str, suffix: str = '') -> str:
     return os.path.join(DATA_DIR, subdir, filename)
 
 _EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
-_EXCEL_MIN, _EXCEL_MAX = 36526, 55000  # approx year 2000 – 2050
+_EXCEL_MIN, _EXCEL_MAX = 20000, 55000  # approx year 1954 – 2050
 
 def _parse_dates(series: pd.Series) -> pd.Series:
     """
