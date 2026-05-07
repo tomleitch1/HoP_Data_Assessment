@@ -367,17 +367,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         return current_style, dash.no_update, dash.no_update
 
     # ── RENDER CONTENT ──
-    # Overdue checks read directly from aging_results (same source as the aging
-    # analysis table) to avoid phantom duplicates from get_failing_records.
-    _today = pd.Timestamp(date.today())
-    if check_id == 'AP_OVERDUE':
-        _raw = aging_results.get('AP_raw', pd.DataFrame())
-        df = _raw[(_raw['house'] == house) & (_raw['due_date'] < _today)].copy()
-    elif check_id == 'AR_OVERDUE':
-        _raw = aging_results.get('AR_raw', pd.DataFrame())
-        df = _raw[(_raw['house'] == house) & (_raw['due_date'] < _today)].copy()
-    else:
-        df = get_failing_records(check_id, house, frames)
+    df = get_failing_records(check_id, house, frames)
     check_info = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
     
     if check_info.empty:

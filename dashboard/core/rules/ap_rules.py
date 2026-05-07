@@ -232,13 +232,6 @@ def get_ap_checks():
          'ABS(asutrans.rest_amount) > ABS(asutrans.amount) + 0.01',
          lambda df: df['rest_amount'].abs() > df['amount'].abs() + 0.01),
 
-        ('AP_OVERDUE', 16, 'AP Invoices', 'Timeliness', 'Medium',
-         'Invoice is past its due date and remains unpaid',
-         'Identifies invoices that have passed their due date without being paid — highlights immediate cash flow priorities.',
-         'Review asutrans.due_date.', 'asutrans', None,
-         'asutrans.due_date < TODAY',
-         lambda df: df['due_date'] < today),
-
         ('AP_WF_STUCK', 16, 'AP Invoices', 'Consistency', 'High',
          'Open invoice is stuck in an unapproved workflow state',
          'Finds invoices blocked in an incomplete approval workflow — these cannot be paid until the workflow is resolved.',
