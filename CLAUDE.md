@@ -204,9 +204,10 @@ Three scope cards aligned to the migration programme:
 - **asutrans unique key**: `(client, apar_id, voucher_no, sequence_no)` — one row per transaction dimension allocation. Each row is a real distinct transaction record.
 - `asutrans` structure: the SQL extract already filters `status != 'C'`. Each row is a real transaction record. The same invoice can have multiple rows with different status values (N/P/R/I) representing payment lifecycle stages. **For balance calculations**: sum `rest_amount` directly across all rows.
 - **Root cause of phantom row duplication (now fixed)**: `get_failing_records` joins `asutrans` failing rows to `asuheader` to enrich with supplier name. Since asuheader has N rows per `apar_id` (one per client code), joining on `(house, apar_id)` without deduplicating first multiplied every failing row by N. Fix: `drop_duplicates(subset=['client','apar_id'])` before the merge, then join on `(client, apar_id)` — the actual unique key.
-- **AP aging analysis** (`build_aging_analysis`) filters to `status.isin(['N','R','I'])` and works correctly. DQ checks use `status != 'C'`.
+- **AP aging analysis** (`build_aging_analysis`) filters to `status.isin(['N','R','I'])` and works correctly. DQ checks use `status != 'C'`. Both `run_dq_analysis` and `get_failing_records` must use the same filter — a mismatch causes the summary count and the modal table to show different numbers.
 - `rest_amount` values from SSMS via Excel may arrive as comma-formatted strings (`1,234.56`) — `data_engine.py` strips commas in the numeric column pre-processing step
-- Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats
+- Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats. The valid serial range is `20000–55000` (~1954–2050). Pre-2000 dates (e.g. 1993 invoices) exist in the real data — the floor was deliberately set to 20000 to capture them.
+- **Payment method codes in real Agresso data**: AS, AU, BB, BO, CA, CH, DD, EF, EU, FC, FP, IB, II, IN, IP, LE, RF, TF, UE, VD, VI. The DQ rules `SUP_BACS_NO_BANK` (checks `pay_method == 'BACS'`) and `SUP_INT_NO_IBAN` (checks `pay_method == 'INT'`) currently return 0 results because those codes do not exist. The correct codes for domestic and international payment methods need to be confirmed with Parliament before these rules can work. Do not attempt to guess — ask which codes require a sort code/bank account and which require an IBAN.
 
 ---
 
@@ -216,10 +217,10 @@ Triggered by clicking any bar in a dimension chart or any row in a DQ results ta
 
 **Layout:**
 - Single dark header bar (`#1e1528`) — one dark element, everything else white
-- Left sidebar (186px): dimension pill → failing count card → pass rate + RAG card → assessed card → criticality card. All stats at 28px/800 weight for consistency. Rounded cards (`borderRadius: 12px`).
-- Right panel: flat sections separated by 1px dividers — "Why this matters" / rule definition (light grey code block) / critical fields (monospace pills) / remediation (amber left-border stripe)
-- Table strip: dark header strip showing record count
-- Failing records table: dark column headers, alternating rows, surgical column highlighting (red=source, blue=target, grey=bridge)
+- Left sidebar (320px): dimension pill at top, then 2×2 grid of stat cards (failing records / pass rate / records assessed / criticality). Stats at 28px/800 weight, rounded cards (`borderRadius: 12px`). Failing count uses `row['failing']` from `dq_results` (same source as charts) — NOT `len(df)` which can be inflated.
+- Right panel: "Why this matters" full width, then rule definition + critical fields side by side. Remediation section removed.
+- Table strip: record count header strip
+- Failing records table: surgical column highlighting (red=source, blue=target, grey=bridge)
 
 Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circle-2`, `lucide:database`, `lucide:table-2`, `lucide:download`, `lucide:x`, `lucide:arrow-right`).
 
@@ -239,7 +240,7 @@ Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circl
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data confirmed working. Remaining domains (customers, GL, assets) still need real CSVs extracted and placed in the correct `data/` subfolders. This machine still uses dummy data. When column names or status codes differ from dummy data, update `COLUMN_MAP` and the relevant `*Config` constants in `config.py` here, push, and pull on the Parliament laptop.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier/AP data (asuheader, asutrans) confirmed working including DQ checks, modal drill-down, and AP aging analysis. Remaining domains (customers, GL, assets) still need real CSVs extracted and placed in the correct `data/` subfolders. This machine still uses dummy data. When column names or status codes differ from dummy data, update `COLUMN_MAP` and the relevant `*Config` constants in `config.py` here, push, and pull on the Parliament laptop.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
