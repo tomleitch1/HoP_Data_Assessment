@@ -15,6 +15,28 @@ DIMENSION_DESCRIPTIONS = {
     'Consistency': 'Ensuring data is consistent across different systems or modules.'
 }
 
+def _house_scorecard_row(scored_dq, house, house_color):
+    total_checks   = len(scored_dq)
+    checks_failing = int((scored_dq['failing'] > 0).sum())
+    checks_passing = int((scored_dq['rag'] == 'Green').sum())
+    overall_pct    = round(checks_passing / total_checks * 100, 1) if total_checks > 0 else 0.0
+    rag_color      = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+
+    return html.Div(style={'flex': '1', 'minWidth': '320px'}, children=[
+        html.Div(house, style={
+            'background': house_color, 'color': '#fff',
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+            'padding': '5px 12px', 'borderRadius': '6px 6px 0 0',
+            'display': 'inline-block', 'marginBottom': '8px',
+        }),
+        html.Div(style={'display': 'flex', 'gap': '12px', 'flexWrap': 'wrap'}, children=[
+            kpi_card(f"{overall_pct:.1f}%", 'Overall DQ Score',    rag_color),
+            kpi_card(f"{total_checks:,}",   'Total Checks',        '#4a3d6b'),
+            kpi_card(f"{checks_failing:,}", 'Checks With Failures','#c0392b'),
+            kpi_card(f"{checks_passing:,}", 'Checks Passing',      '#006548'),
+        ]),
+    ])
+
 def render_dimension_scorecard(dq_results):
     if dq_results is None or dq_results.empty:
         return html.Div(style={'padding': '60px', 'textAlign': 'center', 'color': '#94A3B8'}, children=[
@@ -22,19 +44,17 @@ def render_dimension_scorecard(dq_results):
         ])
 
     scored_dq = dq_results[dq_results['severity'] != 'Info']
+    houses    = sorted(scored_dq['house'].unique()) if 'house' in scored_dq.columns else []
 
-    total_checks    = len(scored_dq)
-    checks_failing  = int((scored_dq['failing'] > 0).sum())
-    checks_passing  = int((scored_dq['rag'] == 'Green').sum())
-    overall_pct     = round(checks_passing / total_checks * 100, 1) if total_checks > 0 else 0.0
-    overall_color   = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+    if not houses:
+        return html.Div()
 
-    return html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '24px', 'flexWrap': 'wrap'}, children=[
-        kpi_card(f"{overall_pct:.1f}%", 'Overall DQ Score', overall_color),
-        kpi_card(f"{total_checks:,}",   'Total Checks',         '#4a3d6b'),
-        kpi_card(f"{checks_failing:,}", 'Checks With Failures', '#c0392b'),
-        kpi_card(f"{checks_passing:,}", 'Checks Passing',       '#006548'),
-    ])
+    rows = []
+    for h in houses:
+        color = HOUSE_HEX.get(h, '#4a3d6b')
+        rows.append(_house_scorecard_row(scored_dq[scored_dq['house'] == h], h, color))
+
+    return html.Div(style={'display': 'flex', 'gap': '24px', 'marginBottom': '24px', 'flexWrap': 'wrap'}, children=rows)
 
 def render_dimension_grid(dq_results):
     if dq_results is None or dq_results.empty: return html.Div()
