@@ -253,6 +253,13 @@ def get_ap_checks():
          'asutrans.wf_state NOT IN ("", "T") AND asutrans.wf_state IS NOT NULL',
          lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
 
+        ('AP_TRANS_KEY_DUP', 16, 'AP Invoices', 'Uniqueness', 'Critical',
+         'Duplicate (client, apar_id, voucher_no, sequence_no) found in open transactions',
+         'Flags rows where the confirmed unique key appears more than once in asutrans — any duplicate indicates a data integrity error that must be resolved before migration.',
+         'Investigate and remove duplicate rows in asutrans.', 'asutrans', None,
+         'COUNT(*) OVER(PARTITION BY client, apar_id, voucher_no, sequence_no) > 1',
+         lambda df: df.duplicated(subset=['client', 'apar_id', 'voucher_no', 'sequence_no'], keep=False)),
+
         ('AP_EXT_REF_DUP', 16, 'AP Invoices', 'Uniqueness', 'High',
          'Duplicate external reference found for the same supplier',
          'Detects the same supplier reference number appearing on multiple invoices — a strong indicator of a duplicate payment risk.',

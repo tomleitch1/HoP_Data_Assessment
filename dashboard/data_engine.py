@@ -333,6 +333,7 @@ def get_check_columns():
         'AP_CN_NO_REF': ['voucher_type', 'orig_reference'],
         'AP_NEG_INV': ['amount', 'voucher_type'],
         'AP_FX_NO_CUR_AMT': ['currency', 'cur_amount'],
+        'AP_TRANS_KEY_DUP': ['client', 'apar_id', 'voucher_no', 'sequence_no'],
         'AP_REST_ZERO': ['rest_amount', 'status'],
         'AP_REST_OVER_AMT': ['rest_amount', 'amount'],
         'AP_OVERDUE': ['due_date'],
