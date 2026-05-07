@@ -521,6 +521,12 @@ def get_check_columns():
         'DQ-GJ-X03': ['dim_1', 'account'],
     }
 
+def _with_status(failing, cols):
+    if 'status' in failing.columns and 'status' not in cols:
+        cols = cols + ['status']
+    keep = [c for c in cols if c in failing.columns]
+    return failing[keep]
+
 def get_failing_records(check_id, house, frames, base_cols=None):
     """Retrieves the actual failing records for a specific check and house with enriched context."""
     checks = get_dq_checks()
@@ -551,7 +557,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         failing = both[mask].copy()
         if failing.empty:
             return failing
-        display_cols = list(dict.fromkeys(['house', 'client', 'apar_id', 'apar_name'] + [c for c in id_cols if c in failing.columns]))
+        display_cols = list(dict.fromkeys(['house', 'client', 'apar_id', 'apar_name', 'status'] + [c for c in id_cols if c in failing.columns]))
         result = failing[[c for c in display_cols if c in failing.columns]]
         sort_by = [c for c in id_cols if c in result.columns] + ['house']
         return result.sort_values(sort_by).reset_index(drop=True)
@@ -621,7 +627,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         })
         
         cols = ['ASSET_DEPRECIATION.asset_id', f'ASSET_DEPRECIATION.{val_field}', 'ASSET_MASTER.asset_group', f'ASSET_GROUPS.{val_field}']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K05':
         # Join to Asset Master to get org_amount for comparison
@@ -638,7 +644,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         })
  
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.res_value', 'ASSET_MASTER.org_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AG-X01':
         failing = failing.rename(columns={
@@ -651,7 +657,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             grp_link = grp_link.rename(columns={'asset_group': 'ASSET_GROUPS.asset_group'})
             failing = failing.merge(grp_link, left_on=['house', 'ASSET_MASTER.asset_group'], right_on=['house', 'ASSET_GROUPS.asset_group'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.asset_group', 'ASSET_GROUPS.asset_group']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_balances' and check_id == 'DQ-AM-R01':
         failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
@@ -661,7 +667,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_depreciation' and check_id in ['DQ-AM-R02', 'DQ-AD-X01']:
         failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id'})
@@ -671,7 +677,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_balances' and check_id == 'DQ-AM-R03':
         failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
@@ -681,7 +687,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_master' and check_id == 'DQ-AM-R05':
         failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'apar_id': 'ASSET_MASTER.apar_id'})
@@ -691,7 +697,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             sup_link = sup_link.rename(columns={'apar_id': 'SUPPLIER_MASTER.apar_id'})
             failing = failing.merge(sup_link, left_on=['house', 'ASSET_MASTER.apar_id'], right_on=['house', 'SUPPLIER_MASTER.apar_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.apar_id', 'SUPPLIER_MASTER.apar_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_master' and check_id == 'DQ-AD-X02':
         failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
@@ -701,7 +707,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             depr_link = depr_link.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id'})
             failing = failing.merge(depr_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_DEPRECIATION.asset_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_DEPRECIATION.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_depreciation' and check_id == 'DQ-AD-X03':
         failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'cap_date_from': 'ASSET_DEPRECIATION.cap_date_from'})
@@ -711,7 +717,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'cap_date_from': 'ASSET_MASTER.cap_date_from'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_MASTER.cap_date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_depreciation' and check_id == 'DQ-AD-X05':
         failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id'})
@@ -724,7 +730,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id'],
                 how='left')
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_balances' and check_id == 'DQ-AB-X01':
         failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
@@ -734,7 +740,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_balances' and check_id == 'DQ-AB-X02':
         failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id', 'depr_book_id': 'ASSET_BALANCES.depr_book_id'})
@@ -747,7 +753,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id'],
                 how='left')
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_master' and check_id == 'DQ-AB-X03':
         failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
@@ -757,7 +763,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             bal_link = bal_link.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
             failing = failing.merge(bal_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_BALANCES.asset_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_BALANCES.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X01':
         failing = failing.rename(columns={'asset_id': 'ASSET_TRANS_FLAGS.asset_id', 'trans_type': 'ASSET_TRANS_FLAGS.trans_type'})
@@ -767,7 +773,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_TRANS_FLAGS.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
  
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
         failing = failing.rename(columns={'asset_id': 'ASSET_TRANS_FLAGS.asset_id', 'trans_type': 'ASSET_TRANS_FLAGS.trans_type', 'trans_date': 'ASSET_TRANS_FLAGS.trans_date'})
@@ -777,7 +783,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'date_to': 'ASSET_MASTER.date_to'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_TRANS_FLAGS.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.trans_date', 'ASSET_MASTER.date_to']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C06':
         failing = failing.rename(columns={
@@ -793,12 +799,12 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             })
             failing = failing.merge(depr_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_DEPRECIATION.asset_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.cap_date_from', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_flag']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C01':
         failing = failing.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
         cols = ['ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C02':
         failing = failing.rename(columns={
@@ -806,7 +812,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'description': 'ASSET_MASTER.description',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.description']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C03':
         failing = failing.rename(columns={
@@ -814,7 +820,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'asset_group': 'ASSET_MASTER.asset_group',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.asset_group']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C04':
         failing = failing.rename(columns={
@@ -822,7 +828,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'date_from': 'ASSET_MASTER.date_from',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C05':
         failing = failing.rename(columns={
@@ -831,7 +837,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'cap_date_from': 'ASSET_MASTER.cap_date_from',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amount', 'ASSET_MASTER.cap_date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-C07':
         failing = failing.rename(columns={
@@ -839,7 +845,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'ins_amount': 'ASSET_MASTER.ins_amount',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.ins_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V01':
         failing = failing.rename(columns={
@@ -847,7 +853,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'status':   'ASSET_MASTER.status',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V02':
         failing = failing.rename(columns={
@@ -855,7 +861,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'wf_state': 'ASSET_MASTER.wf_state',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.wf_state']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V03':
         failing = failing.rename(columns={
@@ -863,7 +869,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'org_amount': 'ASSET_MASTER.org_amount',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V04':
         failing = failing.rename(columns={
@@ -872,7 +878,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'date_to':   'ASSET_MASTER.date_to',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_from', 'ASSET_MASTER.date_to']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V05':
         failing = failing.rename(columns={
@@ -881,7 +887,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'date_from':     'ASSET_MASTER.date_from',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.cap_date_from', 'ASSET_MASTER.date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-V06':
         failing = failing.rename(columns={
@@ -890,7 +896,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'cap_date_from': 'ASSET_MASTER.cap_date_from',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amt_date', 'ASSET_MASTER.cap_date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-T01':
         failing = failing.rename(columns={
@@ -898,7 +904,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'last_update': 'ASSET_MASTER.last_update',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.last_update']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-K01':
         failing = failing.rename(columns={
@@ -907,7 +913,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'status':   'ASSET_MASTER.status',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_to', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-K02':
         failing = failing.rename(columns={
@@ -916,7 +922,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'status':   'ASSET_MASTER.status',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.wf_state', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-K03':
         failing = failing.rename(columns={
@@ -925,7 +931,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'org_amount':   'ASSET_MASTER.org_amount',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.org_amt_date', 'ASSET_MASTER.org_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-K04':
         failing = failing.rename(columns={
@@ -934,7 +940,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'dim_1':      'ASSET_MASTER.dim_1',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.grant_flag', 'ASSET_MASTER.dim_1']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-D01':
         failing = failing.rename(columns={
@@ -942,7 +948,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'house':    'ASSET_MASTER.house',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.house']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-D02':
         failing = failing.rename(columns={
@@ -953,7 +959,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'org_amount':    'ASSET_MASTER.org_amount',
         })
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.description', 'ASSET_MASTER.asset_group', 'ASSET_MASTER.cap_date_from', 'ASSET_MASTER.org_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_master' and check_id == 'DQ-AM-R04':
         failing = failing.rename(columns={
@@ -969,14 +975,14 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'ASSET_MASTER (TARGET).asset_id'],
                 how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.parent_asset', 'ASSET_MASTER (TARGET).asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C01':
         failing = failing.rename(columns={
             'asset_id': 'ASSET_DEPRECIATION.asset_id',
         })
         cols = ['ASSET_DEPRECIATION.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C02':
         failing = failing.rename(columns={
@@ -984,7 +990,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C03':
         failing = failing.rename(columns={
@@ -992,7 +998,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_method':  'ASSET_DEPRECIATION.depr_method',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C04':
         failing = failing.rename(columns={
@@ -1001,7 +1007,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'lifetime':    'ASSET_DEPRECIATION.lifetime',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.lifetime']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C05':
         failing = failing.rename(columns={
@@ -1010,7 +1016,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.depr_percent']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C06':
         failing = failing.rename(columns={
@@ -1019,7 +1025,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'cap_flag':      'ASSET_DEPRECIATION.cap_flag',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_DEPRECIATION.cap_flag']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-C07':
         failing = failing.rename(columns={
@@ -1027,7 +1033,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_period': 'ASSET_DEPRECIATION.depr_period',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_period']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V01':
         failing = failing.rename(columns={
@@ -1035,7 +1041,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_method': 'ASSET_DEPRECIATION.depr_method',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V02':
         failing = failing.rename(columns={
@@ -1043,7 +1049,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'status':   'ASSET_DEPRECIATION.status',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V03':
         failing = failing.rename(columns={
@@ -1051,7 +1057,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_percent']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V04':
         failing = failing.rename(columns={
@@ -1060,7 +1066,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'lifetime':    'ASSET_DEPRECIATION.lifetime',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.lifetime']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V05':
         failing = failing.rename(columns={
@@ -1069,7 +1075,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'date_to':   'ASSET_DEPRECIATION.date_to',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.date_from', 'ASSET_DEPRECIATION.date_to']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V06':
         failing = failing.rename(columns={
@@ -1078,7 +1084,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'date_from':     'ASSET_DEPRECIATION.date_from',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_DEPRECIATION.date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-V07':
         failing = failing.rename(columns={
@@ -1086,7 +1092,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_percent': 'ASSET_DEPRECIATION.depr_percent',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_percent']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-T01':
         failing = failing.rename(columns={
@@ -1094,7 +1100,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'last_update': 'ASSET_DEPRECIATION.last_update',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.last_update']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K01':
         failing = failing.rename(columns={
@@ -1103,7 +1109,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'status':   'ASSET_DEPRECIATION.status',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.date_to', 'ASSET_DEPRECIATION.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K02':
         failing = failing.rename(columns={
@@ -1111,7 +1117,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_period': 'ASSET_DEPRECIATION.depr_period',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_period']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K03':
         failing = failing.rename(columns={
@@ -1120,7 +1126,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_method': 'ASSET_DEPRECIATION.depr_method',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.switch', 'ASSET_DEPRECIATION.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K04':
         failing = failing.rename(columns={
@@ -1129,7 +1135,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_method': 'ASSET_DEPRECIATION.depr_method',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.index_id', 'ASSET_DEPRECIATION.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-D01':
         failing = failing.rename(columns={
@@ -1138,14 +1144,14 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'house':        'ASSET_DEPRECIATION.house',
         })
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.house']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-C01':
         failing = failing.rename(columns={
             'asset_id': 'ASSET_BALANCES.asset_id',
         })
         cols = ['ASSET_BALANCES.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-C02':
         failing = failing.rename(columns={
@@ -1153,7 +1159,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_book_id': 'ASSET_BALANCES.depr_book_id',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-C03':
         failing = failing.rename(columns={
@@ -1161,7 +1167,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_type': 'ASSET_BALANCES.trans_type',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-C04':
         failing = failing.rename(columns={
@@ -1169,7 +1175,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'total_amount': 'ASSET_BALANCES.total_amount',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.total_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-V01':
         failing = failing.rename(columns={
@@ -1177,7 +1183,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_type': 'ASSET_BALANCES.trans_type',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-V02':
         failing = failing.rename(columns={
@@ -1186,7 +1192,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'total_amount': 'ASSET_BALANCES.total_amount',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-V03':
         failing = failing.rename(columns={
@@ -1194,7 +1200,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'max_trans_date': 'ASSET_BALANCES.max_trans_date',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.max_trans_date']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-K01':
         failing = failing.rename(columns={
@@ -1204,7 +1210,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'total_amount': 'ASSET_BALANCES.total_amount',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-K02':
         failing = failing.rename(columns={
@@ -1213,7 +1219,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_type':   'ASSET_BALANCES.trans_type',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_balances' and check_id == 'DQ-AB-K03':
         failing = failing.rename(columns={
@@ -1222,14 +1228,14 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_type':   'ASSET_BALANCES.trans_type',
         })
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-C01':
         failing = failing.rename(columns={
             'asset_group': 'ASSET_GROUPS.asset_group',
         })
         cols = ['ASSET_GROUPS.asset_group']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-C02':
         failing = failing.rename(columns={
@@ -1238,7 +1244,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'grp_status':  'ASSET_GROUPS.grp_status',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.grp_status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-V01':
         failing = failing.rename(columns={
@@ -1246,7 +1252,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_method': 'ASSET_GROUPS.depr_method',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-V04':
         failing = failing.rename(columns={
@@ -1254,7 +1260,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'depr_percent': 'ASSET_GROUPS.depr_percent',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_percent']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-V05':
         failing = failing.rename(columns={
@@ -1263,7 +1269,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'lifetime':    'ASSET_GROUPS.lifetime',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.depr_method', 'ASSET_GROUPS.lifetime']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-K01':
         failing = failing.rename(columns={
@@ -1272,7 +1278,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'book_status': 'ASSET_GROUPS.book_status',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.grp_status', 'ASSET_GROUPS.book_status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_groups' and check_id == 'DQ-AG-D02':
         failing = failing.rename(columns={
@@ -1281,7 +1287,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'house':       'ASSET_GROUPS.house',
         })
         cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.house']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X03':
         failing = failing.rename(columns={
@@ -1290,7 +1296,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'amount':     'ASSET_TRANS_FLAGS.amount',
         })
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_type', 'ASSET_TRANS_FLAGS.amount']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X04':
         failing = failing.rename(columns={
@@ -1298,7 +1304,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_date': 'ASSET_TRANS_FLAGS.trans_date',
         })
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.trans_date']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X05':
         failing = failing.rename(columns={
@@ -1307,7 +1313,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             'trans_type':   'ASSET_TRANS_FLAGS.trans_type',
         })
         cols = ['ASSET_TRANS_FLAGS.asset_id', 'ASSET_TRANS_FLAGS.depr_book_id', 'ASSET_TRANS_FLAGS.trans_type']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'acutrans' and check_id == 'AR_ORPHANED_TRANS':
         failing = failing.rename(columns={
@@ -1323,7 +1329,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'CUSTOMER_MASTER.apar_id'],
                 how='left')
         cols = ['AR_INVOICES.voucher_no', 'AR_INVOICES.apar_id', 'CUSTOMER_MASTER.apar_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'acutrans' and check_id == 'AR_TRANS_CUS_CLOSED':
         failing = failing.rename(columns={
@@ -1342,7 +1348,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'CUSTOMER_MASTER.apar_id'],
                 how='left')
         cols = ['AR_INVOICES.voucher_no', 'AR_INVOICES.apar_id', 'CUSTOMER_MASTER.apar_id', 'CUSTOMER_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asutrans' and check_id == 'AP_ORPHANED_TRANS':
         failing = failing.rename(columns={
@@ -1358,7 +1364,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'SUPPLIER_MASTER.apar_id'],
                 how='left')
         cols = ['AP_INVOICES.voucher_no', 'AP_INVOICES.apar_id', 'SUPPLIER_MASTER.apar_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asutrans' and check_id == 'AP_TRANS_SUP_CLOSED':
         failing = failing.rename(columns={
@@ -1377,7 +1383,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'SUPPLIER_MASTER.apar_id'],
                 how='left')
         cols = ['AP_INVOICES.voucher_no', 'AP_INVOICES.apar_id', 'SUPPLIER_MASTER.apar_id', 'SUPPLIER_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'asuhistr' and check_id == 'HIS_ORPHANED':
         failing = failing.rename(columns={
@@ -1393,7 +1399,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'SUPPLIER_MASTER.apar_id'],
                 how='left')
         cols = ['AP_HISTORY.voucher_no', 'AP_HISTORY.apar_id', 'SUPPLIER_MASTER.apar_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
         # asuheader unique key is (client, apar_id) — one row per supplier per
@@ -1426,7 +1432,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'GL_ACCOUNTS.account'],
                 how='left')
         cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
         failing = failing.rename(columns={
@@ -1445,7 +1451,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'GL_ACCOUNTS.account'],
                 how='left')
         cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account', 'GL_ACCOUNTS.res_bal']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'agltransact' and check_id == 'GL_TRA_ORPHAN_DIM1':
         failing = failing.rename(columns={
@@ -1463,7 +1469,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'GL_DIMENSIONS.dim_value'],
                 how='left')
         cols = ['GL_TRANSACTIONS.dim_1', 'GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.status']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'agldimvalue' and check_id == 'GL_DIM_ORPHAN_REL':
         failing = failing.rename(columns={
@@ -1479,7 +1485,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'GL_DIMENSIONS (TARGET).dim_value'],
                 how='left')
         cols = ['GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.rel_value', 'GL_DIMENSIONS (TARGET).dim_value']
-        return failing[[c for c in cols if c in failing.columns]]
+        return _with_status(failing, cols)
 
     if table == 'aglyearend' and 'aglaccounts' in frames:
         acc = frames['aglaccounts'][['house', 'account', 'description', 'res_bal', 'status']].copy()
