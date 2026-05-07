@@ -209,7 +209,7 @@ def get_ap_checks():
          'Identifies standard invoice vouchers with a negative amount — negative values should be credit notes, not invoices.',
          'Correct asutrans.voucher_type.', 'asutrans', None,
          'asutrans.amount < 0 AND asutrans.voucher_type NOT LIKE "%CREDIT%"',
-         lambda df: (df['amount'] < 0) & (~df['voucher_type'] == 'CN')),
+         lambda df: (df['amount'] < 0) & (df['voucher_type'] != 'CN')),
 
         ('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
          'Foreign currency invoice missing its transaction currency amount',
