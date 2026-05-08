@@ -152,9 +152,11 @@ def render_dimension_widget(dim_name, dq_results):
     sub = dq_results[dq_results['dimension'] == dim_name].copy()
     if sub.empty: return html.Div()
 
-    avg_error = sub['error_rate'].mean()
     total_checks = len(sub['check_id'].unique())
     desc = DIMENSION_DESCRIPTIONS.get(dim_name, 'No description available.')
+    hoc_error = sub[sub['house'] == 'HOC']['error_rate'].mean() if 'HOC' in sub['house'].values else None
+    hol_error = sub[sub['house'] == 'HOL']['error_rate'].mean() if 'HOL' in sub['house'].values else None
+    worst_error = max(e for e in [hoc_error, hol_error] if e is not None)
     
     dim_checks = sub[['check_id', 'description', 'object']].drop_duplicates('check_id').sort_values('check_id')
     check_ids = dim_checks['check_id'].tolist()
@@ -193,30 +195,53 @@ def render_dimension_widget(dim_name, dq_results):
                       yaxis=dict(automargin=True, color='#64748B', tickfont=dict(size=10)),
                       legend=dict(orientation='h', y=-0.05, x=1, xanchor='right', font=dict(size=10)))
     
-    score_color = RAG_HEX['Green'] if avg_error <= 2 else RAG_HEX['Amber'] if avg_error <= 10 else RAG_HEX['Red']
-    
+    accent_color = RAG_HEX['Green'] if worst_error <= 5 else RAG_HEX['Amber'] if worst_error <= 15 else RAG_HEX['Red']
+
+    def _house_score(error, house):
+        if error is None:
+            return html.Div()
+        house_color = HOUSE_HEX.get(house, '#4a3d6b')
+        score_color = RAG_HEX['Green'] if error <= 5 else RAG_HEX['Amber'] if error <= 15 else RAG_HEX['Red']
+        return html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+            html.Span(house, style={
+                'fontSize': '9px', 'fontWeight': '800', 'color': 'white',
+                'background': house_color, 'padding': '2px 6px',
+                'borderRadius': '3px', 'letterSpacing': '0.08em',
+            }),
+            html.Span(f"{error:.1f}%", style={
+                'fontSize': '14px', 'fontWeight': '800', 'color': score_color, 'fontFamily': DISPLAY_FONT,
+            }),
+        ])
+
+    divider = html.Div(style={
+        'width': '1px', 'height': '22px',
+        'background': 'linear-gradient(to bottom, transparent, #CBD5E1, transparent)',
+    })
+
     summary_content = html.Div(style={
         'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'width': '100%',
-        'padding': '16px 24px', 'cursor': 'pointer'
+        'padding': '14px 20px', 'cursor': 'pointer', 'boxSizing': 'border-box',
     }, children=[
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '16px'}, children=[
-            html.Div(style={'width': '4px', 'height': '28px', 'background': score_color, 'borderRadius': '2px'}),
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
+            html.Div(style={'width': '4px', 'height': '28px', 'background': accent_color, 'borderRadius': '2px', 'flexShrink': '0'}),
             html.Div([
                 html.Div(dim_name.upper(), style={
-                    'fontSize': '13px', 'fontWeight': '700', 'color': '#475569', 
-                    'letterSpacing': '1px', 'marginBottom': '2px'
+                    'fontSize': '12px', 'fontWeight': '700', 'color': '#334155',
+                    'letterSpacing': '1.2px', 'marginBottom': '3px',
                 }),
-                html.Div(f"{total_checks} migration rules applied", style={
-                    'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '600', 'textTransform': 'uppercase'
+                html.Div(f"{total_checks} migration checks", style={
+                    'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '600', 'textTransform': 'uppercase',
                 }),
             ])
         ]),
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '24px'}, children=[
-            html.Div([
-                html.Span(f"{avg_error:.1f}%", style={'fontSize': '22px', 'fontWeight': '800', 'color': score_color, 'fontFamily': DISPLAY_FONT}),
-                html.Span("avg error", style={'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '700', 'textTransform': 'uppercase', 'marginLeft': '6px'})
-            ]),
-            html.Div("▼", style={'fontSize': '10px', 'color': '#CBD5E1', 'transition': 'transform 0.2s'})
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
+            _house_score(hoc_error, 'HOC'),
+            divider,
+            _house_score(hol_error, 'HOL'),
+            html.Span('avg error', style={
+                'fontSize': '9px', 'fontWeight': '600', 'color': '#94A3B8',
+                'textTransform': 'uppercase', 'letterSpacing': '0.05em', 'marginLeft': '2px',
+            }),
         ])
     ])
 
