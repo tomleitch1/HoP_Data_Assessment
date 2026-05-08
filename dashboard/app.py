@@ -559,7 +559,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     ])
 
     # ── RIGHT CONTENT ──
-    right_content = html.Div(style={'flex': '1', 'padding': '24px 32px', 'minWidth': 0}, children=[
+    right_content = html.Div(style={'flex': '1', 'padding': '20px 32px', 'paddingTop': '56px', 'minWidth': 0}, children=[
 
         # Why this matters — full width
         html.Div(style={
