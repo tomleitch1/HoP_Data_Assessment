@@ -491,30 +491,27 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 ]),
             ]),
             html.Div(style={
-                'position': 'relative', 'height': '28px', 'borderRadius': '6px',
+                'height': '28px', 'borderRadius': '6px',
                 'background': '#E2E8F0', 'overflow': 'hidden',
             }, children=[
                 html.Div(style={
-                    'position': 'absolute', 'top': '0', 'left': '0', 'bottom': '0',
+                    'height': '100%',
                     'width': f'{error_pct:.1f}%',
                     'background': rag_color, 'borderRadius': '6px',
                     'minWidth': '2px' if failing > 0 else '0',
                 }),
-                html.Div(style={
-                    'position': 'absolute', 'top': '0', 'left': '0', 'right': '0', 'bottom': '0',
-                    'display': 'flex', 'alignItems': 'center',
-                    'padding': '0 10px',
-                }, children=[
-                    html.Span(f'{failing:,} flagged', style={
-                        'fontSize': '11px', 'fontWeight': '600',
-                        'color': 'white' if error_pct > 30 else rag_color,
-                    }),
-                ]),
             ]),
-            html.Div(f'{error_pct:.1f}%', style={
-                'fontSize': '11px', 'fontWeight': '600', 'color': '#94A3B8',
-                'marginTop': '5px', 'paddingLeft': '2px',
-            }),
+            html.Div(style={
+                'display': 'flex', 'justifyContent': 'space-between',
+                'marginTop': '6px', 'paddingLeft': '2px', 'paddingRight': '2px',
+            }, children=[
+                html.Span(f'{failing:,} flagged', style={
+                    'fontSize': '11px', 'fontWeight': '600', 'color': rag_color,
+                }),
+                html.Span(f'{error_pct:.1f}%', style={
+                    'fontSize': '11px', 'fontWeight': '600', 'color': '#94A3B8',
+                }),
+            ]),
         ]),
 
         # ── RAG threshold card (full width) ──
