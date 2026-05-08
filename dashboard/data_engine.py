@@ -195,7 +195,7 @@ def run_dq_analysis(frames):
         for house in CLIENTS:
             # Determine population based on table and check type
             if table in ['asuheader', 'acuheader']:
-                if check_id in ['SUP_EXPIRED_ACTIVE', 'SUP_WF_STUCK']:
+                if check_id in ['SUP_EXPIRED_ACTIVE']:
                     h_df = df_table[df_table['house'] == house]
                 elif check_id in ['SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP',
                                    'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',
@@ -562,7 +562,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
 
     # Apply standard population filters
     if table in ['asuheader', 'acuheader']:
-        if check_id in ['SUP_EXPIRED_ACTIVE', 'SUP_WF_STUCK']:
+        if check_id in ['SUP_EXPIRED_ACTIVE']:
             h_df = df_table[df_table['house'] == house]
         elif check_id in ['SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP',
                           'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',

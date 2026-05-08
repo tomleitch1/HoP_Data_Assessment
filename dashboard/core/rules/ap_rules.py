@@ -108,13 +108,6 @@ def get_ap_checks():
          'asuheader.status = "N" AND asuheader.expired_date IS NOT NULL',
          lambda df: df['expired_date'].notna() & (df['status'] == 'N')),
 
-        ('SUP_WF_STUCK', 10, 'Suppliers', 'Consistency', 'Medium',
-         'Supplier is currently stuck in an unapproved workflow state',
-         'Supplier master records must have a completed workflow state before they can be considered clean for migration. A record stuck in an incomplete approval state means its master data changes have not been signed off and may not reflect the current approved values.',
-         'Complete asuheader.wf_state.', 'asuheader', None,
-         'asuheader.wf_state NOT IN ("", "T") AND wf_state IS NOT NULL',
-         lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
-
         ('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
          'Payment method is domestic electronic but bank details are missing',
          'Suppliers set to a domestic electronic payment method must have both a bank account number and a sort code populated. The payment run will fail to process settlements for any supplier missing these details.',
@@ -340,13 +333,6 @@ def get_ap_checks():
          'Review asutrans.due_date.', 'asutrans', None,
          'asutrans.due_date < TODAY',
          lambda df: df['due_date'] < today),
-
-        ('AP_WF_STUCK', 16, 'AP Invoices', 'Consistency', 'High',
-         'Open invoice is stuck in an unapproved workflow state',
-         'Open invoices must have a completed workflow approval state. An invoice blocked in an incomplete workflow cannot be paid and will carry unresolved approval exceptions into the new system if not cleared before go-live.',
-         'Complete asutrans.wf_state.', 'asutrans', None,
-         'asutrans.wf_state NOT IN ("", "T") AND asutrans.wf_state IS NOT NULL',
-         lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
 
         ('AP_TRANS_KEY_DUP', 16, 'AP Invoices', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id, voucher_no, sequence_no) found in open transactions',
