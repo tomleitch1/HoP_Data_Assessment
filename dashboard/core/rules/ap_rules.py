@@ -315,7 +315,7 @@ def get_ap_checks():
 
         ('AP_REST_ZERO', 16, 'AP Invoices', 'Consistency', 'Medium',
          'Outstanding balance is zero but the item is still flagged as OPEN',
-         'Open items must have a non-zero remaining balance. An open item with a zero balance has effectively been settled and should be closed in the source system before migration to avoid inflating the opening AP balance.',
+         'Open items must have a non-zero remaining balance. An item showing as open with a zero balance has been fully settled but was never closed off in the source system. These ghost records clutter the open AP ledger and may trigger unnecessary payment processing or supplier remittance queries in the new system.',
          'Close item in source system; asutrans.rest_amount = 0.', 'asutrans', None,
          'asutrans.rest_amount = 0',
          lambda df: df['rest_amount'] == 0),
