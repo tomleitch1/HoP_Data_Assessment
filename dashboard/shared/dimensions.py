@@ -204,8 +204,10 @@ def render_dimension_widget(dim_name, dq_results):
         score_color = RAG_HEX['Green'] if error <= 5 else RAG_HEX['Amber'] if error <= 15 else RAG_HEX['Red']
         return html.Div(style={
             'display': 'flex', 'alignItems': 'center', 'gap': '6px',
-            'border': f'1.5px solid rgba({int(house_color[1:3],16)},{int(house_color[3:5],16)},{int(house_color[5:7],16)},0.2)', 'borderRadius': '8px',
+            'border': f'1.5px solid rgba({int(house_color[1:3],16)},{int(house_color[3:5],16)},{int(house_color[5:7],16)},0.2)',
+            'borderRadius': '8px',
             'padding': '4px 10px',
+            'boxShadow': '0 1px 4px rgba(0,0,0,0.08)',
         }, children=[
             html.Span(house, style={
                 'fontSize': '9px', 'fontWeight': '700', 'color': '#64748B',
