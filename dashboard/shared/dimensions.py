@@ -207,7 +207,6 @@ def render_dimension_widget(dim_name, dq_results):
             'border': f'1.5px solid rgba({int(house_color[1:3],16)},{int(house_color[3:5],16)},{int(house_color[5:7],16)},0.2)',
             'borderRadius': '8px',
             'padding': '4px 10px',
-            'boxShadow': '0 1px 4px rgba(0,0,0,0.08)',
         }, children=[
             html.Span(house, style={
                 'fontSize': '9px', 'fontWeight': '700', 'color': '#64748B',
