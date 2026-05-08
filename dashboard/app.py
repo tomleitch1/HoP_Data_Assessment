@@ -6,6 +6,7 @@ import pandas as pd
 import io
 
 from dashboard.data_engine import load_data, run_dq_analysis, get_failing_records, build_aging_analysis, get_check_columns
+from dashboard.core.config import RAG_THRESHOLDS
 from dashboard.shared.ui import header_bar, card, section_header, HOUSE_HEX
 
 from dashboard.tabs.exec_summary import render_summary
@@ -438,48 +439,118 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             *([extra] if extra else []),
         ])
 
+    error_pct = (failing / assessed * 100) if assessed > 0 else 0
+    thresholds = RAG_THRESHOLDS.get(row.get('severity', 'Medium'), (5, 15))
+
     left_sidebar = html.Div(style={
-        'width': '320px', 'flexShrink': '0', 'padding': '20px 20px',
+        'width': '380px', 'flexShrink': '0', 'padding': '20px 20px',
         'borderRight': '1px solid #f0edf8',
         'display': 'flex', 'flexDirection': 'column', 'gap': '12px',
     }, children=[
-        # Dimension pill
-        html.Span(row.get('dimension', '—'), style={
-            'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
-            'background': '#ede9f8', 'padding': '4px 12px',
-            'borderRadius': '20px', 'border': '1px solid #d4c8f0',
-            'letterSpacing': '0.04em', 'alignSelf': 'flex-start',
-        }),
+        # Dimension + severity inline
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'}, children=[
+            html.Span(row.get('dimension', '—'), style={
+                'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
+                'background': '#ede9f8', 'padding': '4px 12px',
+                'borderRadius': '6px', 'border': '1px solid #d4c8f0',
+                'letterSpacing': '0.04em',
+            }),
+            html.Div(style={
+                'width': '1px', 'height': '16px',
+                'background': 'linear-gradient(to bottom, transparent, #CBD5E1, transparent)',
+            }),
+            html.Span('severity', style={
+                'fontSize': '10px', 'fontWeight': '500', 'color': '#94A3B8', 'letterSpacing': '0.04em',
+            }),
+            html.Span(row.get('severity', '—'), style={
+                'fontSize': '10px', 'fontWeight': '700', 'color': sev_color,
+                'background': sev_bg, 'padding': '4px 12px',
+                'borderRadius': '6px', 'border': f'1px solid {sev_color}30',
+                'letterSpacing': '0.04em',
+            }),
+        ]),
 
-        # 2x2 grid of stat cards
+        # ── Records bar card ──
         html.Div(style={
-            'display': 'grid', 'gridTemplateColumns': '1fr 1fr', 'gap': '10px',
-            'flex': '1',
+            'background': '#faf9fd', 'border': '1px solid #ede9f8',
+            'borderRadius': '12px', 'padding': '14px 16px',
         }, children=[
-            _stat_card(f'{failing:,}', 'Failing records', 'lucide:alert-circle', '#c0392b', '#c0392b'),
-            _stat_card(
-                f'{pass_rate:.1f}%', 'Pass rate', 'lucide:check-circle-2', rag_color, rag_color,
-                extra=html.Div(style={'marginTop': '6px'}, children=[
+            html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'marginBottom': '8px'}, children=[
+                html.Span(style={'fontSize': '10px', 'fontWeight': '700', 'color': '#a090c0', 'letterSpacing': '0.05em', 'textTransform': 'uppercase', 'display': 'flex', 'alignItems': 'center', 'gap': '4px'}, children=[
+                    DashIconify(icon='lucide:bar-chart-2', width=11, color='#a090c0'),
+                    html.Span('Records assessed'),
+                ]),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+                    html.Span(f'{assessed:,} total', style={'fontSize': '10px', 'fontWeight': '600', 'color': '#94A3B8'}),
                     html.Span(row.get('rag', '—'), style={
-                        'fontSize': '10px', 'fontWeight': '700', 'color': rag_color,
+                        'fontSize': '9px', 'fontWeight': '700', 'color': rag_color,
                         'background': rag_color + '18', 'padding': '2px 8px',
-                        'borderRadius': '20px', 'border': f'1px solid {rag_color}30',
+                        'borderRadius': '6px', 'border': f'1px solid {rag_color}40',
                     }),
                 ]),
-            ),
-            _stat_card(f'{assessed:,}', 'Records assessed', 'lucide:database', '#4a3d6b'),
+            ]),
             html.Div(style={
-                'background': sev_bg, 'border': '1px solid #ede9f8',
-                'borderRadius': '12px', 'padding': '16px 18px',
+                'position': 'relative', 'height': '28px', 'borderRadius': '6px',
+                'background': '#E2E8F0', 'overflow': 'hidden',
             }, children=[
-                html.Div(row.get('severity', '—'), style={
-                    'fontSize': '28px', 'fontWeight': '800', 'lineHeight': '1',
-                    'color': sev_color, 'fontFamily': "'Inter', sans-serif",
-                    'letterSpacing': '-0.02em', 'marginBottom': '6px',
+                html.Div(style={
+                    'position': 'absolute', 'top': '0', 'left': '0', 'bottom': '0',
+                    'width': f'{error_pct:.1f}%',
+                    'background': rag_color, 'borderRadius': '6px',
+                    'minWidth': '2px' if failing > 0 else '0',
                 }),
-                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px'}, children=[
-                    DashIconify(icon='lucide:shield-alert', width=11, color=sev_color),
-                    html.Span('Criticality', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '500'}),
+                html.Div(style={
+                    'position': 'absolute', 'top': '0', 'left': '0', 'right': '0', 'bottom': '0',
+                    'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between',
+                    'padding': '0 10px',
+                }, children=[
+                    html.Span(f'{failing:,} flagged', style={
+                        'fontSize': '11px', 'fontWeight': '800',
+                        'color': 'white' if error_pct > 30 else rag_color,
+                    }),
+                    html.Span(f'{error_pct:.1f}% error rate', style={
+                        'fontSize': '11px', 'fontWeight': '700', 'color': '#64748B',
+                    }),
+                ]),
+            ]),
+        ]),
+
+        # ── RAG threshold card (full width) ──
+        html.Div(style={
+            'background': '#faf9fd', 'border': '1px solid #ede9f8',
+            'borderRadius': '12px', 'padding': '14px 16px',
+        }, children=[
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginBottom': '10px'}, children=[
+                DashIconify(icon='lucide:sliders', width=11, color='#a090c0'),
+                html.Span('RAG Thresholds', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '700', 'letterSpacing': '0.05em', 'textTransform': 'uppercase'}),
+            ]),
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '7px'}, children=[
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
+                    html.Span('Green', style={
+                        'fontSize': '10px', 'fontWeight': '800', 'color': '#27AE60',
+                        'background': '#27AE6018', 'padding': '2px 8px',
+                        'borderRadius': '6px', 'border': '1px solid #27AE6040',
+                        'minWidth': '48px', 'textAlign': 'center',
+                    }),
+                    html.Span(f'< {thresholds[0]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
+                ]),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
+                    html.Span('Amber', style={
+                        'fontSize': '10px', 'fontWeight': '800', 'color': '#F39C12',
+                        'background': '#F39C1218', 'padding': '2px 8px',
+                        'borderRadius': '6px', 'border': '1px solid #F39C1240',
+                        'minWidth': '48px', 'textAlign': 'center',
+                    }),
+                    html.Span(f'{thresholds[0]}–{thresholds[1]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
+                ]),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
+                    html.Span('Red', style={
+                        'fontSize': '10px', 'fontWeight': '800', 'color': '#E74C3C',
+                        'background': '#E74C3C18', 'padding': '2px 8px',
+                        'borderRadius': '6px', 'border': '1px solid #E74C3C40',
+                        'minWidth': '48px', 'textAlign': 'center',
+                    }),
+                    html.Span(f'> {thresholds[1]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
                 ]),
             ]),
         ]),
@@ -1036,29 +1107,6 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
             })
 
     
-    # ── TABLE SECTION ──
-    table_strip = html.Div(style={
-        'padding': '14px 24px',
-        'display': 'flex', 'alignItems': 'center', 'gap': '10px',
-        'background': '#faf9fd', 'borderBottom': '1px solid #f0edf8',
-    }, children=[
-        DashIconify(icon='lucide:table-2', width=14, color='#7c5cbf'),
-        html.Span('Failing records', style={
-            'fontSize': '11px', 'fontWeight': '700', 'color': '#1a1523',
-            'letterSpacing': '0.04em',
-        }),
-        html.Span(f'{failing:,}', style={
-            'fontSize': '11px', 'color': '#c0392b', 'fontWeight': '700',
-            'background': '#fef2f2', 'padding': '2px 10px',
-            'borderRadius': '10px', 'border': '1px solid #fecaca',
-        }),
-        html.Div(style={'marginLeft': 'auto', 'display': 'flex', 'alignItems': 'center', 'gap': '5px'}, children=[
-            DashIconify(icon='lucide:arrow-right', width=12, color='#a090c0'),
-            html.Span('Follow the join trail left to right', style={
-                'fontSize': '11px', 'color': '#a090c0', 'fontStyle': 'italic',
-            }),
-        ]),
-    ])
 
     _dt_shared_style = dict(
         style_table={'overflowX': 'auto', 'border': 'none'},
@@ -1139,7 +1187,6 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     content = html.Div([
         tech_details,
         join_map,
-        table_strip,
         table_body,
     ])
 
