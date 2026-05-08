@@ -16,11 +16,90 @@ DIMENSION_DESCRIPTIONS = {
 }
 
 def _house_scorecard_row(scored_dq, house, house_color):
-    total_checks    = len(scored_dq)
-    checks_green    = int((scored_dq['rag'] == 'Green').sum())
-    checks_red_amber = total_checks - checks_green
-    overall_pct     = round(checks_green / total_checks * 100, 1) if total_checks > 0 else 0.0
-    rag_color       = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+    total_checks = len(scored_dq)
+    checks_green = int((scored_dq['rag'] == 'Green').sum())
+    checks_amber = int((scored_dq['rag'] == 'Amber').sum())
+    checks_red   = int((scored_dq['rag'] == 'Red').sum())
+    overall_pct  = round(checks_green / total_checks * 100, 1) if total_checks > 0 else 0.0
+    rag_color    = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+
+    # CSS conic-gradient donut ring
+    donut = html.Div(style={
+        'width': '96px', 'height': '96px', 'borderRadius': '50%', 'flexShrink': '0',
+        'background': f'conic-gradient({rag_color} {overall_pct}%, #E2E8F0 0%)',
+        'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center',
+    }, children=[
+        html.Div(style={
+            'width': '68px', 'height': '68px', 'borderRadius': '50%', 'background': 'white',
+            'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center',
+        }, children=[
+            html.Span(f"{overall_pct:.0f}%", style={
+                'fontSize': '18px', 'fontWeight': '800', 'color': rag_color, 'fontFamily': DISPLAY_FONT,
+            }),
+        ]),
+    ])
+
+    circle_card = html.Div(style={
+        'flex': '1', 'background': 'white', 'borderRadius': '12px',
+        'border': '1px solid #E2E8F0', 'padding': '16px',
+        'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'justifyContent': 'center', 'gap': '8px',
+    }, children=[
+        donut,
+        html.Div('Overall DQ Score', style={
+            'fontSize': '10px', 'fontWeight': '700', 'color': '#94A3B8',
+            'letterSpacing': '0.08em', 'textTransform': 'uppercase', 'textAlign': 'center',
+        }),
+    ])
+
+    # Severity breakdown
+    sev_counts = scored_dq['severity'].value_counts()
+    sev_items  = [('Critical', '#E74C3C'), ('High', '#E67E22'), ('Medium', '#F59E0B'), ('Low', '#64748B')]
+    sev_rows   = [
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
+            html.Div(style={'width': '8px', 'height': '8px', 'borderRadius': '50%', 'background': col, 'flexShrink': '0'}),
+            html.Span(f"{int(sev_counts.get(sev, 0))} {sev}", style={'fontSize': '12px', 'color': '#475569', 'fontWeight': '500'}),
+        ])
+        for sev, col in sev_items if sev_counts.get(sev, 0) > 0
+    ]
+
+    checks_card = html.Div(style={
+        'flex': '1', 'background': 'white', 'borderRadius': '12px',
+        'border': '1px solid #E2E8F0', 'padding': '16px',
+    }, children=[
+        html.Div(f"{total_checks}", style={
+            'fontSize': '32px', 'fontWeight': '800', 'color': '#1E293B', 'lineHeight': '1', 'fontFamily': DISPLAY_FONT,
+        }),
+        html.Div('Total Checks', style={
+            'fontSize': '10px', 'fontWeight': '700', 'color': '#94A3B8',
+            'letterSpacing': '0.08em', 'textTransform': 'uppercase', 'marginBottom': '12px', 'marginTop': '4px',
+        }),
+        html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '6px'}, children=sev_rows),
+    ])
+
+    # RAG bar card — full width, below the two cards
+    bar_segs = [
+        html.Div(style={'flex': str(n / total_checks), 'background': c, 'minWidth': '2px'})
+        for n, c in [(checks_green, RAG_HEX['Green']), (checks_amber, RAG_HEX['Amber']), (checks_red, RAG_HEX['Red'])]
+        if n > 0
+    ]
+    rag_legend = [
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+            html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px', 'background': c}),
+            html.Span(f"{n} {label}", style={'fontSize': '12px', 'color': '#475569', 'fontWeight': '600'}),
+        ])
+        for n, label, c in [(checks_green, 'Green', RAG_HEX['Green']), (checks_amber, 'Amber', RAG_HEX['Amber']), (checks_red, 'Red', RAG_HEX['Red'])]
+    ]
+
+    rag_card = html.Div(style={
+        'background': 'white', 'borderRadius': '12px', 'border': '1px solid #E2E8F0',
+        'padding': '16px', 'marginTop': '12px',
+    }, children=[
+        html.Div(style={
+            'display': 'flex', 'height': '8px', 'borderRadius': '4px',
+            'overflow': 'hidden', 'marginBottom': '10px', 'gap': '2px',
+        }, children=bar_segs),
+        html.Div(style={'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap'}, children=rag_legend),
+    ])
 
     return html.Div(style={'flex': '1', 'minWidth': '320px'}, children=[
         html.Div(house, style={
@@ -29,12 +108,8 @@ def _house_scorecard_row(scored_dq, house, house_color):
             'padding': '5px 12px', 'borderRadius': '6px 6px 0 0',
             'display': 'inline-block', 'marginBottom': '8px',
         }),
-        html.Div(style={'display': 'flex', 'gap': '12px', 'flexWrap': 'wrap'}, children=[
-            kpi_card(f"{overall_pct:.1f}%",    'Overall DQ Score',  rag_color),
-            kpi_card(f"{total_checks:,}",       'Total Checks',      '#4a3d6b'),
-            kpi_card(f"{checks_green:,}",       'Checks Passing',    '#006548'),
-            kpi_card(f"{checks_red_amber:,}",   'Amber / Red Checks','#c0392b'),
-        ]),
+        html.Div(style={'display': 'flex', 'gap': '12px'}, children=[circle_card, checks_card]),
+        rag_card,
     ])
 
 def render_dimension_scorecard(dq_results):
