@@ -1176,7 +1176,8 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
 
         def _xh_table(hdf):
             return dash_table.DataTable(data=hdf.to_dict('records'), columns=xh_cols,
-                                        style_data_conditional=xh_style, **_dt_shared_style)
+                                        style_data_conditional=xh_style,
+                                        filter_action='native', **_dt_shared_style)
 
         table_body = html.Div(style={'padding': '12px 16px 16px', 'display': 'flex', 'gap': '16px'}, children=[
             html.Div(style={'flex': '1', 'minWidth': 0}, children=[
