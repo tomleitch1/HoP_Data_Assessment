@@ -1,4 +1,5 @@
 import dash
+import numpy as np
 
 from dash import dcc, html, Input, Output, callback, State, dash_table
 from dash_iconify import DashIconify
@@ -1404,6 +1405,106 @@ def update_aging_ar_table(house, bucket):
     df = df[cols_to_show]
     
     return df.to_dict('records'), [{'name': c, 'id': c} for c in df.columns]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FUZZY NAME SEARCH
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.callback(
+    Output('fuzzy-results-container', 'children'),
+    Input('fuzzy-run-btn', 'n_clicks'),
+    [State('fuzzy-house-select', 'value'),
+     State('fuzzy-threshold', 'value')],
+    prevent_initial_call=True,
+)
+def run_fuzzy_match(n_clicks, house, threshold):
+    try:
+        from rapidfuzz import fuzz as _fuzz, process as _rfprocess
+    except ImportError:
+        return html.Div(
+            'rapidfuzz is not installed. Run: pip install rapidfuzz',
+            style={'fontSize': '12px', 'color': '#991B1B', 'padding': '12px 0'},
+        )
+
+    df = frames.get('asuheader', pd.DataFrame())
+    if df.empty:
+        return html.Div('No supplier data loaded.', style={'fontSize': '12px', 'color': '#94A3B8'})
+
+    h_df = df[(df['house'] == house) & (df['status'] != 'C')].copy()
+    deduped = h_df.drop_duplicates(subset=['apar_id'])[['client', 'apar_id', 'apar_name']].copy().reset_index(drop=True)
+    deduped['_norm'] = deduped['apar_name'].fillna('').str.strip().str.upper()
+
+    pairs = []
+    for _, group in deduped.groupby(deduped['_norm'].str[:1]):
+        if len(group) < 2:
+            continue
+        idxs = group.index.tolist()
+        names = group['_norm'].tolist()
+        scores = _rfprocess.cdist(names, names, scorer=_fuzz.token_sort_ratio,
+                                  score_cutoff=threshold, workers=-1)
+        np.fill_diagonal(scores, 0)
+        for ii in range(len(idxs)):
+            for jj in range(ii + 1, len(idxs)):
+                if scores[ii][jj] >= threshold:
+                    a, b = deduped.loc[idxs[ii]], deduped.loc[idxs[jj]]
+                    pairs.append({
+                        'Supplier A — Client':  a['client'],
+                        'Supplier A — ID':      a['apar_id'],
+                        'Supplier A — Name':    a['apar_name'],
+                        'Supplier B — Client':  b['client'],
+                        'Supplier B — ID':      b['apar_id'],
+                        'Supplier B — Name':    b['apar_name'],
+                        'Score':                int(round(scores[ii][jj])),
+                    })
+
+    if not pairs:
+        return html.Div(
+            f'No near-duplicate names found in {house} at {threshold}% threshold.',
+            style={'fontSize': '12px', 'color': '#64748B', 'padding': '12px 0'},
+        )
+
+    result_df = pd.DataFrame(pairs).sort_values('Score', ascending=False).reset_index(drop=True)
+    house_color = HOUSE_HEX.get(house, '#7c5cbf')
+
+    return html.Div([
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'marginBottom': '10px'}, children=[
+            html.Span(house, style={
+                'background': house_color, 'color': '#fff',
+                'fontSize': '9px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+                'padding': '3px 8px', 'borderRadius': '4px',
+            }),
+            html.Span(
+                f'{len(result_df)} matched pair{"s" if len(result_df) != 1 else ""} at {threshold}% threshold',
+                style={'fontSize': '12px', 'color': '#64748B'},
+            ),
+        ]),
+        dash_table.DataTable(
+            data=result_df.to_dict('records'),
+            columns=[{'name': c, 'id': c} for c in result_df.columns],
+            filter_action='native',
+            sort_action='native',
+            sort_by=[{'column_id': 'Score', 'direction': 'desc'}],
+            page_size=25,
+            style_table={'overflowX': 'auto', 'border': 'none'},
+            style_cell={
+                'fontFamily': 'Inter, sans-serif', 'fontSize': '12px',
+                'padding': '8px 12px', 'border': 'none',
+                'borderBottom': '1px solid #F1F5F9', 'textAlign': 'left',
+            },
+            style_header={
+                'background': '#F8FAFC', 'fontWeight': '700',
+                'fontSize': '11px', 'color': '#475569',
+                'borderBottom': '2px solid #E2E8F0', 'border': 'none',
+            },
+            style_data_conditional=[
+                {'if': {'column_id': 'Supplier A — Name'}, 'color': '#991B1B', 'fontWeight': '600'},
+                {'if': {'column_id': 'Supplier B — Name'}, 'color': '#991B1B', 'fontWeight': '600'},
+                {'if': {'column_id': 'Score'}, 'color': '#92400E', 'fontWeight': '700'},
+                {'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'},
+            ],
+        ),
+    ])
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # RUN

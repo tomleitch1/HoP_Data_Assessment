@@ -1,4 +1,4 @@
-from dash import html
+from dash import html, dcc
 from dashboard.shared.ui import render_volumetrics_card
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid
 from dashboard.tabs.aging import render_aging
@@ -545,6 +545,57 @@ def _render_intro(ap_vol):
     ])
 
 
+# ── Fuzzy name search section ─────────────────────────────────────────────────
+
+def _render_fuzzy_section():
+    return html.Div(style={'marginTop': '32px', 'paddingTop': '8px', 'borderTop': f'1px solid {UI["border"]}'}, children=[
+        html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '16px'}, children=[
+            html.Div('Fuzzy Name Search', style={
+                'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
+                'textTransform': 'uppercase', 'letterSpacing': '0.01em',
+            }),
+            html.Div('Find near-duplicate supplier names within a house', style={
+                'fontSize': '12px', 'color': UI['text_secondary'],
+            }),
+        ]),
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '16px', 'marginBottom': '16px',
+                        'flexWrap': 'wrap'}, children=[
+            dcc.Dropdown(
+                id='fuzzy-house-select',
+                options=[{'label': 'HOC', 'value': 'HOC'}, {'label': 'HOL', 'value': 'HOL'}],
+                value='HOC',
+                clearable=False,
+                style={'width': '110px', 'fontSize': '12px'},
+            ),
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'}, children=[
+                html.Span('Similarity threshold:', style={'fontSize': '12px', 'color': UI['text_secondary'],
+                                                           'whiteSpace': 'nowrap'}),
+                html.Div(style={'width': '220px'}, children=[
+                    dcc.Slider(
+                        id='fuzzy-threshold',
+                        min=70, max=100, step=5, value=90,
+                        marks={70: '70%', 80: '80%', 90: '90%', 100: '100%'},
+                        tooltip={'placement': 'bottom', 'always_visible': False},
+                    ),
+                ]),
+            ]),
+            html.Button('Run Match', id='fuzzy-run-btn', n_clicks=0, style={
+                'background': '#2a1f3d', 'color': '#fff', 'border': 'none',
+                'borderRadius': '6px', 'padding': '8px 18px',
+                'fontSize': '12px', 'fontWeight': '700', 'cursor': 'pointer',
+                'letterSpacing': '0.04em',
+            }),
+        ]),
+        dcc.Loading(type='circle', color='#7c5cbf', children=[
+            html.Div(id='fuzzy-results-container', children=[
+                html.Div('Select a house and click Run Match to search for near-duplicate supplier names.', style={
+                    'fontSize': '12px', 'color': '#94A3B8', 'padding': '12px 0',
+                }),
+            ]),
+        ]),
+    ])
+
+
 # ── Tab renderer ──────────────────────────────────────────────────────────────
 
 def _dq_section_header():
@@ -574,5 +625,6 @@ def render_tab(dq_results, frames):
         render_dimension_scorecard(dq_results),
         render_dimension_grid(dq_results),
         render_aging(aging_results, module='ap'),
-        html.Div(id='dim-drill-down-container', style={'marginTop': '24px'})
+        html.Div(id='dim-drill-down-container', style={'marginTop': '24px'}),
+        _render_fuzzy_section(),
     ])
