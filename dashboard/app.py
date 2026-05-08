@@ -561,7 +561,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         # Why this matters — full width
         html.Div(style={
             'background': '#faf9fd', 'border': '1px solid #ede9f8',
-            'borderRadius': '12px', 'padding': '14px 16px', 'marginBottom': '24px',
+            'borderRadius': '12px', 'padding': '14px 16px', 'marginBottom': '12px',
         }, children=[
             html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginBottom': '10px'}, children=[
                 DashIconify(icon='lucide:alert-circle', width=11, color='#a090c0'),
