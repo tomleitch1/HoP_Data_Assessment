@@ -449,12 +449,13 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     }, children=[
         # Dimension + severity inline
         html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px'}, children=[
-            html.Span(row.get('dimension', '—'), style={
-                'fontSize': '10px', 'fontWeight': '700', 'color': '#7c5cbf',
-                'background': '#ede9f8', 'padding': '4px 12px',
-                'borderRadius': '6px', 'border': '1px solid #d4c8f0',
-                'letterSpacing': '0.04em',
-            }),
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px'}, children=[
+                DashIconify(icon='lucide:layers', width=11, color='#a090c0'),
+                html.Span(row.get('dimension', '—').upper(), style={
+                    'fontSize': '10px', 'fontWeight': '700', 'color': '#a090c0',
+                    'letterSpacing': '0.05em',
+                }),
+            ]),
             html.Div(style={
                 'width': '1px', 'height': '16px',
                 'background': 'linear-gradient(to bottom, transparent, #CBD5E1, transparent)',
@@ -501,18 +502,19 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 }),
                 html.Div(style={
                     'position': 'absolute', 'top': '0', 'left': '0', 'right': '0', 'bottom': '0',
-                    'display': 'flex', 'alignItems': 'center', 'justifyContent': 'space-between',
+                    'display': 'flex', 'alignItems': 'center',
                     'padding': '0 10px',
                 }, children=[
                     html.Span(f'{failing:,} flagged', style={
-                        'fontSize': '11px', 'fontWeight': '800',
+                        'fontSize': '11px', 'fontWeight': '600',
                         'color': 'white' if error_pct > 30 else rag_color,
-                    }),
-                    html.Span(f'{error_pct:.1f}% error rate', style={
-                        'fontSize': '11px', 'fontWeight': '700', 'color': '#64748B',
                     }),
                 ]),
             ]),
+            html.Div(f'{error_pct:.1f}%', style={
+                'fontSize': '11px', 'fontWeight': '600', 'color': '#94A3B8',
+                'marginTop': '5px', 'paddingLeft': '2px',
+            }),
         ]),
 
         # ── RAG threshold card (full width) ──
@@ -532,7 +534,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                         'borderRadius': '6px', 'border': '1px solid #27AE6040',
                         'minWidth': '48px', 'textAlign': 'center',
                     }),
-                    html.Span(f'< {thresholds[0]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
+                    html.Span(f'< {thresholds[0]}% flagged', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
                 ]),
                 html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
                     html.Span('Amber', style={
@@ -541,7 +543,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                         'borderRadius': '6px', 'border': '1px solid #F39C1240',
                         'minWidth': '48px', 'textAlign': 'center',
                     }),
-                    html.Span(f'{thresholds[0]}–{thresholds[1]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
+                    html.Span(f'{thresholds[0]}–{thresholds[1]}% flagged', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
                 ]),
                 html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}, children=[
                     html.Span('Red', style={
@@ -550,7 +552,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                         'borderRadius': '6px', 'border': '1px solid #E74C3C40',
                         'minWidth': '48px', 'textAlign': 'center',
                     }),
-                    html.Span(f'> {thresholds[1]}% error rate', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
+                    html.Span(f'> {thresholds[1]}% flagged', style={'fontSize': '12px', 'color': '#64748B', 'fontWeight': '500'}),
                 ]),
             ]),
         ]),
@@ -560,33 +562,60 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
     right_content = html.Div(style={'flex': '1', 'padding': '24px 32px', 'minWidth': 0}, children=[
 
         # Why this matters — full width
-        _section_title('Why this matters'),
-        html.Div(row.get('intent', '—'), style={
-            'fontSize': '15px', 'color': '#1a1523', 'fontWeight': '500',
-            'lineHeight': '1.7', 'marginBottom': '0',
-        }),
+        html.Div(style={
+            'background': '#faf9fd', 'border': '1px solid #ede9f8',
+            'borderRadius': '12px', 'padding': '14px 16px', 'marginBottom': '24px',
+        }, children=[
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginBottom': '10px'}, children=[
+                DashIconify(icon='lucide:alert-circle', width=11, color='#a090c0'),
+                html.Span('Why this matters', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '700', 'letterSpacing': '0.05em', 'textTransform': 'uppercase'}),
+            ]),
+            html.Div(row.get('intent', '—'), style={
+                'fontSize': '14px', 'color': '#4a3d6b', 'fontWeight': '400',
+                'lineHeight': '1.7',
+            }),
+        ]),
 
-        _divider(),
-
-        # Rule definition + Critical fields — side by side
-        html.Div(style={'display': 'flex', 'gap': '24px', 'alignItems': 'flex-start'}, children=[
-            html.Div(style={'flex': '1.4', 'minWidth': 0}, children=[
-                _section_title('Rule definition'),
+        # Rule definition + Critical fields — side by side outer cards, content-width
+        html.Div(style={'display': 'flex', 'gap': '16px', 'alignItems': 'stretch'}, children=[
+            html.Div(style={
+                'background': '#faf9fd', 'border': '1px solid #ede9f8',
+                'borderRadius': '12px', 'padding': '14px 16px',
+                'display': 'flex', 'flexDirection': 'column',
+                'width': 'fit-content',
+            }, children=[
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginBottom': '10px'}, children=[
+                    DashIconify(icon='lucide:code', width=11, color='#a090c0'),
+                    html.Span('Rule definition', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '700', 'letterSpacing': '0.05em', 'textTransform': 'uppercase'}),
+                ]),
                 html.Div(logic, style={
                     'fontFamily': "'Courier New', monospace", 'fontSize': '12px',
-                    'background': '#f7f5fb', 'color': '#4a3d6b',
+                    'background': '#ede8f5', 'color': '#4a3d6b',
                     'padding': '12px 16px', 'borderRadius': '8px',
-                    'border': '1px solid #ede9f8', 'lineHeight': '1.7',
-                    'wordBreak': 'break-all',
+                    'border': '1px solid #d8d0ee', 'lineHeight': '1.7',
+                    'flex': '1',
                 }),
             ]),
-            html.Div(style={'flex': '1', 'minWidth': 0}, children=[
-                _section_title('Critical fields'),
-                html.Div(style={'display': 'flex', 'gap': '6px', 'flexWrap': 'wrap'}, children=[
+            html.Div(style={
+                'background': '#faf9fd', 'border': '1px solid #ede9f8',
+                'borderRadius': '12px', 'padding': '14px 16px',
+                'display': 'flex', 'flexDirection': 'column',
+                'width': 'fit-content',
+            }, children=[
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '4px', 'marginBottom': '10px'}, children=[
+                    DashIconify(icon='lucide:tag', width=11, color='#a090c0'),
+                    html.Span('Critical fields', style={'fontSize': '10px', 'color': '#a090c0', 'fontWeight': '700', 'letterSpacing': '0.05em', 'textTransform': 'uppercase'}),
+                ]),
+                html.Div(style={
+                    'display': 'flex', 'gap': '6px', 'flexWrap': 'wrap',
+                    'background': '#ede8f5', 'border': '1px solid #d8d0ee',
+                    'borderRadius': '8px', 'padding': '12px 16px', 'flex': '1',
+                    'alignContent': 'flex-start',
+                }, children=[
                     html.Span(c, style={
-                        'fontSize': '12px', 'fontWeight': '600', 'color': '#4a3d6b',
-                        'background': '#f0edf8', 'padding': '4px 12px',
-                        'borderRadius': '5px', 'border': '1px solid #ded8f0',
+                        'fontSize': '12px', 'fontWeight': '400', 'color': '#4a3d6b',
+                        'background': '#e6e0f4', 'padding': '4px 12px',
+                        'borderRadius': '5px', 'border': '1px solid #cdc4e8',
                         'fontFamily': "'Courier New', monospace",
                     }) for c in base_cols
                 ] if base_cols else [
