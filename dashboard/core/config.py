@@ -201,8 +201,13 @@ ALL_TABLES = [
     'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'pbf_data',
 ]
 
-RAG_GREEN_THRESHOLD = 90
-RAG_AMBER_THRESHOLD = 70
+# Per-severity RAG thresholds (error rate %). Green = below first value, Amber = below second, Red = above.
+RAG_THRESHOLDS = {
+    'Critical': (1,  5),
+    'High':     (3,  10),
+    'Medium':   (5,  15),
+    'Low':      (10, 25),
+}
 
 SEV_ORDER  = ['Critical', 'High', 'Medium', 'Low']
 SEV_WEIGHT = {'Critical': 1, 'High': 2, 'Medium': 3, 'Low': 4}

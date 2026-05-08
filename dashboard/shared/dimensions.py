@@ -16,11 +16,11 @@ DIMENSION_DESCRIPTIONS = {
 }
 
 def _house_scorecard_row(scored_dq, house, house_color):
-    total_checks   = len(scored_dq)
-    checks_failing = int((scored_dq['failing'] > 0).sum())
-    checks_passing = int((scored_dq['rag'] == 'Green').sum())
-    overall_pct    = round(checks_passing / total_checks * 100, 1) if total_checks > 0 else 0.0
-    rag_color      = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
+    total_checks    = len(scored_dq)
+    checks_green    = int((scored_dq['rag'] == 'Green').sum())
+    checks_red_amber = total_checks - checks_green
+    overall_pct     = round(checks_green / total_checks * 100, 1) if total_checks > 0 else 0.0
+    rag_color       = RAG_HEX['Green'] if overall_pct >= 90 else RAG_HEX['Amber'] if overall_pct >= 70 else RAG_HEX['Red']
 
     return html.Div(style={'flex': '1', 'minWidth': '320px'}, children=[
         html.Div(house, style={
@@ -30,10 +30,10 @@ def _house_scorecard_row(scored_dq, house, house_color):
             'display': 'inline-block', 'marginBottom': '8px',
         }),
         html.Div(style={'display': 'flex', 'gap': '12px', 'flexWrap': 'wrap'}, children=[
-            kpi_card(f"{overall_pct:.1f}%", 'Overall DQ Score',    rag_color),
-            kpi_card(f"{total_checks:,}",   'Total Checks',        '#4a3d6b'),
-            kpi_card(f"{checks_failing:,}", 'Checks With Failures','#c0392b'),
-            kpi_card(f"{checks_passing:,}", 'Checks Passing',      '#006548'),
+            kpi_card(f"{overall_pct:.1f}%",    'Overall DQ Score',  rag_color),
+            kpi_card(f"{total_checks:,}",       'Total Checks',      '#4a3d6b'),
+            kpi_card(f"{checks_green:,}",       'Checks Passing',    '#006548'),
+            kpi_card(f"{checks_red_amber:,}",   'Amber / Red Checks','#c0392b'),
         ]),
     ])
 

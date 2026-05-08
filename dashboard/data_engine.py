@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import os
 from datetime import date
+from dashboard.core.config import RAG_THRESHOLDS
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
@@ -243,7 +244,8 @@ def run_dq_analysis(frames):
             passing = total - failing
             error_rate = round((failing / total * 100), 1) if total > 0 else 0.0
             pass_rate = round(100.0 - error_rate, 1)
-            rag = 'Green' if error_rate <= 2 else ('Amber' if error_rate <= 10 else 'Red')
+            green_t, amber_t = RAG_THRESHOLDS.get(sev, (5, 15))
+            rag = 'Green' if error_rate <= green_t else ('Amber' if error_rate <= amber_t else 'Red')
             
             results.append({
                 'check_id': check_id,
