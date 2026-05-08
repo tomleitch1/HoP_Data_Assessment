@@ -202,14 +202,18 @@ def render_dimension_widget(dim_name, dq_results):
             return html.Div()
         house_color = HOUSE_HEX.get(house, '#4a3d6b')
         score_color = RAG_HEX['Green'] if error <= 5 else RAG_HEX['Amber'] if error <= 15 else RAG_HEX['Red']
-        return html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+        return html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '6px',
+            'border': f'1.5px solid rgba({int(house_color[1:3],16)},{int(house_color[3:5],16)},{int(house_color[5:7],16)},0.2)', 'borderRadius': '8px',
+            'padding': '4px 10px',
+        }, children=[
             html.Span(house, style={
-                'fontSize': '9px', 'fontWeight': '800', 'color': 'white',
-                'background': house_color, 'padding': '2px 6px',
+                'fontSize': '9px', 'fontWeight': '700', 'color': '#64748B',
+                'background': '#F1F5F9', 'padding': '2px 6px',
                 'borderRadius': '3px', 'letterSpacing': '0.08em',
             }),
             html.Span(f"{error:.1f}%", style={
-                'fontSize': '14px', 'fontWeight': '800', 'color': score_color, 'fontFamily': DISPLAY_FONT,
+                'fontSize': '17px', 'fontWeight': '800', 'color': score_color, 'fontFamily': DISPLAY_FONT,
             }),
         ])
 
