@@ -233,6 +233,25 @@ def get_ap_checks():
          'asuheader.last_update < TODAY - 3 years',
          lambda df: df['last_update'] < (today - pd.Timedelta(days=3*365))),
 
+        ('SUP_DORMANT', 10, 'Suppliers', 'Timeliness', 'Medium',
+         'Active supplier with no open transactions and no activity in the last 18 months',
+         'Active suppliers must have had recent activity to be included in migration scope. Suppliers with no open transactions and no history transactions in the last 18 months are dormant and should be reviewed before cutover to confirm they are still needed in the new system.',
+         'Review asuheader and consider closing or excluding from migration scope.', 'asuheader', None,
+         'apar_id NOT IN (SELECT apar_id FROM asutrans) AND apar_id NOT IN (SELECT apar_id FROM asuhistr WHERE trans_date >= TODAY - 18 months)',
+         lambda df, frames: (
+             ~df['apar_id'].isin(
+                 frames.get('asutrans', pd.DataFrame(columns=['apar_id', 'house']))
+                     .pipe(lambda t: t[t['house'].isin(df['house'].unique())]['apar_id'])
+             ) &
+             ~df['apar_id'].isin(
+                 frames.get('asuhistr', pd.DataFrame(columns=['apar_id', 'house', 'trans_date']))
+                     .pipe(lambda h: h[
+                         h['house'].isin(df['house'].unique()) &
+                         (h['trans_date'] >= today - pd.Timedelta(days=548))
+                     ]['apar_id'])
+             )
+         )),
+
         ('SUP_SUNDRY', 10, 'Suppliers', 'Validity', 'Low',
          'Record is a Sundry/One-time supplier',
          'One-time (sundry) supplier records are typically created for single-use payments and are not part of a standing supplier master. These records should be reviewed to confirm whether they need to be included in the migration scope.',
