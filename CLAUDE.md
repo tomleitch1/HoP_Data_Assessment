@@ -146,6 +146,17 @@ Add a tuple to the list in the relevant `dashboard/core/rules/*_rules.py`. Use e
 ### Adding Critical Field Highlights for a New Rule
 Update `get_check_columns()` in `data_engine.py` — maps `check_id` → list of column names to highlight in the modal inspector (source columns appear red, join target columns blue, bridge columns gray).
 
+### Adding a Cross-House Uniqueness Check
+Cross-house checks detect when the same identifier (VAT number, bank account, etc.) exists in both HOC and HOL supplier/customer records. Key design constraints:
+
+1. **Lambda signature must be `lambda df, frames:`** — `run_dq_analysis` passes one house at a time as `df`, but the lambda needs the full both-house data from `frames['asuheader']` to compute the cross-house set.
+2. **Pattern**: find identifier values appearing in both houses using `frames['asuheader']`, then mask the per-house `df`.
+3. **Population filter**: use `status != 'C'` (not-closed), not `status == 'N'` (active only).
+4. **`run_dq_analysis` filter**: add the new check IDs to the `elif check_id in [...]` block in the asuheader population filter section so they use `status != 'C'` rather than `status == 'N'`.
+5. **`get_check_columns()`**: add the matching identifier column(s) for modal highlighting.
+6. **`get_failing_records()`**: the `_XHOUSE_ID_COLS` dict at the top of the cross-house early-return block controls which columns are returned. Add the new check ID there.
+7. **Modal rendering**: cross-house checks are identified by `_XHOUSE_CHECKS` set in `app.py`'s `handle_modal_logic`. They skip the single-house filter and render a side-by-side HOC/HOL two-table layout automatically.
+
 ---
 
 ## Migration Scope
@@ -222,7 +233,29 @@ Triggered by clicking any bar in a dimension chart or any row in a DQ results ta
 - Table strip: record count header strip
 - Failing records table: surgical column highlighting (red=source, blue=target, grey=bridge)
 
+**`status` column**: always shown in the evidence table. For the generic fallback path (most checks), `status` is included via `key_fields` in `app.py`. For specific early-return checks (`AP_ORPHANED_TRANS`, `HIS_ORPHANED`, etc.) it must be included explicitly in the `cols` list in `get_failing_records()`.
+
+**Column display logic** (`app.py` — `handle_modal_logic`):
+- Checks whose columns are prefixed with a known table name (e.g. `AP_INVOICES.`, `ASSET_MASTER.`) → `is_prefixed = True` → all returned columns shown
+- All other checks → `is_prefixed = False` → column filter runs, keeping only columns whose bare name is in `key_fields` (identifiers + `status`) or in `base_cols` (the check's highlighted fields from `get_check_columns()`)
+- **Cross-house checks** (`_XHOUSE_CHECKS` set): bypass the single-house filter and the column filter entirely; render as two separate DataTables side by side (HOC green header / HOL red header), deduplicated by matching identifier so rows align for visual comparison.
+
 Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circle-2`, `lucide:database`, `lucide:table-2`, `lucide:download`, `lucide:x`, `lucide:arrow-right`).
+
+---
+
+## Dimension Scorecard KPIs
+
+`render_dimension_scorecard()` in `dashboard/shared/dimensions.py` renders the KPI strip at the top of each domain tab. It splits `dq_results` by house and shows **two side-by-side groups** (HOC green header / HOL red header), each with:
+
+| Card | Definition |
+|------|------------|
+| **Overall DQ Score** | % of scored checks (severity ≠ Info) with Green RAG for that house |
+| **Total Checks** | Count of all scored checks for that house |
+| **Checks With Failures** | Count of checks where `failing > 0` (at least one record fails — binary, not a threshold) |
+| **Checks Passing** | Count of checks with Green RAG |
+
+The overall score is **check-level** (% checks green), not record-weighted. This keeps it consistent with the three count cards alongside it and avoids the misleading inflation caused by large clean datasets dominating a record-weighted average.
 
 ---
 
@@ -236,6 +269,7 @@ Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circl
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (redesigned — dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
+- Cross-house uniqueness checks for suppliers (VAT, company reg, IBAN, bank account+sort code, name) with side-by-side modal evidence tables
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
