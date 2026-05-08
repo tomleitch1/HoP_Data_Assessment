@@ -1164,8 +1164,16 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
         hoc_df = df[df['house'] == 'HOC'][avail_cols].copy()
         hol_df = df[df['house'] == 'HOL'][avail_cols].copy()
         if dedup_cols:
-            hoc_df = hoc_df.drop_duplicates(subset=dedup_cols).sort_values(dedup_cols)
-            hol_df = hol_df.drop_duplicates(subset=dedup_cols).sort_values(dedup_cols)
+            hoc_df = hoc_df.drop_duplicates(subset=dedup_cols)
+            hol_df = hol_df.drop_duplicates(subset=dedup_cols)
+            # Normalise key case-insensitively so "APPLE LTD" and "Apple Ltd" align
+            def _norm_key(row):
+                return tuple(v.strip().upper() if isinstance(v, str) else v for v in [row[c] for c in dedup_cols])
+            hoc_key = hoc_df.apply(_norm_key, axis=1)
+            hol_key = hol_df.apply(_norm_key, axis=1)
+            all_keys = sorted(set(hoc_key) | set(hol_key))
+            hoc_df = hoc_df.set_index(hoc_key).reindex(all_keys).reset_index(drop=True)
+            hol_df = hol_df.set_index(hol_key).reindex(all_keys).reset_index(drop=True)
         hoc_df = hoc_df.fillna('—').reset_index(drop=True)
         hol_df = hol_df.fillna('—').reset_index(drop=True)
         xh_cols = [{'name': c.replace('_', ' ').title(), 'id': c} for c in hoc_df.columns]
