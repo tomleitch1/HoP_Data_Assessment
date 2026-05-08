@@ -74,7 +74,16 @@ SQL extracts → data/ CSVs → data_engine.load_data() → frames dict
 - `COLUMN_MAP`: Maps semantic names (e.g. `'name'`) to actual CSV column headers
 - `SupplierConfig`, `CustomerConfig`, `GLConfig`: Threshold constants (active statuses, stale days, etc.)
 - `SCOPE_CONFIG`: Registers each domain tab with its scope IDs, tables, and aging config
-- `RAG_GREEN_THRESHOLD = 90`, `RAG_AMBER_THRESHOLD = 70`
+- `RAG_THRESHOLDS`: Per-severity dict of `(green_threshold, amber_threshold)` error-rate % cutoffs:
+  ```python
+  RAG_THRESHOLDS = {
+      'Critical': (1,  5),
+      'High':     (3,  10),
+      'Medium':   (5,  15),
+      'Low':      (10, 25),
+  }
+  ```
+  RAG is computed in `data_engine.py` as: Green if `error_rate <= green_t`, Amber if `<= amber_t`, else Red.
 
 **Rules (`dashboard/core/rules/*.py`)** — Declarative DQ checks as 12-element tuples returned by `get_*_checks()` functions. The lambda at position 11 receives a DataFrame (or `df, frames` for join checks) and returns a boolean mask of **failing** records. Do not put data loading or aggregation logic here.
 
@@ -136,6 +145,12 @@ Edit only `dashboard/core/config.py`:
 
 ### Adding a DQ Rule to an Existing Domain
 Add a tuple to the list in the relevant `dashboard/core/rules/*_rules.py`. Use existing tuples in the same file as templates. The engine picks it up automatically via `get_dq_checks()`.
+
+**Intent text style (position 6 in the tuple — "Why this matters"):**
+- Lead with the specific condition that must be true: "Every active supplier must have X populated."
+- Follow with the consequence if it is not: "Without it, Y will fail / Z cannot be processed."
+- Use short declarative sentences. No em dashes. No "Finds/Flags/Identifies" opener.
+- Example: *"Payment terms must be assigned to every active supplier. The system uses this field to calculate invoice due dates automatically. A supplier without terms will cause payment runs to fail or require manual intervention on every invoice."*
 
 ### Adding a Completely New Dataset and Tab
 1. Drop CSVs in `data/`, register in `load_data()` (`file_map` or `split_files`)
@@ -228,10 +243,16 @@ Triggered by clicking any bar in a dimension chart or any row in a DQ results ta
 
 **Layout:**
 - Single dark header bar (`#1e1528`) — one dark element, everything else white
-- Left sidebar (320px): dimension pill at top, then 2×2 grid of stat cards (failing records / pass rate / records assessed / criticality). Stats at 28px/800 weight, rounded cards (`borderRadius: 12px`). Failing count uses `row['failing']` from `dq_results` (same source as charts) — NOT `len(df)` which can be inflated.
-- Right panel: "Why this matters" full width, then rule definition + critical fields side by side. Remediation section removed.
-- Table strip: record count header strip
-- Failing records table: surgical column highlighting (red=source, blue=target, grey=bridge)
+- **Left sidebar (380px):** Three stacked elements, all `gap: 12px`:
+  1. Dimension label row — `lucide:layers` icon + dimension name (uppercase, `#a090c0`, no pill/badge) + gradient divider + "severity" label + severity pill (RAG-coloured)
+  2. Records assessed card (`#faf9fd` background, `1px solid #ede9f8` border, `12px` radius) — header row with assessed count + RAG pill, then a filled progress bar (RAG colour, `overflow: hidden`), then below the bar: "X flagged" left-aligned in RAG colour and "X%" right-aligned in muted grey
+  3. RAG thresholds card (same style) — three rows (Green / Amber / Red) each with a coloured pill badge and threshold text reading e.g. "< 1% flagged", "1–5% flagged", "> 5% flagged". Thresholds pulled from `RAG_THRESHOLDS` for the check's severity.
+- **Right panel:** `paddingTop: 56px` so "Why this matters" aligns horizontally with the Records assessed card. Three cards, all `#faf9fd` / `1px solid #ede9f8` / `12px` radius / `gap: 12px`:
+  1. Why this matters — `lucide:alert-circle` header, intent text in `#4a3d6b` weight 400
+  2. Rule definition — `lucide:code` header, code block in `#ede8f5` / `#d8d0ee` border (deeper shade nested inside outer card)
+  3. Critical fields — `lucide:tag` header, tag chips in `#ede8f5` container. Both rule definition and critical fields cards use `width: fit-content` and `alignItems: stretch` so inner boxes match height.
+- Failing records table below — no table strip banner
+- Failing count uses `row['failing']` from `dq_results` (same source as charts) — NOT `len(df)` which can be inflated
 
 **`status` column**: always shown in the evidence table. For the generic fallback path (most checks), `status` is included via `key_fields` in `app.py`. For specific early-return checks (`AP_ORPHANED_TRANS`, `HIS_ORPHANED`, etc.) it must be included explicitly in the `cols` list in `get_failing_records()`.
 
@@ -240,7 +261,7 @@ Triggered by clicking any bar in a dimension chart or any row in a DQ results ta
 - All other checks → `is_prefixed = False` → column filter runs, keeping only columns whose bare name is in `key_fields` (identifiers + `status`) or in `base_cols` (the check's highlighted fields from `get_check_columns()`)
 - **Cross-house checks** (`_XHOUSE_CHECKS` set): bypass the single-house filter and the column filter entirely; render as two separate DataTables side by side (HOC green header / HOL red header), deduplicated by matching identifier so rows align for visual comparison.
 
-Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circle-2`, `lucide:database`, `lucide:table-2`, `lucide:download`, `lucide:x`, `lucide:arrow-right`).
+Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:code`, `lucide:tag`, `lucide:layers`, `lucide:bar-chart-2`, `lucide:sliders`, `lucide:check-circle-2`, `lucide:database`, `lucide:table-2`, `lucide:download`, `lucide:x`, `lucide:arrow-right`).
 
 ---
 
@@ -256,6 +277,8 @@ Uses `dash-iconify` for Lucide icons (`lucide:alert-circle`, `lucide:check-circl
 | **Checks Passing** | Count of checks with Green RAG |
 
 The overall score is **check-level** (% checks green), not record-weighted. This keeps it consistent with the three count cards alongside it and avoids the misleading inflation caused by large clean datasets dominating a record-weighted average.
+
+Each dimension widget header also shows per-house HOC/HOL score chips (`_house_score()` in `dimensions.py`). Each chip is a neutral grey badge (`#F1F5F9` background) with a house-coloured border and the error rate rendered in the RAG colour for that score. A gradient vertical divider separates the two chips. Only "avg error" label appears once between/after the chips.
 
 ---
 
