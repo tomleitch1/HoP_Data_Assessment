@@ -127,14 +127,14 @@ def get_ap_checks():
          'Each supplier name should be unique within a House. Duplicate names indicate the same payee has been registered more than once, which can result in payments being split across multiple records and complicate reconciliation.',
          'Consolidate records in asuheader.apar_name.', 'asuheader', None,
          'COUNT(*) OVER(PARTITION BY client, apar_name) > 1',
-         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False)),
+         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
         ('SUP_VAT_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
          'Duplicate VAT registration number exists within the same House',
          'VAT registration numbers must be unique within a House. Since a VAT number is tied to a single legal entity, duplicate VAT numbers indicate the same supplier has been registered more than once and must be consolidated before migration.',
          'Consolidate records in asuheader.vat_reg_no.', 'asuheader', None,
          'COUNT(*) OVER(PARTITION BY client, vat_reg_no) > 1',
-         lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna()),
+         lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
 
         ('SUP_CLIENT_APAR_DUP', 10, 'Suppliers', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id) combination found in supplier master',
@@ -154,11 +154,11 @@ def get_ap_checks():
          'vat_reg_no IN (SELECT vat_reg_no FROM asuheader GROUP BY vat_reg_no HAVING COUNT(DISTINCT house) > 1)',
          lambda df, frames: df['vat_reg_no'].isin(
              (lambda f:
-                 f[f['vat_reg_no'].notna() & (f['status'] != 'C')]
+                 f[f['vat_reg_no'].notna() & (f['status'] != 'C') & (f['vat_reg_no'].str.strip().str.len() > 1)]
                  .groupby('vat_reg_no')['house'].nunique()
                  .pipe(lambda s: s[s > 1].index)
              )(frames.get('asuheader', pd.DataFrame()))
-         ) & df['vat_reg_no'].notna()),
+         ) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
 
         ('SUP_XHOUSE_COMP_REG_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
          'Company registration number exists in both Houses',
@@ -167,11 +167,11 @@ def get_ap_checks():
          'comp_reg_no IN (SELECT comp_reg_no FROM asuheader GROUP BY comp_reg_no HAVING COUNT(DISTINCT house) > 1)',
          lambda df, frames: df['comp_reg_no'].isin(
              (lambda f:
-                 f[f['comp_reg_no'].notna() & (f['status'] != 'C')]
+                 f[f['comp_reg_no'].notna() & (f['status'] != 'C') & (f['comp_reg_no'].str.strip().str.len() > 1)]
                  .groupby('comp_reg_no')['house'].nunique()
                  .pipe(lambda s: s[s > 1].index)
              )(frames.get('asuheader', pd.DataFrame()))
-         ) & df['comp_reg_no'].notna()),
+         ) & df['comp_reg_no'].notna() & (df['comp_reg_no'].str.strip().str.len() > 1)),
 
         ('SUP_XHOUSE_IBAN_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
          'IBAN exists in both Houses',
@@ -180,11 +180,11 @@ def get_ap_checks():
          'iban IN (SELECT iban FROM asuheader GROUP BY iban HAVING COUNT(DISTINCT house) > 1)',
          lambda df, frames: df['iban'].isin(
              (lambda f:
-                 f[f['iban'].notna() & (f['status'] != 'C')]
+                 f[f['iban'].notna() & (f['status'] != 'C') & (f['iban'].str.strip().str.len() > 1)]
                  .groupby('iban')['house'].nunique()
                  .pipe(lambda s: s[s > 1].index)
              )(frames.get('asuheader', pd.DataFrame()))
-         ) & df['iban'].notna()),
+         ) & df['iban'].notna() & (df['iban'].str.strip().str.len() > 1)),
 
         ('SUP_XHOUSE_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
          'Bank account and sort code combination exists in both Houses',
@@ -193,13 +193,15 @@ def get_ap_checks():
          'bank_account||clearing_code IN (SELECT bank_account||clearing_code FROM asuheader GROUP BY bank_account, clearing_code HAVING COUNT(DISTINCT house) > 1)',
          lambda df, frames: (
              df['bank_account'].notna() & df['clearing_code'].notna() &
+             (df['bank_account'].str.strip().str.len() > 1) & (df['clearing_code'].str.strip().str.len() > 1) &
              (df['bank_account'] + '|' + df['clearing_code']).isin(
                  (lambda f:
                      (lambda fa:
                          fa.assign(_k=fa['bank_account'] + '|' + fa['clearing_code'])
                          .groupby('_k')['house'].nunique()
                          .pipe(lambda s: s[s > 1].index)
-                     )(f[f['bank_account'].notna() & f['clearing_code'].notna() & (f['status'] != 'C')])
+                     )(f[f['bank_account'].notna() & f['clearing_code'].notna() & (f['status'] != 'C') &
+                        (f['bank_account'].str.strip().str.len() > 1) & (f['clearing_code'].str.strip().str.len() > 1)])
                  )(frames.get('asuheader', pd.DataFrame()))
              )
          )),
@@ -209,13 +211,13 @@ def get_ap_checks():
          'Supplier names should be checked for matches across both Houses. The same supplier name in both HOC and HOL may indicate a duplicate registration, though some payees such as HMRC will legitimately appear in both systems.',
          'Review asuheader.apar_name matches across Houses and confirm whether records relate to the same legal entity.', 'asuheader', None,
          'UPPER(apar_name) IN (SELECT UPPER(apar_name) FROM asuheader GROUP BY UPPER(apar_name) HAVING COUNT(DISTINCT house) > 1)',
-         lambda df, frames: df['apar_name'].notna() & df['apar_name'].str.strip().str.upper().isin(
+         lambda df, frames: df['apar_name'].notna() & (df['apar_name'].str.strip().str.len() > 1) & df['apar_name'].str.strip().str.upper().isin(
              (lambda f:
                  (lambda fa:
                      fa.assign(_n=fa['apar_name'].str.strip().str.upper())
                      .groupby('_n')['house'].nunique()
                      .pipe(lambda s: s[s > 1].index)
-                 )(f[f['apar_name'].notna() & (f['status'] != 'C')])
+                 )(f[f['apar_name'].notna() & (f['status'] != 'C') & (f['apar_name'].str.strip().str.len() > 1)])
              )(frames.get('asuheader', pd.DataFrame()))
          )),
 
