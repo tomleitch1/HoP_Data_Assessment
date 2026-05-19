@@ -315,27 +315,34 @@ def close_summary_drill(n_clicks):
     return None
 
 @app.callback(
+    [Output('modal-overlay', 'style', allow_duplicate=True),
+     Output('modal-title', 'children', allow_duplicate=True),
+     Output('modal-content', 'children', allow_duplicate=True),
+     Output({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData')],
+    Input('btn-close-modal', 'n_clicks'),
+    State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
+    prevent_initial_call=True
+)
+def close_modal(n_clicks, chart_clicks):
+    return {'display': 'none'}, "", "", [None] * len(chart_clicks)
+
+
+@app.callback(
     [Output('modal-overlay', 'style'),
      Output('modal-title', 'children'),
      Output('modal-content', 'children')],
     [Input({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
-     Input({'type': 'dim-results-table', 'index': dash.ALL}, 'active_cell'),
-     Input('btn-close-modal', 'n_clicks')],
-    [State({'type': 'dim-results-table', 'index': dash.ALL}, 'derived_viewport_data'),
-     State('modal-overlay', 'style')],
+     Input({'type': 'dim-results-table', 'index': dash.ALL}, 'active_cell')],
+    [State({'type': 'dim-results-table', 'index': dash.ALL}, 'derived_viewport_data')],
     prevent_initial_call=True
 )
-def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, current_style):
+def handle_modal_logic(chart_clicks, table_cells, tables_data):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return current_style, "", ""
-    
+        return dash.no_update, dash.no_update, dash.no_update
+
     trigger_id = ctx.triggered[0]['prop_id']
-    
-    # ── CLOSE MODAL ──
-    if 'btn-close-modal' in trigger_id:
-        return {'display': 'none'}, "", ""
-    
+
     check_id = None
     house = None
     
@@ -365,8 +372,7 @@ def handle_modal_logic(chart_clicks, table_cells, close_clicks, tables_data, cur
                 house = row_data.get('House') or row_data.get('house')
 
     if not check_id or not house:
-        # Don't update if we don't have enough info
-        return current_style, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update
 
     # ── RENDER CONTENT ──
     _XHOUSE_CHECKS = {'SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP', 'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP'}
