@@ -197,12 +197,8 @@ def run_dq_analysis(frames):
             if table in ['asuheader', 'acuheader']:
                 if check_id in ['SUP_EXPIRED_ACTIVE']:
                     h_df = df_table[df_table['house'] == house]
-                elif check_id in ['SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP',
-                                   'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',
-                                   'SUP_DORMANT']:
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
                 else:
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
             elif table in ['asutrans', 'acutrans']:
                 h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
             elif table in ['asuhistr', 'acuhistr']:
@@ -564,12 +560,8 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     if table in ['asuheader', 'acuheader']:
         if check_id in ['SUP_EXPIRED_ACTIVE']:
             h_df = df_table[df_table['house'] == house]
-        elif check_id in ['SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP',
-                          'SUP_XHOUSE_IBAN_DUP', 'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',
-                          'SUP_DORMANT']:
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
         else:
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
     elif table in ['asutrans', 'acutrans']:
         h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
     elif table in ['asuhistr', 'acuhistr']:
