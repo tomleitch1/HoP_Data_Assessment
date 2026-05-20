@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import os
 from datetime import date
-from dashboard.core.config import RAG_THRESHOLDS
+from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
@@ -196,13 +196,22 @@ def run_dq_analysis(frames):
             # Determine population based on table and check type
             if table in ['asuheader', 'acuheader']:
                 if check_id in ['SUP_EXPIRED_ACTIVE']:
-                    h_df = df_table[df_table['house'] == house]
+                    mask = df_table['house'] == house
                 else:
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+                    mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+                if house == 'HOC':
+                    mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                h_df = df_table[mask]
             elif table in ['asutrans', 'acutrans']:
-                h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+                mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+                if house == 'HOC':
+                    mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                h_df = df_table[mask]
             elif table in ['asuhistr', 'acuhistr']:
-                h_df = df_table[df_table['house'] == house]
+                mask = df_table['house'] == house
+                if house == 'HOC':
+                    mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                h_df = df_table[mask]
             elif table == 'aglaccounts':
                 if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
                     h_df = df_table[df_table['house'] == house]
@@ -559,13 +568,22 @@ def get_failing_records(check_id, house, frames, base_cols=None):
     # Apply standard population filters
     if table in ['asuheader', 'acuheader']:
         if check_id in ['SUP_EXPIRED_ACTIVE']:
-            h_df = df_table[df_table['house'] == house]
+            mask = df_table['house'] == house
         else:
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+            mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+        if house == 'HOC':
+            mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        h_df = df_table[mask]
     elif table in ['asutrans', 'acutrans']:
-        h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
+        mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+        if house == 'HOC':
+            mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        h_df = df_table[mask]
     elif table in ['asuhistr', 'acuhistr']:
-        h_df = df_table[df_table['house'] == house]
+        mask = df_table['house'] == house
+        if house == 'HOC':
+            mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        h_df = df_table[mask]
     elif table == 'aglaccounts':
         if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
             h_df = df_table[df_table['house'] == house]

@@ -39,6 +39,7 @@ class SupplierConfig:
     STALE_LAST_MODIFIED_DAYS = 1095
     ACTIVE_STATUSES = ['N']
     INACTIVE_STATUSES = ['C']
+    HOC_CLIENTS = ['CA', 'CM']  # Only these client codes are in scope for HOC
 
 class CustomerConfig:
     ACTIVE_STATUSES = ['N']
