@@ -99,7 +99,11 @@ def get_ap_checks():
          'Bank sort codes must be in either the XX-XX-XX hyphenated format or plain 6-digit format. Sort codes in any other format will be rejected by payment processing systems and must be corrected before go-live.',
          'Correct asuheader.clearing_code.', 'asuheader', None,
          'asuheader.clearing_code NOT LIKE "__-__-__" AND NOT LIKE "______" (6 digits)',
-         lambda df: (~df['clearing_code'].str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False)) & df['clearing_code'].notna()),
+         lambda df: (
+             df['clearing_code'].notna() &
+             ~df['clearing_code'].str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False) &
+             ~('0' + df['clearing_code'].fillna('')).str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False)
+         )),
 
         ('SUP_BANK_FORMAT', 10, 'Suppliers', 'Validity', 'Critical',
          'Bank account format is invalid (Expected 8 digits)',
