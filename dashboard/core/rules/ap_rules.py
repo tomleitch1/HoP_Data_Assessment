@@ -15,7 +15,12 @@ def get_ap_checks():
          'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live.',
          'Verify asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no IS NULL WHERE status = "N"',
-         lambda df: df['vat_reg_no'].isna()),
+         lambda df: df['vat_reg_no'].isna() & ~(
+             (df['house'] == 'HOC') & (
+                 df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
+                 df['apar_gr_id'].isin(['ME', 'WI', 'EM'])
+             )
+         )),
          
         ('SUP_COMP_REG_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier missing company registration number',
@@ -71,7 +76,16 @@ def get_ap_checks():
          'VAT registration numbers must follow the HMRC format of GB followed by exactly 9 digits. Numbers that do not match this pattern will fail validation with HMRC systems and cannot be used for tax reporting.',
          'Correct asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no NOT LIKE "GB_________" (9 digits)',
-         lambda df: (~df['vat_reg_no'].str.match(r'^GB\d{9}$', na=False)) & df['vat_reg_no'].notna()),
+         lambda df: (
+             (~df['vat_reg_no'].str.match(r'^GB\d{9}$', na=False)) &
+             df['vat_reg_no'].notna() &
+             ~(
+                 (df['house'] == 'HOC') & (
+                     df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
+                     df['apar_gr_id'].isin(['ME', 'WI', 'EM'])
+                 )
+             )
+         )),
 
         ('SUP_COMP_REG_FORMAT', 10, 'Suppliers', 'Validity', 'Medium',
          'Company registration format is invalid (Expected 8 digits)',

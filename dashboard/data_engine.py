@@ -312,7 +312,7 @@ def get_check_columns():
         'GL_TRA_ORPHAN_DIM1': ['dim_1', 'dim_value', 'status'],
 
         # Suppliers
-        'SUP_VAT_MISSING': ['vat_reg_no', 'status'],
+        'SUP_VAT_MISSING': ['vat_reg_no', 'apar_gr_id', 'status'],
         'SUP_COMP_REG_MISSING': ['comp_reg_no', 'status'],
         'SUP_TERMS_MISSING': ['terms_id'],
         'SUP_PAY_METHOD_MISSING': ['pay_method'],
@@ -320,7 +320,7 @@ def get_check_columns():
         'SUP_BANK_MISSING': ['bank_account'],
         'SUP_SORT_IBAN_MISSING': ['clearing_code', 'iban'],
         'SUP_SWIFT_MISSING': ['swift', 'iban'],
-        'SUP_VAT_FORMAT': ['vat_reg_no'],
+        'SUP_VAT_FORMAT': ['vat_reg_no', 'apar_gr_id'],
         'SUP_COMP_REG_FORMAT': ['comp_reg_no'],
         'SUP_SORT_FORMAT': ['clearing_code'],
         'SUP_BANK_FORMAT': ['bank_account'],
