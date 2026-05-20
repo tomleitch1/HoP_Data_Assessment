@@ -77,7 +77,7 @@ def get_ap_checks():
          'Correct asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no NOT LIKE "GB_________" (9 digits)',
          lambda df: (
-             (~df['vat_reg_no'].str.match(r'^GB\d{9}$', na=False)) &
+             (~df['vat_reg_no'].str.replace(' ', '', regex=False).str.match(r'^(GB)?\d{9}$', na=False)) &
              df['vat_reg_no'].notna() &
              ~(
                  (df['house'] == 'HOC') & (
