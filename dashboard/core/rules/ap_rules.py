@@ -28,7 +28,7 @@ def get_ap_checks():
          lambda df: df['vat_reg_no'].isna() & ~(
              (df['house'] == 'HOC') & (
                  df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
-                 df['apar_gr_id'].isin(['ME', 'WI', 'EM'])
+                 df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC'])
              )
          ) & ~(
              (df['house'] == 'HOL') &
@@ -98,7 +98,7 @@ def get_ap_checks():
              ~(
                  (df['house'] == 'HOC') & (
                      df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
-                     df['apar_gr_id'].isin(['ME', 'WI', 'EM'])
+                     df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC'])
                  )
              )
          )),
