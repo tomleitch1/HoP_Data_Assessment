@@ -384,14 +384,7 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY asutrans.apar_id, asutrans.ext_inv_ref) > 1',
          lambda df: df.duplicated(subset=['apar_id', 'ext_inv_ref'], keep=False) & df['ext_inv_ref'].notna()),
 
-        ('AP_NET_NEGATIVE_SUP', 16, 'AP Invoices', 'Consistency', 'Medium',
-         'Supplier has a net negative opening balance (unallocated credits)',
-         'The net open balance for each supplier should not be negative. A negative net balance means credits exceed outstanding invoices, indicating unallocated payments or credit notes that need to be matched or refunded before migration.',
-         'Review asutrans.rest_amount total by supplier.', 'asutrans', None,
-         'SUM(asutrans.rest_amount) GROUP BY apar_id < 0',
-         lambda df: df.groupby(['house', 'apar_id'])['rest_amount'].transform('sum') < -0.01),
-
-        ('AP_ORPHANED_CREDITS', 16, 'AP Invoices', 'Consistency', 'Low',
+('AP_ORPHANED_CREDITS', 16, 'AP Invoices', 'Consistency', 'Low',
          'Credit note exists but its referenced original invoice is already closed',
          'Credit notes must be linked to an invoice reference that still exists as an open item. A credit note referencing a closed or non-existent invoice has nothing to offset against and will carry an unmatched balance into the new system.',
          'Review asutrans.orig_reference.', 'asutrans', None,
