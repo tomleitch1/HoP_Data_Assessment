@@ -201,16 +201,22 @@ def run_dq_analysis(frames):
                     mask = (df_table['house'] == house) & (df_table['status'] != 'C')
                 if house == 'HOC':
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                elif house == 'HOL':
+                    mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
             elif table in ['asutrans', 'acutrans']:
                 mask = (df_table['house'] == house) & (df_table['status'] != 'C')
                 if house == 'HOC':
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                elif house == 'HOL':
+                    mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
             elif table in ['asuhistr', 'acuhistr']:
                 mask = df_table['house'] == house
                 if house == 'HOC':
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                elif house == 'HOL':
+                    mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
             elif table == 'aglaccounts':
                 if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
@@ -573,16 +579,22 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             mask = (df_table['house'] == house) & (df_table['status'] != 'C')
         if house == 'HOC':
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        elif house == 'HOL':
+            mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
         h_df = df_table[mask]
     elif table in ['asutrans', 'acutrans']:
         mask = (df_table['house'] == house) & (df_table['status'] != 'C')
         if house == 'HOC':
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        elif house == 'HOL':
+            mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
         h_df = df_table[mask]
     elif table in ['asuhistr', 'acuhistr']:
         mask = df_table['house'] == house
         if house == 'HOC':
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        elif house == 'HOL':
+            mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
         h_df = df_table[mask]
     elif table == 'aglaccounts':
         if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:

@@ -40,6 +40,7 @@ class SupplierConfig:
     ACTIVE_STATUSES = ['N']
     INACTIVE_STATUSES = ['C']
     HOC_CLIENTS = ['CA', 'CM']  # Only these client codes are in scope for HOC
+    HOL_CLIENTS = ['LA']        # Only this client code is in scope for HOL
 
 class CustomerConfig:
     ACTIVE_STATUSES = ['N']
