@@ -593,6 +593,8 @@ def _render_fuzzy_section():
                 }),
             ]),
         ]),
+        dcc.Store(id='fuzzy-results-store'),
+        dcc.Download(id='fuzzy-download'),
     ])
 
 

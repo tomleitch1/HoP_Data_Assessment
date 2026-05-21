@@ -1425,6 +1425,7 @@ def update_aging_ar_table(house, bucket):
 
 @app.callback(
     Output('fuzzy-results-container', 'children'),
+    Output('fuzzy-results-store', 'data'),
     Input('fuzzy-run-btn', 'n_clicks'),
     [State('fuzzy-house-select', 'value'),
      State('fuzzy-threshold', 'value')],
@@ -1437,11 +1438,11 @@ def run_fuzzy_match(n_clicks, house, threshold):
         return html.Div(
             'rapidfuzz is not installed. Run: pip install rapidfuzz',
             style={'fontSize': '12px', 'color': '#991B1B', 'padding': '12px 0'},
-        )
+        ), None
 
     df = frames.get('asuheader', pd.DataFrame())
     if df.empty:
-        return html.Div('No supplier data loaded.', style={'fontSize': '12px', 'color': '#94A3B8'})
+        return html.Div('No supplier data loaded.', style={'fontSize': '12px', 'color': '#94A3B8'}), None
 
     h_df = df[(df['house'] == house) & (df['status'] != 'C')].copy()
     deduped = h_df.drop_duplicates(subset=['apar_id'])[['client', 'apar_id', 'apar_name']].copy().reset_index(drop=True)
@@ -1470,13 +1471,15 @@ def run_fuzzy_match(n_clicks, house, threshold):
                         'Score':                int(round(scores[ii][jj])),
                     })
 
-    if not pairs:
+    result_df = pd.DataFrame(pairs).sort_values('Score', ascending=False).reset_index(drop=True)
+    result_df = result_df[result_df['Score'] < 100]
+
+    if not pairs or result_df.empty:
         return html.Div(
             f'No near-duplicate names found in {house} at {threshold}% threshold.',
             style={'fontSize': '12px', 'color': '#64748B', 'padding': '12px 0'},
-        )
+        ), None
 
-    result_df = pd.DataFrame(pairs).sort_values('Score', ascending=False).reset_index(drop=True)
     house_color = HOUSE_HEX.get(house, '#7c5cbf')
 
     return html.Div([
@@ -1490,6 +1493,11 @@ def run_fuzzy_match(n_clicks, house, threshold):
                 f'{len(result_df)} matched pair{"s" if len(result_df) != 1 else ""} at {threshold}% threshold',
                 style={'fontSize': '12px', 'color': '#64748B'},
             ),
+            html.Button('Export to CSV', id='fuzzy-export-btn', n_clicks=0, style={
+                'marginLeft': 'auto', 'background': 'none', 'border': '1px solid #CBD5E1',
+                'borderRadius': '6px', 'padding': '5px 12px',
+                'fontSize': '11px', 'fontWeight': '600', 'color': '#475569', 'cursor': 'pointer',
+            }),
         ]),
         dash_table.DataTable(
             data=result_df.to_dict('records'),
@@ -1516,7 +1524,21 @@ def run_fuzzy_match(n_clicks, house, threshold):
                 {'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'},
             ],
         ),
-    ])
+    ]), result_df.to_dict('records')
+
+
+@app.callback(
+    Output('fuzzy-download', 'data'),
+    Input('fuzzy-export-btn', 'n_clicks'),
+    State('fuzzy-results-store', 'data'),
+    State('fuzzy-house-select', 'value'),
+    prevent_initial_call=True,
+)
+def export_fuzzy_results(n_clicks, store_data, house):
+    if not store_data:
+        return dash.no_update
+    df = pd.DataFrame(store_data)
+    return dcc.send_data_frame(df.to_csv, f'{house}_fuzzy_name_matches.csv', index=False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
