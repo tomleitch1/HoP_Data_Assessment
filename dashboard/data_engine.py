@@ -330,7 +330,7 @@ def get_check_columns():
 
         # Suppliers
         'SUP_VAT_MISSING': ['vat_reg_no', 'apar_gr_id', 'status'],
-        'SUP_COMP_REG_MISSING': ['comp_reg_no', 'status'],
+        'SUP_COMP_REG_MISSING': ['comp_reg_no', 'apar_gr_id', 'status'],
         'SUP_TERMS_MISSING': ['terms_id'],
         'SUP_PAY_METHOD_MISSING': ['pay_method'],
         'SUP_CURRENCY_MISSING': ['currency'],

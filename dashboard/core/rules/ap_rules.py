@@ -41,6 +41,9 @@ def get_ap_checks():
          'Verify asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no IS NULL WHERE status = "N"',
          lambda df: df['comp_reg_no'].isna() & ~(
+             (df['house'] == 'HOC') &
+             df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC'])
+         ) & ~(
              (df['house'] == 'HOL') &
              df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
          )),
