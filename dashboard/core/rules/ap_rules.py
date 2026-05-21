@@ -40,7 +40,10 @@ def get_ap_checks():
          'Active suppliers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the supplier before migrating the record.',
          'Verify asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no IS NULL WHERE status = "N"',
-         lambda df: df['comp_reg_no'].isna()),
+         lambda df: df['comp_reg_no'].isna() & ~(
+             (df['house'] == 'HOL') &
+             df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
+         )),
 
         ('SUP_TERMS_MISSING', 10, 'Suppliers', 'Completeness', 'High',
          'Active supplier missing payment terms',
