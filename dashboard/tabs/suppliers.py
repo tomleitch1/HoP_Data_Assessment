@@ -617,14 +617,12 @@ def _dq_section_header():
 
 def render_tab(dq_results, frames):
     ap_vol = get_ap_volumetrics(frames)
-    aging_results = build_aging_analysis(frames)
 
     return html.Div([
         _render_intro(ap_vol),
         _dq_section_header(),
         render_dimension_scorecard(dq_results),
         render_dimension_grid(dq_results),
-        render_aging(aging_results, module='ap'),
         html.Div(id='dim-drill-down-container', style={'marginTop': '24px'}),
         _render_fuzzy_section(),
     ])
