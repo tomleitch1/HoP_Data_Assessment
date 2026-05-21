@@ -255,13 +255,6 @@ def get_ap_checks():
              )(frames.get('asuheader', pd.DataFrame()))
          )),
 
-        ('SUP_STALE', 10, 'Suppliers', 'Timeliness', 'Low',
-         'Stale record: Supplier has not been updated in over 3 years',
-         'Active supplier records should be reviewed and updated periodically. Records that have not been touched in over 3 years are candidates for decommissioning and should be confirmed as still required before being included in the migration.',
-         'Review for archival in asuheader.', 'asuheader', None,
-         'asuheader.last_update < TODAY - 3 years',
-         lambda df: df['last_update'] < (today - pd.Timedelta(days=3*365))),
-
         ('SUP_DORMANT', 10, 'Suppliers', 'Timeliness', 'Medium',
          'Active supplier with no open transactions and no activity in the last 18 months',
          'Active suppliers must have had recent activity to be included in migration scope. Suppliers with no open transactions and no history transactions in the last 18 months are dormant and should be reviewed before cutover to confirm they are still needed in the new system.',
