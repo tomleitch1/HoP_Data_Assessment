@@ -233,7 +233,29 @@ Three scope cards aligned to the migration programme:
 - **AP aging analysis** (`build_aging_analysis`) filters to `status.isin(['N','R','I'])` and works correctly. DQ checks use `status != 'C'`. Both `run_dq_analysis` and `get_failing_records` must use the same filter — a mismatch causes the summary count and the modal table to show different numbers.
 - `rest_amount` values from SSMS via Excel may arrive as comma-formatted strings (`1,234.56`) — `data_engine.py` strips commas in the numeric column pre-processing step
 - Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats. The valid serial range is `20000–55000` (~1954–2050). Pre-2000 dates (e.g. 1993 invoices) exist in the real data — the floor was deliberately set to 20000 to capture them.
-- **Payment method codes in real Agresso data**: AS, AU, BB, BO, CA, CH, DD, EF, EU, FC, FP, IB, II, IN, IP, LE, RF, TF, UE, VD, VI. The DQ rules `SUP_BACS_NO_BANK` (checks `pay_method == 'BACS'`) and `SUP_INT_NO_IBAN` (checks `pay_method == 'INT'`) currently return 0 results because those codes do not exist. The correct codes for domestic and international payment methods need to be confirmed with Parliament before these rules can work. Do not attempt to guess — ask which codes require a sort code/bank account and which require an IBAN.
+- **Payment method codes in real Agresso data**: AS, AU, BB, BO, CA, CH, DD, EF, EU, FC, FP, IB, II, IN, IP, LE, RF, TF, UE, VD, VI. Confirmed codes used in DQ rules:
+  - **Domestic electronic** (require sort code + bank account — `SUP_BACS_NO_BANK`): `IP` (BACS), `CP` (CHAPS), `BB` (direct RBS payment)
+  - **International** (require IBAN — `SUP_INT_NO_IBAN`): `IN`, `EU`, `TF`, `RT` (Request for Transfer)
+- **HOC `apar_gr_id` supplier group codes** (HoC only — these are the group classifications on `asuheader`):
+
+  | Code | Description | VAT reg required? |
+  |------|-------------|-------------------|
+  | CA | Catering Suppliers | Yes |
+  | EM | Employees | No — individuals |
+  | IR | PAYE and NI Creditors | No — HMRC tax payments |
+  | ME | Members (MPs/Lords) | No — individuals |
+  | PY | Payroll Third Parties | No — payroll context |
+  | SA | Specialist Advisor | Yes |
+  | SC | Schools | No — VAT-exempt educational bodies |
+  | SM | SME's | Yes |
+  | SS | Security Suppliers | Yes |
+  | TC | Trade Suppliers (CIS) | Yes |
+  | TI | IR35 Suppliers | No — individual contractors |
+  | TN | Trade Suppliers (Non CIS) | Yes |
+  | TO | Off Payroll Suppliers (IR35) | No — individual contractors |
+  | WI | Witness Expenses | No — individuals |
+
+  Groups exempt from VAT reg checks (`SUP_VAT_MISSING`, `SUP_VAT_FORMAT`) for HOC: `EM`, `IR`, `ME`, `PY`, `SC`, `TI`, `TO`, `WI`. Also exempt: apar_id prefixes `71` and `74`.
 - **`voucher_type` codes in asutrans / asuhistr** — full reference:
 
   | Code | Description | Category |
