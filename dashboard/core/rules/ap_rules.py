@@ -6,6 +6,11 @@ _CREDIT_NOTE_TYPES = ['CN', 'IC', 'IN', 'RC']
 _REVERSAL_TYPES    = ['IR', 'PR', 'RV']
 _CREDIT_OR_REVERSAL = _CREDIT_NOTE_TYPES + _REVERSAL_TYPES
 
+# Invoice registration/posting types where a negative amount is definitively wrong.
+# Expenses, payments, journals, and departmental purchases are excluded because
+# their sign depends on context and cannot be asserted.
+_INVOICE_TYPES = ['PI', 'OP', 'CP', 'II', 'IU', 'ID', 'IF', 'SR', 'RI', 'SI']
+
 def get_ap_checks():
     """Returns a list of Supplier and AP DQ check definitions."""
     today = pd.Timestamp(date.today())
@@ -325,11 +330,11 @@ def get_ap_checks():
          lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & df['orig_reference'].isna()),
 
         ('AP_NEG_INV', 16, 'AP Invoices', 'Validity', 'Medium',
-         'Negative amount found on a standard invoice voucher type',
-         'Standard invoice voucher types must carry a positive amount. A negative value on an invoice indicates the wrong voucher type has been used and the record should be reclassified as a credit note or reversal.',
+         'Negative amount found on an invoice registration voucher type',
+         'Invoice registration and posting voucher types (PI, OP, CP, II, IU, ID, IF, SR, RI, SI) must carry a positive amount. A negative value on these types indicates the wrong voucher type has been used and the record should be reclassified as a credit note. Expense, payment, and journal types are excluded from this check as their sign is context-dependent.',
          'Correct asutrans.voucher_type.', 'asutrans', None,
-         'asutrans.amount < 0 AND asutrans.voucher_type NOT IN ("CN","IC","IN","RC","IR","PR","RV")',
-         lambda df: (df['amount'] < 0) & ~df['voucher_type'].isin(_CREDIT_OR_REVERSAL)),
+         'asutrans.amount < 0 AND asutrans.voucher_type IN ("PI","OP","CP","II","IU","ID","IF","SR","RI","SI")',
+         lambda df: (df['amount'] < 0) & df['voucher_type'].isin(_INVOICE_TYPES)),
 
         ('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
          'Foreign currency invoice missing its transaction currency amount',
