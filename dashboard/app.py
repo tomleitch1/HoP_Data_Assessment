@@ -1,4 +1,5 @@
 import dash
+import re
 import numpy as np
 
 from dash import dcc, html, Input, Output, callback, State, dash_table
@@ -1296,9 +1297,15 @@ def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
                 house = table_data[row_idx].get('House') or table_data[row_idx].get('house')
 
     if not check_id or not house: return None
-    
+
     df = get_failing_records(check_id, house, frames)
-    return dcc.send_data_frame(df.to_csv, f"DQ_Failing_Records_{check_id}_{house}.csv", index=False)
+
+    check_row = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
+    description = check_row.iloc[0]['description'] if not check_row.empty else check_id
+    safe_desc = re.sub(r'[^\w\s\-]', '', description).strip().replace(' ', '_')
+    filename = f"{house}_{safe_desc}.csv"
+
+    return dcc.send_data_frame(df.to_csv, filename, index=False)
 
 # --- Explorer Callbacks ---
 
