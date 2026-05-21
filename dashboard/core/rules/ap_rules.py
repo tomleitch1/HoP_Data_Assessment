@@ -1,6 +1,11 @@
 import pandas as pd
 from datetime import date
 
+# Voucher types where a negative amount/balance is expected and correct
+_CREDIT_NOTE_TYPES = ['CN', 'IC', 'IN', 'RC']
+_REVERSAL_TYPES    = ['IR', 'PR', 'RV']
+_CREDIT_OR_REVERSAL = _CREDIT_NOTE_TYPES + _REVERSAL_TYPES
+
 def get_ap_checks():
     """Returns a list of Supplier and AP DQ check definitions."""
     today = pd.Timestamp(date.today())
@@ -316,15 +321,15 @@ def get_ap_checks():
          'Credit note missing its link to the original invoice',
          'Credit notes must carry a reference back to the original invoice they are offsetting. Without this link, the audit trail between the credit and the original charge is broken and the credit cannot be correctly matched during reconciliation.',
          'Populate asutrans.orig_reference.', 'asutrans', None,
-         'asutrans.voucher_type LIKE "%CREDIT%" AND asutrans.orig_reference IS NULL',
-         lambda df: (df['voucher_type'] == 'CN') & df['orig_reference'].isna()),
+         'asutrans.voucher_type IN ("CN","IC","IN","RC") AND asutrans.orig_reference IS NULL',
+         lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & df['orig_reference'].isna()),
 
         ('AP_NEG_INV', 16, 'AP Invoices', 'Validity', 'Medium',
          'Negative amount found on a standard invoice voucher type',
-         'Standard invoice voucher types must carry a positive amount. A negative value on an invoice indicates the wrong voucher type has been used and the record should be reclassified as a credit note.',
+         'Standard invoice voucher types must carry a positive amount. A negative value on an invoice indicates the wrong voucher type has been used and the record should be reclassified as a credit note or reversal.',
          'Correct asutrans.voucher_type.', 'asutrans', None,
-         'asutrans.amount < 0 AND asutrans.voucher_type NOT LIKE "%CREDIT%"',
-         lambda df: (df['amount'] < 0) & (df['voucher_type'] != 'CN')),
+         'asutrans.amount < 0 AND asutrans.voucher_type NOT IN ("CN","IC","IN","RC","IR","PR","RV")',
+         lambda df: (df['amount'] < 0) & ~df['voucher_type'].isin(_CREDIT_OR_REVERSAL)),
 
         ('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
          'Foreign currency invoice missing its transaction currency amount',
@@ -379,8 +384,8 @@ def get_ap_checks():
          'Credit note exists but its referenced original invoice is already closed',
          'Credit notes must be linked to an invoice reference that still exists as an open item. A credit note referencing a closed or non-existent invoice has nothing to offset against and will carry an unmatched balance into the new system.',
          'Review asutrans.orig_reference.', 'asutrans', None,
-         'asutrans.voucher_type LIKE "%CREDIT%" AND asutrans.orig_reference NOT IN (SELECT voucher_no FROM asutrans)',
-         lambda df: (df['voucher_type'] == 'CN') & (~df['orig_reference'].isin(df['voucher_no'])) & df['orig_reference'].notna()),
+         'asutrans.voucher_type IN ("CN","IC","IN","RC") AND asutrans.orig_reference NOT IN (SELECT voucher_no FROM asutrans)',
+         lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & (~df['orig_reference'].isin(df['voucher_no'])) & df['orig_reference'].notna()),
 
         ('AP_ORPHANED_TRANS', 16, 'AP Invoices', 'Referential Integrity', 'Critical',
          'Open transaction references a Supplier ID that does not exist',
@@ -419,8 +424,8 @@ def get_ap_checks():
          'Historical credit note missing its original invoice reference',
          'Historical credit notes must carry a reference to the original invoice they were raised against. Without this link, the audit trail between the credit and the original charge is incomplete and cannot be verified during the migration review.',
          'Populate asuhistr.orig_reference.', 'asuhistr', None,
-         'asuhistr.voucher_type LIKE "%CREDIT%" AND asuhistr.orig_reference IS NULL',
-         lambda df: (df['voucher_type'] == 'CN') & df['orig_reference'].isna()),
+         'asuhistr.voucher_type IN ("CN","IC","IN","RC") AND asuhistr.orig_reference IS NULL',
+         lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & df['orig_reference'].isna()),
 
         ('HIS_DUP', 18, 'AP History', 'Uniqueness', 'High',
          'Duplicate voucher and sequence number found in history',

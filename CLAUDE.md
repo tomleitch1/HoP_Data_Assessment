@@ -234,6 +234,70 @@ Three scope cards aligned to the migration programme:
 - `rest_amount` values from SSMS via Excel may arrive as comma-formatted strings (`1,234.56`) — `data_engine.py` strips commas in the numeric column pre-processing step
 - Date columns from SSMS arrive as Excel serial numbers (e.g. `45626`) — `_parse_dates()` in `data_engine.py` handles ISO, dd/mm/yyyy, and Excel serial formats. The valid serial range is `20000–55000` (~1954–2050). Pre-2000 dates (e.g. 1993 invoices) exist in the real data — the floor was deliberately set to 20000 to capture them.
 - **Payment method codes in real Agresso data**: AS, AU, BB, BO, CA, CH, DD, EF, EU, FC, FP, IB, II, IN, IP, LE, RF, TF, UE, VD, VI. The DQ rules `SUP_BACS_NO_BANK` (checks `pay_method == 'BACS'`) and `SUP_INT_NO_IBAN` (checks `pay_method == 'INT'`) currently return 0 results because those codes do not exist. The correct codes for domestic and international payment methods need to be confirmed with Parliament before these rules can work. Do not attempt to guess — ask which codes require a sort code/bank account and which require an IBAN.
+- **`voucher_type` codes in asutrans / asuhistr** — full reference:
+
+  | Code | Description | Category |
+  |------|-------------|----------|
+  | AB | Absence, transfer to payroll | Payroll |
+  | AC | Accrual journals | Journal |
+  | BA | Batch Input adj for CRS BQT debts | Batch |
+  | BF | Bank Funding | Banking |
+  | BI | Batch Input | Batch |
+  | BU | Budget Transactions | Budget |
+  | BV | Budget Virements | Budget |
+  | **CN** | **Purchase Credit Notes** | **Credit note** |
+  | CP | Contract Invoice Posting | Invoice |
+  | DB | Debtors - Banking | Debtors |
+  | DJ | Drawn Down | Journal |
+  | DM | Debtors - Manual matching | Debtors |
+  | DP | Debtors - Post payments against invoices | Debtors |
+  | DR | Debtors Refreshment Department | Debtors |
+  | EI | EPOS Interface Journals | Journal |
+  | FZ | Fixed Assets | Assets |
+  | **IC** | **Incoming Invoices Registration Credit Notes** | **Credit note** |
+  | ID | Incoming Invoices Purchase CRS | Invoice |
+  | IF | Incoming Invoices Bank Funding | Invoice |
+  | **II** | **Incoming Invoices Registration** | **Invoice** |
+  | **IN** | **Incoming Invoices Posting Credit Notes** | **Credit note** |
+  | **IR** | **Incoming Invoices Payment Reversal** | **Reversal** |
+  | **IU** | **Incoming Invoices Purchase Invoices** | **Invoice** |
+  | JL | Adjustment journals | Journal |
+  | JO | Opening Balances | Journal |
+  | MI | Micros Interface Journals | Journal |
+  | MM | Manual Matching | Matching |
+  | **OP** | **Purchase Order Based Invoice Posting** | **Invoice** |
+  | PA | Absence Entry | Payroll |
+  | PC | Payroll Manual Cheque | Payroll |
+  | PE | Posting Expenses | Expenses |
+  | **PI** | **Purchase Invoices** | **Invoice** |
+  | PJ | Prepayment journals | Journal |
+  | PP | Posting payroll transactions | Payroll |
+  | **PR** | **Payment Reversal** | **Reversal** |
+  | PV | Variable payroll transactions | Payroll |
+  | PY | Payments | Payment |
+  | **RC** | **Registration Credit Notes** | **Credit note** |
+  | RD | Purchasing Refreshment Department | Invoice |
+  | RE | Registering Expenses | Expenses |
+  | **RI** | **Registered Invoices** | **Invoice** |
+  | RJ | Recurring journals | Journal |
+  | RP | Reshared Staff posting adj for inv | Adjustment |
+  | RS | Registering Staff Expenses | Expenses |
+  | **RV** | **Reversals** | **Reversal** |
+  | SI | Stock Purchasing CRS | Invoice |
+  | SR | Speedy Registration of Supplier Invoices | Invoice |
+  | TC | Members Travel card | Expenses |
+  | TD | Expenses Templates | Expenses |
+  | WO | Debtors Write-Off | Debtors |
+  | YE | Year end transfer | Journal |
+
+  **Credit / reversal types** (negative `amount` and `rest_amount` are expected and normal):
+  - **Credit notes**: `CN`, `IC`, `IN`, `RC`
+  - **Reversals**: `IR`, `PR`, `RV`
+
+  **Standard invoice types** (positive `amount` expected — a negative value here indicates wrong voucher type):
+  `CP`, `ID`, `IF`, `II`, `IU`, `OP`, `PI`, `RC`*\*, `RD`, `RI`, `SI`, `SR`
+
+  DQ rules that test credit note types (`AP_CN_NO_REF`, `AP_ORPHANED_CREDITS`, `HIS_CN_NO_REF`, `AP_NEG_INV`) must use the full credit note set `['CN', 'IC', 'IN', 'RC']`, not just `'CN'`. Reversal types `['IR', 'PR', 'RV']` should also be excluded from `AP_NEG_INV` as negative amounts are expected there too.
 
 ---
 
