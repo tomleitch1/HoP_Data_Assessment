@@ -30,6 +30,9 @@ def get_ap_checks():
                  df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
                  df['apar_gr_id'].isin(['ME', 'WI', 'EM'])
              )
+         ) & ~(
+             (df['house'] == 'HOL') &
+             df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
          )),
          
         ('SUP_COMP_REG_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
