@@ -106,11 +106,11 @@ def get_ap_checks():
          )),
 
         ('SUP_BANK_FORMAT', 10, 'Suppliers', 'Validity', 'Critical',
-         'Bank account format is invalid (Expected 8 digits)',
-         'Bank account numbers must be exactly 8 digits to meet the standard UK account number format. Non-standard values will be rejected during payment processing and indicate the account details are likely incorrect.',
+         'Bank account format is invalid (More than 8 digits, or contains non-numeric characters)',
+         'Bank account numbers must contain only digits and be no longer than 8 digits. Values exceeding 8 digits or containing non-numeric characters will be rejected during payment processing. Accounts with fewer than 8 digits are not flagged as leading zeros may have been stripped during data extraction.',
          'Correct asuheader.bank_account.', 'asuheader', None,
-         'asuheader.bank_account NOT LIKE "________" (8 digits)',
-         lambda df: (~df['bank_account'].str.match(r'^\d{8}$', na=False)) & df['bank_account'].notna()),
+         'asuheader.bank_account containing non-digits OR length > 8',
+         lambda df: df['bank_account'].notna() & ~df['bank_account'].str.match(r'^\d{1,8}$', na=False)),
 
         ('SUP_SWIFT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
          'SWIFT/BIC format is invalid (Expected 8 or 11 chars)',
