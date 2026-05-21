@@ -349,6 +349,7 @@ def get_check_columns():
         'SUP_CLIENT_APAR_DUP': ['client', 'apar_id'],
         'SUP_NAME_DUP': ['apar_name', 'client'],
         'SUP_VAT_DUP': ['vat_reg_no', 'client'],
+        'SUP_BANK_DUP': ['bank_account', 'clearing_code', 'client'],
         'SUP_XHOUSE_VAT_DUP': ['vat_reg_no'],
         'SUP_XHOUSE_COMP_REG_DUP': ['comp_reg_no'],
         'SUP_XHOUSE_IBAN_DUP': ['iban'],
