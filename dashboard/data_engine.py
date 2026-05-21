@@ -194,7 +194,18 @@ def run_dq_analysis(frames):
         
         for house in CLIENTS:
             # Determine population based on table and check type
-            if table in ['asuheader', 'acuheader']:
+            if table == 'asuheader':
+                if house == 'HOL':
+                    mask = (df_table['house'] == house) & (df_table['status'] == 'N')
+                    mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
+                else:
+                    if check_id in ['SUP_EXPIRED_ACTIVE']:
+                        mask = df_table['house'] == house
+                    else:
+                        mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+                    mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+                h_df = df_table[mask]
+            elif table == 'acuheader':
                 if check_id in ['SUP_EXPIRED_ACTIVE']:
                     mask = df_table['house'] == house
                 else:
@@ -572,7 +583,18 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return result.sort_values(sort_by).reset_index(drop=True)
 
     # Apply standard population filters
-    if table in ['asuheader', 'acuheader']:
+    if table == 'asuheader':
+        if house == 'HOL':
+            mask = (df_table['house'] == house) & (df_table['status'] == 'N')
+            mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
+        else:
+            if check_id in ['SUP_EXPIRED_ACTIVE']:
+                mask = df_table['house'] == house
+            else:
+                mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+            mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
+        h_df = df_table[mask]
+    elif table == 'acuheader':
         if check_id in ['SUP_EXPIRED_ACTIVE']:
             mask = df_table['house'] == house
         else:
