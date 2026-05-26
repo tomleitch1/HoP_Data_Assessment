@@ -2,22 +2,63 @@ USE agresso_HoL;
 
 -- HOW TO RUN
 -- Run against agresso_HoL (server mdata837)  → save as gl_dimension_values_HOL.csv
+--
+-- STEP 1: Run the mapping query to find which attribute_id maps to each dim position.
+-- STEP 2: Copy the attribute_id values from the Step 1 results into the WHERE clause below.
+-- STEP 3: Run Step 2 and save the output as gl_dimension_values_HOL.csv
 
 -- ============================================================
--- STEP 1: Run first to identify Parliament's attribute_id codes
+-- STEP 1: Map dim positions to attribute_id codes
 -- ============================================================
 
-SELECT
-    d.client,
-    d.attribute_id,
-    COUNT(*) AS value_count,
-    SUM(CASE WHEN d.status = 'N' THEN 1 ELSE 0 END) AS active_count,
-    SUM(CASE WHEN d.status != 'N' THEN 1 ELSE 0 END) AS inactive_count,
-    MAX(d.last_update) AS last_updated
-FROM agldimvalue d
-WHERE d.client = 'LA'
-GROUP BY d.client, d.attribute_id
-ORDER BY value_count DESC;
+SELECT 'dim_1' AS dim_pos, d.attribute_id, COUNT(*) AS match_count
+FROM (SELECT DISTINCT dim_1 AS val FROM agltransact WHERE client = 'LA' AND dim_1 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_2', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_2 AS val FROM agltransact WHERE client = 'LA' AND dim_2 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_3', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_3 AS val FROM agltransact WHERE client = 'LA' AND dim_3 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_4', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_4 AS val FROM agltransact WHERE client = 'LA' AND dim_4 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_5', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_5 AS val FROM agltransact WHERE client = 'LA' AND dim_5 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_6', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_6 AS val FROM agltransact WHERE client = 'LA' AND dim_6 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+UNION ALL
+
+SELECT 'dim_7', d.attribute_id, COUNT(*)
+FROM (SELECT DISTINCT dim_7 AS val FROM agltransact WHERE client = 'LA' AND dim_7 IS NOT NULL) t
+JOIN agldimvalue d ON d.dim_value = t.val AND d.client = 'LA'
+GROUP BY d.attribute_id
+
+ORDER BY dim_pos, match_count DESC;
 
 -- ============================================================
 -- STEP 2: Main extract — replace attribute_id placeholders
@@ -38,10 +79,12 @@ SELECT
 FROM agldimvalue d
 WHERE d.client = 'LA'
   AND d.attribute_id IN (
-    '[ACCOUNT_ATTR_ID]',
-    '[COSTC_ATTR_ID]',
-    '[SUBJ_ATTR_ID]',
-    '[ANAL1_ATTR_ID]',
-    '[ANAL2_ATTR_ID]'
+    '[DIM_1_ATTR_ID]',
+    '[DIM_2_ATTR_ID]',
+    '[DIM_3_ATTR_ID]',
+    '[DIM_4_ATTR_ID]',
+    '[DIM_5_ATTR_ID]',
+    '[DIM_6_ATTR_ID]',
+    '[DIM_7_ATTR_ID]'
 )
 ORDER BY d.attribute_id, d.dim_value;
