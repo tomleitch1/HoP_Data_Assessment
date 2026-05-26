@@ -199,19 +199,13 @@ def run_dq_analysis(frames):
                     mask = (df_table['house'] == house) & (df_table['status'] == 'N')
                     mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 else:
-                    if check_id in ['SUP_EXPIRED_ACTIVE']:
-                        mask = df_table['house'] == house
-                    else:
-                        mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+                    mask = (df_table['house'] == house) & (df_table['status'] != 'C')
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
                     mask &= ~df_table['apar_id'].astype(str).str[:2].isin(['89', '99'])
                     mask &= ~(df_table['apar_name'].astype(str).str.strip().str.upper() == 'SZSINGLES')
                 h_df = df_table[mask]
             elif table == 'acuheader':
-                if check_id in ['SUP_EXPIRED_ACTIVE']:
-                    mask = df_table['house'] == house
-                else:
-                    mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+                mask = (df_table['house'] == house) & (df_table['status'] != 'C')
                 if house == 'HOC':
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
                 elif house == 'HOL':
@@ -344,7 +338,6 @@ def get_check_columns():
         'SUP_SORT_FORMAT': ['clearing_code'],
         'SUP_BANK_FORMAT': ['bank_account'],
         'SUP_SWIFT_FORMAT': ['swift'],
-        'SUP_EXPIRED_ACTIVE': ['expired_date', 'status'],
         'SUP_WF_STUCK': ['wf_state'],
         'SUP_BACS_NO_BANK': ['pay_method', 'bank_account', 'clearing_code'],
         'SUP_INT_NO_IBAN': ['pay_method', 'iban'],
@@ -591,19 +584,13 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             mask = (df_table['house'] == house) & (df_table['status'] == 'N')
             mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
         else:
-            if check_id in ['SUP_EXPIRED_ACTIVE']:
-                mask = df_table['house'] == house
-            else:
-                mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+            mask = (df_table['house'] == house) & (df_table['status'] != 'C')
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
             mask &= ~df_table['apar_id'].astype(str).str[:2].isin(['89', '99'])
             mask &= ~(df_table['apar_name'].astype(str).str.strip().str.upper() == 'SZSINGLES')
         h_df = df_table[mask]
     elif table == 'acuheader':
-        if check_id in ['SUP_EXPIRED_ACTIVE']:
-            mask = df_table['house'] == house
-        else:
-            mask = (df_table['house'] == house) & (df_table['status'] != 'C')
+        mask = (df_table['house'] == house) & (df_table['status'] != 'C')
         if house == 'HOC':
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
         elif house == 'HOL':

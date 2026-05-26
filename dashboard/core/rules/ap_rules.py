@@ -151,14 +151,7 @@ def get_ap_checks():
          'asuheader.swift length NOT IN (8, 11) or contains invalid chars',
          lambda df: (~df['swift'].str.match(r'^[A-Z0-9]{8,11}$', na=False)) & df['swift'].notna()),
 
-        ('SUP_EXPIRED_ACTIVE', 10, 'Suppliers', 'Consistency', 'Medium',
-         'Supplier is active but has an expired/closed date populated',
-         'A supplier marked as active should not have an expiry date populated. These two fields are contradictory and indicate the record has not been maintained correctly. The status or the expiry date must be corrected before migration.',
-         'Review status alignment in asuheader.', 'asuheader', None,
-         'asuheader.status = "N" AND asuheader.expired_date IS NOT NULL',
-         lambda df: df['expired_date'].notna() & (df['status'] == 'N')),
-
-        ('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
+('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
          'Payment method is domestic electronic but bank details are missing',
          'Suppliers set to a domestic electronic payment method must have both a bank account number and a sort code populated. The payment run will fail to process settlements for any supplier missing these details.',
          'Provide bank details in asuheader.', 'asuheader', None,
