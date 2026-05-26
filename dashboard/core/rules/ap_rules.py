@@ -389,14 +389,7 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY asutrans.apar_id, asutrans.ext_inv_ref) > 1',
          lambda df: df.duplicated(subset=['apar_id', 'ext_inv_ref'], keep=False) & df['ext_inv_ref'].notna()),
 
-('AP_ORPHANED_CREDITS', 16, 'AP Invoices', 'Consistency', 'Low',
-         'Credit note exists but its referenced original invoice is already closed',
-         'Credit notes must be linked to an invoice reference that still exists as an open item. A credit note referencing a closed or non-existent invoice has nothing to offset against and will carry an unmatched balance into the new system.',
-         'Review asutrans.orig_reference.', 'asutrans', None,
-         'asutrans.voucher_type IN ("CN","IC","IN","RC") AND asutrans.orig_reference NOT IN (SELECT voucher_no FROM asutrans)',
-         lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & (~df['orig_reference'].isin(df['voucher_no'])) & df['orig_reference'].notna()),
-
-        ('AP_ORPHANED_TRANS', 16, 'AP Invoices', 'Referential Integrity', 'Critical',
+('AP_ORPHANED_TRANS', 16, 'AP Invoices', 'Referential Integrity', 'Critical',
          'Open transaction references a Supplier ID that does not exist',
          'Every open invoice must reference a supplier ID that exists in the supplier master. An invoice with no matching supplier record has no valid payee and cannot be processed or settled in the new system.',
          'Create master record in asuheader.', 'asutrans', 'asuheader',
