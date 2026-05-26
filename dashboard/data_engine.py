@@ -90,22 +90,6 @@ def load_data():
     """Loads all CSV files from the data directory and combines HOC/HOL."""
     frames = {}
 
-    # Single combined files (GL reference tables)
-    file_map = {
-        'gl_chart_of_accounts': 'aglaccounts',
-        'gl_dimension_values':  'agldimvalue',
-        'gl_opening_balances':  'aglyearend',
-        'gl_transact_dimensions': 'agltransact'
-    }
-
-    for base_name, table in file_map.items():
-        path = _data_path(base_name)
-        if os.path.exists(path):
-            df = pd.read_csv(path, low_memory=False, dtype=_FORCE_STR_DTYPE)
-            if 'client' in df.columns:
-                df['house'] = df['client']
-            frames[table] = df
-
     # Tables where house is determined by the filename suffix (_HOC / _HOL),
     # not by the client column. The client column contains internal Unit4 client
     # codes that are NOT 'HOC'/'HOL'.
@@ -113,6 +97,8 @@ def load_data():
         'supplier_master', 'supplier_open_trans', 'supplier_history',
         'asset_master', 'asset_depreciation', 'asset_balances',
         'asset_trans_flags', 'asset_groups', 'gl_journals',
+        'gl_chart_of_accounts', 'gl_dimension_values', 'gl_opening_balances',
+        'gl_transact_dimensions',
     }
 
     # Load split files
@@ -128,7 +114,11 @@ def load_data():
         'asset_balances':     'asset_balances',
         'asset_trans_flags':  'asset_trans_flags',
         'asset_groups':       'asset_groups',
-        'gl_journals':        'gl_journals',
+        'gl_journals':            'gl_journals',
+        'gl_chart_of_accounts':   'aglaccounts',
+        'gl_dimension_values':    'agldimvalue',
+        'gl_opening_balances':    'aglyearend',
+        'gl_transact_dimensions': 'agltransact',
     }
     for base_name, table in split_files.items():
         dfs = []

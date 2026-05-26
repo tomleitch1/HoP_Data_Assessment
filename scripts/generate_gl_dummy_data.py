@@ -523,13 +523,23 @@ df_balances = generate_opening_balances(df_accounts, df_dimensions)
 # SAVE TO CSV
 # ============================================================
 
-df_accounts.to_csv('gl_chart_of_accounts.csv', index=False)
-df_dimensions.to_csv('gl_dimension_values.csv', index=False)
-df_balances.to_csv('gl_opening_balances.csv', index=False)
+import os
+os.makedirs('data/gl', exist_ok=True)
 
-print(f"Chart of accounts:  {len(df_accounts)} rows -> gl_chart_of_accounts.csv")
-print(f"Dimension values:   {len(df_dimensions)} rows -> gl_dimension_values.csv")
-print(f"Opening balances:   {len(df_balances)} rows -> gl_opening_balances.csv")
+for house in ['HOC', 'HOL']:
+    df_accounts[df_accounts['client'] == house].to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv', index=False)
+    df_dimensions[df_dimensions['client'] == house].to_csv(f'data/gl/gl_dimension_values_{house}.csv', index=False)
+    df_balances[df_balances['client'] == house].to_csv(f'data/gl/gl_opening_balances_{house}.csv', index=False)
+
+    # gl_transact_dimensions — distinct dim combinations derived from opening balances
+    dim_cols = ['client', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7']
+    df_trans_dims = df_balances[df_balances['client'] == house][dim_cols].drop_duplicates()
+    df_trans_dims.to_csv(f'data/gl/gl_transact_dimensions_{house}.csv', index=False)
+
+print(f"Chart of accounts:  {len(df_accounts)} rows -> data/gl/gl_chart_of_accounts_HOC/HOL.csv")
+print(f"Dimension values:   {len(df_dimensions)} rows -> data/gl/gl_dimension_values_HOC/HOL.csv")
+print(f"Opening balances:   {len(df_balances)} rows -> data/gl/gl_opening_balances_HOC/HOL.csv")
+print(f"Transact dims:      derived from balances -> data/gl/gl_transact_dimensions_HOC/HOL.csv")
 
 print("\n--- Account Type Split ---")
 print(df_accounts[df_accounts['status'] == 'N']['account_type'].value_counts())
