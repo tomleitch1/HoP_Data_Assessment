@@ -41,8 +41,10 @@ def get_ap_checks():
          'Verify asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no IS NULL WHERE status = "N"',
          lambda df: df['comp_reg_no'].isna() & ~(
-             (df['house'] == 'HOC') &
-             df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC'])
+             (df['house'] == 'HOC') & (
+                 df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC']) |
+                 df['apar_id'].astype(str).str[:2].isin(['71', '74', '89'])
+             )
          ) & ~(
              (df['house'] == 'HOL') &
              df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
@@ -112,7 +114,14 @@ def get_ap_checks():
          'Companies House registration numbers must be exactly 8 digits. Records that do not match this standard format cannot be verified against the Companies House register and may indicate data entry errors.',
          'Correct asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no NOT LIKE "________" (8 digits)',
-         lambda df: (~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)) & df['comp_reg_no'].notna()),
+         lambda df: (
+             (~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)) &
+             df['comp_reg_no'].notna() &
+             ~(
+                 (df['house'] == 'HOC') &
+                 df['apar_id'].astype(str).str[:2].isin(['71', '74', '89'])
+             )
+         )),
 
         ('SUP_SORT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
          'Bank sort code format is invalid (Expected XX-XX-XX or XXXXXX)',
