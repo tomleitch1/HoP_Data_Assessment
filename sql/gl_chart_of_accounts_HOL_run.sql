@@ -1,7 +1,7 @@
+USE agresso_HoL;
+
 -- HOW TO RUN
--- Run against Agresso_HoC  → save as gl_chart_of_accounts_HOC.csv
--- Run against agresso_HoL  → save as gl_chart_of_accounts_HOL.csv
--- Server: mdata837
+-- Run against agresso_HoL (server mdata837)  → save as gl_chart_of_accounts_HOL.csv
 
 SELECT
     a.client,
@@ -18,4 +18,5 @@ SELECT
     a.last_update,
     a.head_account
 FROM aglaccounts a
+WHERE a.client = 'LA'
 ORDER BY a.account;

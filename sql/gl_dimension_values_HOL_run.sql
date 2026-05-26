@@ -1,7 +1,7 @@
+USE agresso_HoL;
+
 -- HOW TO RUN
--- Run against Agresso_HoC  → save as gl_dimension_values_HOC.csv
--- Run against agresso_HoL  → save as gl_dimension_values_HOL.csv
--- Server: mdata837
+-- Run against agresso_HoL (server mdata837)  → save as gl_dimension_values_HOL.csv
 
 -- ============================================================
 -- STEP 1: Run first to identify Parliament's attribute_id codes
@@ -15,6 +15,7 @@ SELECT
     SUM(CASE WHEN d.status != 'N' THEN 1 ELSE 0 END) AS inactive_count,
     MAX(d.last_update) AS last_updated
 FROM agldimvalue d
+WHERE d.client = 'LA'
 GROUP BY d.client, d.attribute_id
 ORDER BY value_count DESC;
 
@@ -35,7 +36,8 @@ SELECT
     d.last_update,
     d.wf_state
 FROM agldimvalue d
-WHERE d.attribute_id IN (
+WHERE d.client = 'LA'
+  AND d.attribute_id IN (
     '[ACCOUNT_ATTR_ID]',
     '[COSTC_ATTR_ID]',
     '[SUBJ_ATTR_ID]',

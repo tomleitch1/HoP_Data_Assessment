@@ -1,7 +1,7 @@
+USE agresso_HoL;
+
 -- HOW TO RUN
--- Run against Agresso_HoC  → save as gl_journals_HOC.csv
--- Run against agresso_HoL  → save as gl_journals_HOL.csv
--- Server: mdata837
+-- Run against agresso_HoL (server mdata837)  → save as gl_journals_HOL.csv
 -- Replace [CURRENT_FISCAL_YEAR] with actual 4-digit year e.g. 2026 for FY2025/26
 
 SELECT
@@ -36,7 +36,8 @@ SELECT
     last_update,
     user_id
 FROM agltransact
-WHERE fiscal_year = [CURRENT_FISCAL_YEAR]
+WHERE client = 'LA'
+  AND fiscal_year = [CURRENT_FISCAL_YEAR]
   AND status = ''
 ORDER BY
     client,
