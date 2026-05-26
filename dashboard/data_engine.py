@@ -79,6 +79,13 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     return result
 
 
+_FORCE_STR_DTYPE = {col: str for col in [
+    'apar_id', 'vat_reg_no', 'comp_reg_no', 'bank_account', 'clearing_code',
+    'swift', 'iban', 'ext_inv_ref', 'orig_reference', 'voucher_no',
+    'account', 'dim_value', 'rel_value',
+]}
+
+
 def load_data():
     """Loads all CSV files from the data directory and combines HOC/HOL."""
     frames = {}
@@ -94,7 +101,7 @@ def load_data():
     for base_name, table in file_map.items():
         path = _data_path(base_name)
         if os.path.exists(path):
-            df = pd.read_csv(path, low_memory=False)
+            df = pd.read_csv(path, low_memory=False, dtype=_FORCE_STR_DTYPE)
             if 'client' in df.columns:
                 df['house'] = df['client']
             frames[table] = df
@@ -128,7 +135,7 @@ def load_data():
         for house in ['HOC', 'HOL']:
             path = _data_path(base_name, f'_{house}')
             if os.path.exists(path):
-                df = pd.read_csv(path, low_memory=False)
+                df = pd.read_csv(path, low_memory=False, dtype=_FORCE_STR_DTYPE)
                 if base_name in house_from_filename:
                     df['house'] = house
                 elif 'client' in df.columns:
