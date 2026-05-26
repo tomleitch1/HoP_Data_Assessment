@@ -348,14 +348,7 @@ def get_ap_checks():
          'asutrans.voucher_type IN ("CN","IC","IN","RC") AND asutrans.orig_reference IS NULL',
          lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & df['orig_reference'].isna()),
 
-        ('AP_NEG_INV', 16, 'AP Invoices', 'Validity', 'Medium',
-         'Negative amount found on an invoice registration voucher type',
-         'Invoice registration and posting voucher types (PI, OP, CP, II, IU, ID, IF, SR, RI, SI) must carry a positive amount. A negative value on these types indicates the wrong voucher type has been used and the record should be reclassified as a credit note. Expense, payment, and journal types are excluded from this check as their sign is context-dependent.',
-         'Correct asutrans.voucher_type.', 'asutrans', None,
-         'asutrans.amount < 0 AND asutrans.voucher_type IN ("PI","OP","CP","II","IU","ID","IF","SR","RI","SI")',
-         lambda df: (df['amount'] < 0) & df['voucher_type'].isin(_INVOICE_TYPES)),
-
-        ('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
+('AP_FX_NO_CUR_AMT', 16, 'AP Invoices', 'Validity', 'High',
          'Foreign currency invoice missing its transaction currency amount',
          'Foreign currency invoices must have both the base currency amount and the original transaction currency amount populated. Without the foreign currency amount, the record cannot be revalued or reconciled against supplier statements.',
          'Populate asutrans.cur_amount.', 'asutrans', None,
