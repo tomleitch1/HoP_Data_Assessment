@@ -205,7 +205,7 @@ def run_dq_analysis(frames):
                         mask = (df_table['house'] == house) & (df_table['status'] != 'C')
                     mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
                     mask &= ~df_table['apar_id'].astype(str).str[:2].isin(['89', '99'])
-                    mask &= ~(df_table['apar_name'].astype(str).str.strip() == 'SZSINGLES')
+                    mask &= ~(df_table['apar_name'].astype(str).str.strip().str.upper() == 'SZSINGLES')
                 h_df = df_table[mask]
             elif table == 'acuheader':
                 if check_id in ['SUP_EXPIRED_ACTIVE']:
@@ -597,6 +597,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 mask = (df_table['house'] == house) & (df_table['status'] != 'C')
             mask &= df_table['client'].isin(SupplierConfig.HOC_CLIENTS)
             mask &= ~df_table['apar_id'].astype(str).str[:2].isin(['89', '99'])
+            mask &= ~(df_table['apar_name'].astype(str).str.strip().str.upper() == 'SZSINGLES')
         h_df = df_table[mask]
     elif table == 'acuheader':
         if check_id in ['SUP_EXPIRED_ACTIVE']:
