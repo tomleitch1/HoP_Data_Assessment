@@ -156,7 +156,10 @@ def get_ap_checks():
          'Suppliers set to a domestic electronic payment method must have both a bank account number and a sort code populated. The payment run will fail to process settlements for any supplier missing these details.',
          'Provide bank details in asuheader.', 'asuheader', None,
          'asuheader.pay_method IN ("IP","CP","BB") AND (bank_account IS NULL OR clearing_code IS NULL)',
-         lambda df: (df['pay_method'].isin(['IP', 'CP', 'BB'])) & (df['bank_account'].isna() | df['clearing_code'].isna())),
+         lambda df: (df['pay_method'].isin(['IP', 'CP', 'BB'])) & (df['bank_account'].isna() | df['clearing_code'].isna()) & ~(
+             (df['house'] == 'HOC') &
+             df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_INT_NO_IBAN', 10, 'Suppliers', 'Consistency', 'Critical',
          'Payment method is international but IBAN is missing',
