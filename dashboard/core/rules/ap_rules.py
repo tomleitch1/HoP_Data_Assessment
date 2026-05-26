@@ -25,7 +25,7 @@ def get_ap_checks():
          'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live.',
          'Verify asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no IS NULL WHERE status = "N"',
-         lambda df: df['vat_reg_no'].isna() & ~(
+         lambda df: df['vat_reg_no'].isna() & ~(df['pay_method'] == 'FC') & ~(
              (df['house'] == 'HOC') & (
                  df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
                  df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC'])
@@ -98,6 +98,7 @@ def get_ap_checks():
          lambda df: (
              (~df['vat_reg_no'].str.replace(' ', '', regex=False).str.match(r'^(GB)?\d{9}$', na=False)) &
              df['vat_reg_no'].notna() &
+             ~(df['pay_method'] == 'FC') &
              ~(
                  (df['house'] == 'HOC') & (
                      df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
