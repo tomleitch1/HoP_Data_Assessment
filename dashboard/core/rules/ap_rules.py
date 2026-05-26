@@ -175,19 +175,12 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY client, apar_name) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
-        ('SUP_VAT_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
-         'Duplicate VAT registration number exists within the same House',
-         'VAT registration numbers must be unique within a House. Since a VAT number is tied to a single legal entity, duplicate VAT numbers indicate the same supplier has been registered more than once and must be consolidated before migration.',
-         'Consolidate records in asuheader.vat_reg_no.', 'asuheader', None,
-         'COUNT(*) OVER(PARTITION BY client, vat_reg_no) > 1',
-         lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
-
         ('SUP_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
-         'Duplicate bank account and sort code combination within the same House',
-         'Each bank account and sort code combination should be unique within a House. The same bank details appearing on multiple supplier records indicates either duplicate supplier registrations or shared bank accounts, both of which require investigation before migration to avoid misdirected payments.',
+         'Duplicate bank account, sort code and VAT registration combination within the same House',
+         'The combination of bank account, sort code and VAT registration number should be unique within a House. The same combination appearing on multiple supplier records is a strong indicator of duplicate registrations and must be investigated before migration to avoid misdirected payments.',
          'Review and consolidate records in asuheader.', 'asuheader', None,
-         'COUNT(*) OVER(PARTITION BY house, bank_account, clearing_code) > 1',
-         lambda df: df.duplicated(subset=['house', 'bank_account', 'clearing_code'], keep=False) & df['bank_account'].notna() & df['clearing_code'].notna() & (df['bank_account'].str.strip().str.len() > 1) & (df['clearing_code'].str.strip().str.len() > 1)),
+         'COUNT(*) OVER(PARTITION BY house, bank_account, clearing_code, vat_reg_no) > 1',
+         lambda df: df.duplicated(subset=['house', 'bank_account', 'clearing_code', 'vat_reg_no'], keep=False) & df['bank_account'].notna() & df['clearing_code'].notna() & df['vat_reg_no'].notna() & (df['bank_account'].str.strip().str.len() > 1) & (df['clearing_code'].str.strip().str.len() > 1) & (df['vat_reg_no'].str.strip().str.len() > 1)),
 
         ('SUP_CLIENT_APAR_DUP', 10, 'Suppliers', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id) combination found in supplier master',
