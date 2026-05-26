@@ -83,7 +83,10 @@ def get_ap_checks():
          'Every active supplier must have either a sort code or an IBAN populated as a payment routing identifier. Without at least one of these fields, the system has no destination to send electronic payments.',
          'Required routing in asuheader.clearing_code or iban.', 'asuheader', None,
          'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL',
-         lambda df: df['clearing_code'].isna() & df['iban'].isna()),
+         lambda df: df['clearing_code'].isna() & df['iban'].isna() & ~(
+             (df['house'] == 'HOC') &
+             df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_SWIFT_MISSING', 10, 'Suppliers', 'Completeness', 'High',
          'Supplier has an IBAN but is missing a SWIFT/BIC code',
