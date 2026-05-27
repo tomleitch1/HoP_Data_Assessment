@@ -95,6 +95,34 @@ def get_ap_checks():
          'asuheader.iban IS NOT NULL AND asuheader.swift IS NULL',
          lambda df: df['swift'].isna() & df['iban'].notna()),
 
+        ('SUP_ADDR_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Active supplier has no address line populated',
+         'Every supplier should have an address line on record. Address data is required for correspondence, contract administration and to support Know Your Supplier checks before migration.',
+         'Populate agladdress.address for this supplier.', 'asuheader', None,
+         'agladdress.address IS NULL OR empty',
+         lambda df: df['address'].isna() | (df['address'].str.strip().str.len() == 0)),
+
+        ('SUP_PLACE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Active supplier has no town or city populated',
+         'Every supplier should have a town or city recorded. Address data supports supplier verification and correspondence before migration.',
+         'Populate agladdress.place for this supplier.', 'asuheader', None,
+         'agladdress.place IS NULL OR empty',
+         lambda df: df['place'].isna() | (df['place'].str.strip().str.len() == 0)),
+
+        ('SUP_ZIP_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Active supplier has no postcode or zip code populated',
+         'Every supplier should have a postcode or zip code recorded. This is required for postal correspondence and automated address verification.',
+         'Populate agladdress.zip_code for this supplier.', 'asuheader', None,
+         'agladdress.zip_code IS NULL OR empty',
+         lambda df: df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)),
+
+        ('SUP_PROVINCE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Active supplier has no county or province populated',
+         'Every supplier should have a county or province recorded to complete the address.',
+         'Populate agladdress.province for this supplier.', 'asuheader', None,
+         'agladdress.province IS NULL OR empty',
+         lambda df: df['province'].isna() | (df['province'].str.strip().str.len() == 0)),
+
         ('SUP_VAT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
          'VAT number format is invalid (Expected GB + 9 digits)',
          'VAT registration numbers must follow the HMRC format of GB followed by exactly 9 digits. Numbers that do not match this pattern will fail validation with HMRC systems and cannot be used for tax reporting.',
@@ -151,7 +179,25 @@ def get_ap_checks():
          'asuheader.swift length NOT IN (8, 11) or contains invalid chars',
          lambda df: (~df['swift'].str.match(r'^[A-Z0-9]{8,11}$', na=False)) & df['swift'].notna()),
 
-('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
+        ('SUP_ZIP_FORMAT', 10, 'Suppliers', 'Validity', 'Medium',
+         'Postcode or zip code format is invalid for the supplier country',
+         'Postcodes must match the expected format for the supplier country. An invalid postcode indicates a data entry error and will prevent address verification and postal correspondence.',
+         'Correct agladdress.zip_code to match the expected format for the country.', 'asuheader', None,
+         'zip_code does not match expected format for country_code (GB/US/EU)',
+         lambda df: (
+             df['zip_code'].notna() &
+             (df['zip_code'].str.strip().str.len() > 0) &
+             df['country_code'].isin(['GB','US','DE','FR','IT','ES','NL','BE','AT','CH','PT','SE','NO','DK','FI','PL','LU','HU','CZ','SK','SI','HR','RO','BG','IE']) &
+             ~(
+                 ((df['country_code'] == 'GB') & df['zip_code'].str.strip().str.upper().str.match(r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$', na=False)) |
+                 ((df['country_code'] == 'US') & df['zip_code'].str.strip().str.match(r'^\d{5}(-\d{4})?$', na=False)) |
+                 (df['country_code'].isin(['DE','FR','IT','ES','BE','AT','CH','PT','SE','NO','DK','FI','PL','LU','HU','CZ','SK','SI','HR','RO','BG']) & df['zip_code'].str.strip().str.match(r'^\d{4,5}$', na=False)) |
+                 ((df['country_code'] == 'NL') & df['zip_code'].str.strip().str.upper().str.match(r'^\d{4}\s?[A-Z]{2}$', na=False)) |
+                 ((df['country_code'] == 'IE') & df['zip_code'].str.strip().str.upper().str.match(r'^[A-Z\d]{3}\s?[A-Z\d]{4}$', na=False))
+             )
+         )),
+
+        ('SUP_BACS_NO_BANK', 10, 'Suppliers', 'Consistency', 'Critical',
          'Payment method is domestic electronic but bank details are missing',
          'Suppliers set to a domestic electronic payment method must have both a bank account number and a sort code populated. The payment run will fail to process settlements for any supplier missing these details.',
          'Provide bank details in asuheader.', 'asuheader', None,

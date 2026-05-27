@@ -110,6 +110,10 @@ def make_clean_supplier(client_code: str, apar_id: str) -> dict:
         'bank_account':  fmt_account()   if has_bacs else None,
         'iban':          fmt_iban()       if has_int  else None,
         'swift':         fmt_swift()      if has_int  else None,
+        'address':       fake.street_address(),
+        'place':         fake.city(),
+        'zip_code':      fake.postcode(),
+        'province':      fake.county(),
         'expired_date':  None,
         'last_update':   rand_date(date(2021, 1, 1), TODAY).isoformat(),
         'wf_state':      'T',
@@ -130,6 +134,11 @@ def make_supplier_edge_cases(client_code: str, start_id: int) -> tuple:
         return base
 
     # Completeness
+    cases.append(ec({'address': None},                       'SUP_ADDR_MISSING'))
+    cases.append(ec({'place': None},                         'SUP_PLACE_MISSING'))
+    cases.append(ec({'zip_code': None},                      'SUP_ZIP_MISSING'))
+    cases.append(ec({'province': None},                      'SUP_PROVINCE_MISSING'))
+    cases.append(ec({'zip_code': 'INVALID99', 'country_code': 'GB'}, 'SUP_ZIP_FORMAT'))
     cases.append(ec({'vat_reg_no': None},                   'SUP_VAT_MISSING'))
     cases.append(ec({'pay_method': None, 'clearing_code': None, 'bank_account': None}, 'SUP_PAY_METHOD_MISSING'))
     cases.append(ec({'clearing_code': None, 'bank_account': None, 'iban': None,
