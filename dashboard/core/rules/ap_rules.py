@@ -215,11 +215,11 @@ def get_ap_checks():
          lambda df: (df['pay_method'].isin(['IN', 'EU', 'TF', 'RT'])) & df['iban'].isna()),
 
         ('SUP_NAME_DUP', 10, 'Suppliers', 'Uniqueness', 'Medium',
-         'Duplicate supplier name exists within the same House',
-         'Each supplier name should be unique within a House. Duplicate names indicate the same payee has been registered more than once, which can result in payments being split across multiple records and complicate reconciliation.',
+         'Duplicate supplier name with matching address and postcode exists within the same House',
+         'Each supplier name should be unique within a House. Duplicate names with the same address and postcode indicate the same payee has been registered more than once, which can result in payments being split across multiple records and complicate reconciliation. Records with the same name but a different address or postcode are not flagged.',
          'Consolidate records in asuheader.apar_name.', 'asuheader', None,
-         'COUNT(*) OVER(PARTITION BY client, apar_name) > 1',
-         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
+         'COUNT(*) OVER(PARTITION BY house, apar_name, address, zip_code) > 1',
+         lambda df: df.duplicated(subset=['house', 'apar_name', 'address', 'zip_code'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
         ('SUP_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
          'Duplicate bank account, sort code and VAT registration combination within the same House',
