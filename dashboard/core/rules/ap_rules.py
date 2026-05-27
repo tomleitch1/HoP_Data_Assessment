@@ -329,7 +329,8 @@ def get_ap_checks():
                          h['house'].isin(df['house'].unique()) &
                          (h['trans_date'] >= today - pd.Timedelta(days=548))
                      ]['apar_id'])
-             )
+             ) &
+             ~df['apar_id'].astype(str).str[:4].isin(['1000'])
          )),
 
         ('SUP_SUNDRY', 10, 'Suppliers', 'Validity', 'Low',
