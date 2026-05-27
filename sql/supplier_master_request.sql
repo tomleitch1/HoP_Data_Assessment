@@ -27,10 +27,20 @@ SELECT
     h.iban,
     h.swift,
 
+    -- === ADDRESS ===
+    a.address,
+    a.place,
+    a.zip_code,
+    a.province,
+
     -- === STATUS & DATES ===
     h.expired_date,
     h.last_update,
     h.wf_state
 
 FROM asuheader h
+LEFT JOIN agladdress a
+    ON  a.client       = h.client
+    AND a.dim_value    = h.apar_id
+    AND a.address_type = '1'
 ORDER BY h.client, h.apar_id;
