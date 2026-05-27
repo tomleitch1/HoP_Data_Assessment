@@ -28,7 +28,7 @@ fake = Faker('en_GB')
 random.seed(42)
 Faker.seed(42)
 
-OUTPUT_DIR = 'data'
+OUTPUT_DIR = os.path.join('data', 'suppliers')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TODAY = date.today()
@@ -37,8 +37,8 @@ EIGHTEEN_MONTHS_AGO = TODAY - timedelta(days=548)
 
 # Internal Unit4 client codes — placeholders until Parliament confirms actual values.
 # These are NOT 'HOC'/'HOL'; they are system-level client identifiers within Unit4.
-HOC_CLIENT_CODE = '1000'
-HOL_CLIENT_CODE = '2000'
+HOC_CLIENT_CODE = 'CA'
+HOL_CLIENT_CODE = 'LA'
 
 STATUSES      = ['N', 'C', 'P', 'T']
 CURRENCIES    = ['GBP', 'USD', 'EUR']
