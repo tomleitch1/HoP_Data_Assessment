@@ -39,9 +39,13 @@ SELECT
     h.wf_state
 
 FROM asuheader h
-LEFT JOIN agladdress a
-    ON  a.client       = h.client
-    AND a.dim_value    = h.apar_id
-    AND a.attribute_id = 'A5'
-    AND a.address_type = '1'
+LEFT JOIN (
+    SELECT client, dim_value, address, place, zip_code, province,
+           ROW_NUMBER() OVER (PARTITION BY client, dim_value ORDER BY sequence_no) AS rn
+    FROM agladdress
+    WHERE attribute_id = 'A5'
+      AND address_type = '1'
+) a ON  a.client    = h.client
+    AND a.dim_value = h.apar_id
+    AND a.rn        = 1
 ORDER BY h.client, h.apar_id;
