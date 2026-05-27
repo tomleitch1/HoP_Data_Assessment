@@ -114,23 +114,27 @@ data/
 ├── customers/   customer_master_HOC/HOL.csv
 │                customer_open_trans_HOC/HOL.csv
 │                customer_history_HOC/HOL.csv
-├── gl/          gl_chart_of_accounts.csv, gl_dimension_values.csv
-│                gl_opening_balances.csv, gl_transact_dimensions.csv
+├── gl/          gl_chart_of_accounts_HOC/HOL.csv
+│                gl_dimension_values_HOC/HOL.csv
+│                gl_opening_balances_HOC/HOL.csv
+│                gl_transact_dimensions_HOC/HOL.csv
 │                gl_journals_HOC/HOL.csv
 └── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
                  asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
                  asset_groups_HOC/HOL.csv
 ```
 
-`data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and either `file_map` or `split_files` in `load_data()`.
+`data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and `split_files` in `load_data()`. There is no longer a `file_map` for single combined files — all tables use split files.
 
 ---
 
 ## HOC/HOL Data Split
 
-All supplier, customer, asset, and GL journal tables use **per-house split files** (`*_HOC.csv` + `*_HOL.csv`). The engine concatenates them and assigns `house` from the filename suffix — **not** from the `client` column. The `client` column contains internal Unit4 fund codes (e.g. `CA`, `CF`, `CM` for HoC; `LA` for HoL) and must not be used for house filtering anywhere.
+All tables in every domain use **per-house split files** (`*_HOC.csv` + `*_HOL.csv`). The engine concatenates them and assigns `house` from the filename suffix — **not** from the `client` column. The `client` column contains internal Unit4 fund codes and must not be used for house filtering anywhere.
 
-GL reference tables (`gl_chart_of_accounts.csv`, `gl_dimension_values.csv`, `gl_opening_balances.csv`) are currently single combined files — these will need splitting to split files once live data arrives.
+**Confirmed Unit4 client codes:**
+- HoC (`Agresso_HoC`): `CA`, `CM` — these are the only two in scope. `CF` exists in the database but is not extracted.
+- HoL (`agresso_HoL`): `LA`
 
 All DQ analysis runs per-house. `dq_results` always has a `house` column. Charts typically show HOC and HOL side by side.
 
@@ -368,6 +372,47 @@ Each dimension widget header also shows per-house HOC/HOL score chips (`_house_s
 
 ---
 
+## GL Domain — Implementation Details
+
+### SQL extracts (`sql/`)
+All GL extract files exist in two forms:
+- `gl_*_run.sql` — **original full spec** with documentation, assumptions, and DQ test descriptions
+- `gl_*_HOC_run.sql` / `gl_*_HOL_run.sql` — **clean run-ready versions** for pasting directly into SSMS, filtered to confirmed client codes
+
+Use the `_HOC_run.sql` / `_HOL_run.sql` files when extracting on the Parliament laptop.
+
+### Dimension values (`agldimvalue` / `gl_dimension_values`)
+Unit4 stores GL dimension values (cost centres, subjectives, analysis codes, etc.) in `agldimvalue`. Each row has an `attribute_id` which identifies the dimension type — but these codes are opaque short strings (e.g. `C1`, `ZZ`) not human-readable names.
+
+The mapping between dim positions (dim_1 through dim_7 on journal lines) and attribute_ids is held in the `agldimension` table:
+
+| Column | Description |
+|--------|-------------|
+| `client` | Fund/entity code |
+| `dim_position` | Which dim column this attribute maps to (e.g. `1` = dim_1) |
+| `attribute_id` | The attribute code used in agldimvalue |
+| `description` | Human-readable name e.g. "Cost Centre", "Subjective" |
+| `status` | N=Active — filter to N only |
+
+A single dim_position can have multiple active `attribute_id` codes (e.g. dim_2 may hold both "Cost Centre" and "Seconded Staff Customer" depending on context).
+
+The `gl_dimension_values_HOC/HOL_run.sql` Step 2 query joins `agldimvalue` to `agldimension` automatically — no manual attribute_id codes need to be entered. The output includes `dim_position` and `dim_description` columns.
+
+**Known issue — hardcoded attribute_id in gl_rules.py:** `GL_TRA_ORPHAN_DIM1` at `dashboard/core/rules/gl_rules.py:200` filters `attribute_id == 'COSTC'` — a dummy-data placeholder. This must be updated with the real Cost Centre attribute_id once confirmed from the `agldimension` extract.
+
+### File loading
+All five GL tables load as split files. `house` is assigned from the filename suffix (not the `client` column):
+
+| Frame key | Files |
+|-----------|-------|
+| `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` |
+| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` |
+| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` |
+| `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` |
+| `gl_journals` | `gl_journals_HOC/HOL.csv` |
+
+---
+
 ## Current State (as of May 2026)
 
 **Implemented and tested with dummy data:**
@@ -383,7 +428,7 @@ Each dimension widget header also shows per-house HOC/HOL score chips (`_house_s
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier/AP data (asuheader, asutrans) confirmed working including DQ checks, modal drill-down, and AP aging analysis. Remaining domains (customers, GL, assets) still need real CSVs extracted and placed in the correct `data/` subfolders. This machine still uses dummy data. When column names or status codes differ from dummy data, update `COLUMN_MAP` and the relevant `*Config` constants in `config.py` here, push, and pull on the Parliament laptop.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier/AP data confirmed working. GL CSV extraction is in progress (May 2026) — `gl_chart_of_accounts` and `gl_dimension_values` extracts are being run; `gl_opening_balances`, `gl_transact_dimensions`, and `gl_journals` still to be extracted. Customers, GL, and assets still need real CSVs placed in `data/` subfolders. This machine uses dummy data.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
