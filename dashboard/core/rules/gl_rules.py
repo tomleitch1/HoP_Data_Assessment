@@ -2,25 +2,159 @@ import pandas as pd
 
 
 def get_gl_checks():
-    return []
+    return [
+
+        # ---------------------------------------------------------------
+        # CHART OF ACCOUNTS — aglaccounts
+        # Population: active accounts (status == 'N'), except GL_ACC_DUP_CODE (full)
+        # period_from, period_to, last_update arrive as datetime64 after _parse_dates()
+        # ---------------------------------------------------------------
+
+        # COMPLETENESS
+        ('GL_ACC_DESC_MISSING',
+         20, 'Chart of Accounts', 'Completeness', 'Medium',
+         'Active account has no description',
+         'Every active account must have a description. '
+         'Without it, finance staff cannot identify what the account is for during review or migration mapping. '
+         'The new system will reject accounts with no description during data load.',
+         'Add a description to the account in the legacy system before migration.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND (description IS NULL OR description = '')",
+         lambda df: df['description'].isna() | (df['description'].astype(str).str.strip() == '')),
+
+        ('GL_ACC_GRP_MISSING',
+         20, 'Chart of Accounts', 'Completeness', 'Medium',
+         'Active account not assigned to an account group',
+         'Every active account must belong to a reporting group. '
+         'The account group drives the financial statement hierarchy in the new system. '
+         'Accounts without a group will be excluded from all reports after migration.',
+         'Assign the account to the correct group in the legacy system.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND (account_grp IS NULL OR account_grp = '')",
+         lambda df: df['account_grp'].isna() | (df['account_grp'].astype(str).str.strip() == '')),
+
+        ('GL_ACC_RESBAL_MISSING',
+         20, 'Chart of Accounts', 'Completeness', 'High',
+         'Active account missing Balance Sheet / P&L classification (res_bal)',
+         'Every active account must be classified as either a Balance Sheet account (B) or a P&L account (R). '
+         'This field controls whether the account balance is carried forward at year end or reset to zero. '
+         'A missing classification will cause incorrect opening balances in the new system.',
+         'Set res_bal to R (P&L) or B (Balance Sheet) for each affected account.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND (res_bal IS NULL OR res_bal = '')",
+         lambda df: df['res_bal'].isna() | (df['res_bal'].astype(str).str.strip() == '')),
+
+        ('GL_ACC_RULE_MISSING',
+         20, 'Chart of Accounts', 'Completeness', 'Medium',
+         'Active account missing its posting rule',
+         'Every active account must have a posting rule assigned. '
+         'The posting rule controls which transaction types are permitted on the account. '
+         'An account without a rule may be rejected during transaction posting in the new system.',
+         'Assign the correct posting rule to the account.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND (account_rule IS NULL OR account_rule = '')",
+         lambda df: df['account_rule'].isna() | (df['account_rule'].astype(str).str.strip().isin(['', 'nan']))),
+
+        ('GL_ACC_PERIOD_MISSING',
+         20, 'Chart of Accounts', 'Completeness', 'Low',
+         'Active account missing valid-from date',
+         'Every active account should have a period_from date recording when it became valid. '
+         'This field supports audit trails and validity checking in the new system.',
+         'Populate the valid-from date for the account.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND period_from IS NULL",
+         lambda df: df['period_from'].isna()),
+
+        # VALIDITY
+        ('GL_ACC_RESBAL_INVALID',
+         20, 'Chart of Accounts', 'Validity', 'High',
+         'Account res_bal contains a value other than R or B',
+         'The res_bal field must be either R (P&L) or B (Balance Sheet). '
+         'Any other value is not a recognised classification and will fail validation on import to the new system. '
+         'Affected accounts must be corrected before migration.',
+         'Set res_bal to R or B. Remove or replace any non-standard codes.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND res_bal NOT IN ('R', 'B')",
+         lambda df: df['res_bal'].notna() & ~df['res_bal'].isin(['R', 'B'])),
+
+        ('GL_ACC_TYPE_INVALID',
+         20, 'Chart of Accounts', 'Validity', 'Medium',
+         'Account type is not GL, AP, or AR',
+         'The account_type field must be GL (General Ledger), AP (Accounts Payable control), or AR (Accounts Receivable control). '
+         'An unrecognised account type cannot be mapped to the new system chart of accounts. '
+         'Affected accounts must be corrected or excluded before migration.',
+         'Correct the account_type to GL, AP, or AR.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND account_type NOT IN ('GL', 'AP', 'AR')",
+         lambda df: df['account_type'].notna() & ~df['account_type'].isin(['GL', 'AP', 'AR'])),
+
+        ('GL_ACC_PERIOD_INV',
+         20, 'Chart of Accounts', 'Validity', 'Medium',
+         'Account valid-from date is after its valid-to date',
+         'The period_from date must be earlier than or equal to period_to. '
+         'An inverted validity range means the account has no valid period and should never be active. '
+         'This will cause posting failures in the new system if not corrected.',
+         'Correct period_from and period_to so that the valid-from is not after the valid-to.',
+         'aglaccounts', None,
+         'WHERE status = \'N\' AND period_from > period_to',
+         lambda df: df['period_from'].notna() & df['period_to'].notna() & (df['period_from'] > df['period_to'])),
+
+        ('GL_ACC_STALE_N',
+         20, 'Chart of Accounts', 'Validity', 'Low',
+         'Account status is active (N) but validity period has expired',
+         'Active accounts must have a valid-to date that is in the future. '
+         'An account whose validity period has passed but is still marked active may represent an account that should have been closed. '
+         'These accounts should be reviewed before migration to avoid carrying stale data into the new system.',
+         'Either extend the validity period if the account is still required or close the account (status C) if it is no longer needed.',
+         'aglaccounts', None,
+         'WHERE status = \'N\' AND period_to < GETDATE()',
+         lambda df: df['period_to'].notna() & (df['period_to'] < pd.Timestamp.now())),
+
+        # UNIQUENESS
+        ('GL_ACC_DUP_CODE',
+         20, 'Chart of Accounts', 'Uniqueness', 'Critical',
+         'Duplicate account code within the same client',
+         'Each account code must be unique within a client. '
+         'Duplicate account codes indicate a data integrity failure in the source system. '
+         'They cannot be migrated without resolution as the new system enforces uniqueness on account code.',
+         'Investigate each duplicate pair. Merge or delete the redundant account after confirming no live transactions depend on it.',
+         'aglaccounts', None,
+         'WHERE (client, account) appears more than once',
+         lambda df: df.duplicated(subset=['client', 'account'], keep=False)),
+
+        # TIMELINESS
+        ('GL_ACC_STALE_MOD',
+         20, 'Chart of Accounts', 'Timeliness', 'Low',
+         'Account not modified in over 3 years',
+         'Accounts that have not been updated in more than 3 years may be obsolete or no longer required. '
+         'These should be reviewed before migration to determine whether they should be carried forward into the new system or closed.',
+         'Review each stale account. Close accounts that are no longer required and confirm that active accounts are still needed.',
+         'aglaccounts', None,
+         'WHERE status = \'N\' AND last_update < DATEADD(year, -3, GETDATE())',
+         lambda df: df['last_update'].notna() & (df['last_update'] < pd.Timestamp.now() - pd.Timedelta(days=3 * 365))),
+
+    ]
 
 
 # =============================================================================
-# GL DQ CHECK CATALOGUE — planned checks, to be rebuilt against real data
+# GL DQ CHECK CATALOGUE — remaining checks, to be built once real data schema
+# is confirmed for each dataset
 # =============================================================================
-# Chart of Accounts (aglaccounts)
+# Chart of Accounts (aglaccounts) — IMPLEMENTED ABOVE
 #   GL_ACC_DESC_MISSING   Active account has no description
 #   GL_ACC_GRP_MISSING    Active account not assigned to a reporting group
 #   GL_ACC_RESBAL_MISSING Missing Balance Sheet/P&L classification
 #   GL_ACC_RULE_MISSING   Active account missing its posting rule ID
-#   GL_ACC_PERIOD_MISSING Active account missing valid-from period
+#   GL_ACC_PERIOD_MISSING Active account missing valid-from date
 #   GL_ACC_RESBAL_INVALID res_bal contains invalid code (must be R or B)
 #   GL_ACC_TYPE_INVALID   account_type not a valid GL/AP/AR code
-#   GL_ACC_PERIOD_INV     Valid-from period is after the valid-to period
+#   GL_ACC_PERIOD_INV     Valid-from date is after the valid-to date
 #   GL_ACC_STALE_N        Account is active (status N) but validity period has expired
-#   GL_ACC_BFLAG_CON      Reconciliation account (bflag 7) not flagged as AP or AR type
-#   GL_ACC_DUP_CODE       Duplicate account code within the same House
-#   GL_ACC_STALE_MOD      Stale account: not updated in over 3 years
+#   GL_ACC_DUP_CODE       Duplicate account code within the same client
+#   GL_ACC_STALE_MOD      Account not updated in over 3 years
+#
+# Chart of Accounts (aglaccounts) — PENDING (bflag reconciliation bit TBD)
+#   GL_ACC_BFLAG_CON      Reconciliation account (specific bflag bit) not flagged as AP or AR type
 #
 # Dimension Values (agldimvalue)
 #   GL_DIM_DESC_MISSING   Active dimension value has no description

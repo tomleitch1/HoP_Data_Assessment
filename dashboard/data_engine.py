@@ -10,7 +10,8 @@ from datetime import date
 from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
-from dashboard.core.rules.asset_rules import get_asset_checks   
+from dashboard.core.rules.asset_rules import get_asset_checks
+from dashboard.core.rules.gl_rules import get_gl_checks
 
 DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
@@ -20,7 +21,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        [],
+    'gl':        ['gl_chart_of_accounts'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -120,6 +121,7 @@ def load_data(tab=None):
         'supplier_master', 'supplier_open_trans', 'supplier_history',
         'asset_master', 'asset_depreciation', 'asset_balances',
         'asset_trans_flags', 'asset_groups',
+        'gl_chart_of_accounts',
     }
 
     # Load split files
@@ -130,11 +132,12 @@ def load_data(tab=None):
         'customer_master':    'acuheader',
         'customer_open_trans': 'acutrans',
         'customer_history':   'acuhistr',
-        'asset_master':       'asset_master',
-        'asset_depreciation': 'asset_depreciation',
-        'asset_balances':     'asset_balances',
-        'asset_trans_flags':  'asset_trans_flags',
-        'asset_groups':       'asset_groups',
+        'asset_master':        'asset_master',
+        'asset_depreciation':  'asset_depreciation',
+        'asset_balances':      'asset_balances',
+        'asset_trans_flags':   'asset_trans_flags',
+        'asset_groups':        'asset_groups',
+        'gl_chart_of_accounts': 'aglaccounts',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -193,6 +196,7 @@ def get_dq_checks():
     checks.extend(get_ap_checks())
     checks.extend(get_ar_checks())
     checks.extend(get_asset_checks())
+    checks.extend(get_gl_checks())
     return checks
 
 def run_dq_analysis(frames, tab=None):
@@ -248,6 +252,12 @@ def run_dq_analysis(frames, tab=None):
                 elif house == 'HOL':
                     mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
+            elif table == 'aglaccounts':
+                # GL_ACC_DUP_CODE checks all accounts; all other CoA checks use active only
+                if check_id == 'GL_ACC_DUP_CODE':
+                    h_df = df_table[df_table['house'] == house]
+                else:
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -304,6 +314,19 @@ def run_dq_analysis(frames, tab=None):
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
+
+        # GL Chart of Accounts
+        'GL_ACC_DESC_MISSING':    ['account', 'description', 'account_type', 'status'],
+        'GL_ACC_GRP_MISSING':     ['account', 'account_grp', 'account_type', 'status'],
+        'GL_ACC_RESBAL_MISSING':  ['account', 'res_bal', 'account_type', 'status'],
+        'GL_ACC_RULE_MISSING':    ['account', 'account_rule', 'account_type', 'status'],
+        'GL_ACC_PERIOD_MISSING':  ['account', 'period_from', 'period_to', 'status'],
+        'GL_ACC_RESBAL_INVALID':  ['account', 'res_bal', 'account_type'],
+        'GL_ACC_TYPE_INVALID':    ['account', 'account_type', 'res_bal'],
+        'GL_ACC_PERIOD_INV':      ['account', 'period_from', 'period_to'],
+        'GL_ACC_STALE_N':         ['account', 'period_from', 'period_to', 'status'],
+        'GL_ACC_DUP_CODE':        ['client', 'account', 'description', 'status'],
+        'GL_ACC_STALE_MOD':       ['account', 'last_update', 'status'],
 
         # Suppliers
         'SUP_VAT_MISSING': ['vat_reg_no', 'apar_gr_id', 'status'],

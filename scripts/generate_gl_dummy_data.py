@@ -22,7 +22,7 @@ TODAY = date.today()
 
 # Pre-computed serials for common sentinel dates
 PERIOD_FROM_NORMAL = to_excel(date(2000, 1, 1))   # 36526 — account created ~Y2K
-PERIOD_TO_NORMAL   = to_excel(date(2099, 12, 31))  # 72684 — effectively no expiry
+PERIOD_TO_NORMAL   = to_excel(date(2049, 12, 31))  # 54788 — far future, within engine parse range (max 55000)
 PERIOD_TO_EXPIRED  = to_excel(date(2010, 6, 1))    # ~40330 — expired account
 LAST_UPDATE_STALE  = to_excel(date(2018, 1, 1))    # ~43101 — > 3 years ago
 
