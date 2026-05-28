@@ -228,6 +228,20 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY house, apar_name) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
+        ('SUP_VAT_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
+         'Duplicate VAT registration number exists within the same House',
+         'A VAT registration number should identify a unique legal entity within a House. The same VAT number on multiple supplier records indicates the same company has been registered more than once, creating duplicate payment risk and potential HMRC reporting errors.',
+         'Review asuheader.vat_reg_no and consolidate duplicate supplier records.', 'asuheader', None,
+         'COUNT(*) OVER(PARTITION BY house, vat_reg_no) > 1',
+         lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
+
+        ('SUP_BANK_SORT_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
+         'Duplicate bank account and sort code combination exists within the same House',
+         'The combination of bank account number and sort code should identify a unique payment destination within a House. The same bank details on multiple supplier records means payments could be made to the same account under different supplier names, which is a significant duplicate payment risk.',
+         'Review asuheader.bank_account and clearing_code and confirm each is a distinct payee.', 'asuheader', None,
+         'COUNT(*) OVER(PARTITION BY house, bank_account, clearing_code) > 1',
+         lambda df: df.duplicated(subset=['house', 'bank_account', 'clearing_code'], keep=False) & df['bank_account'].notna() & df['clearing_code'].notna() & (df['bank_account'].str.strip().str.len() > 1) & (df['clearing_code'].str.strip().str.len() > 1)),
+
         ('SUP_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
          'Duplicate bank account, sort code and VAT registration combination within the same House',
          'The combination of bank account, sort code and VAT registration number should be unique within a House. The same combination appearing on multiple supplier records is a strong indicator of duplicate registrations and must be investigated before migration to avoid misdirected payments.',
