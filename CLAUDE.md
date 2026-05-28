@@ -54,6 +54,17 @@ python scripts/generate_asset_data.py      # Asset data
 python scripts/generate_gl_dummy_data.py   # GL data
 ```
 
+### Tracker Generator
+
+Generates an Excel tracker for a specific tab and house, listing only checks with at least one failing record:
+```bash
+python scripts/generate_tracker.py suppliers HOC
+python scripts/generate_tracker.py suppliers HOL
+python scripts/generate_tracker.py gl HOC
+python scripts/generate_tracker.py assets HOL
+```
+Output saved to `trackers/<tab>_tracker_<HOUSE>.xlsx`. Columns: Test Reference, Description, Dimension, Severity, Failing Records, Total Assessed, Error Rate, RAG, Comments, Source System Cleansing Complete. Run on Parliament laptop against real data for a meaningful tracker.
+
 ---
 
 ## Architecture
@@ -372,6 +383,75 @@ Each dimension widget header also shows per-house HOC/HOL score chips (`_house_s
 
 ---
 
+## Supplier Domain — Implementation Details
+
+### SQL extract files (`sql/`)
+All supplier extract files exist as HOC/HOL split run files. Use the `_HOC_run.sql` / `_HOL_run.sql` files when extracting on the Parliament laptop:
+
+| File | Database | Client filter | Output filename |
+|------|----------|---------------|-----------------|
+| `supplier_master_HOC_run.sql` | `Agresso_HoC` | `CA`, `CM` | `supplier_master_HOC.csv` |
+| `supplier_master_HOL_run.sql` | `agresso_HoL` | `LA` | `supplier_master_HOL.csv` |
+| `supplier_trans_HOC_run.sql` | `Agresso_HoC` | `CA`, `CM` | `supplier_open_trans_HOC.csv` |
+| `supplier_trans_HOL_run.sql` | `agresso_HoL` | `LA` | `supplier_open_trans_HOL.csv` |
+| `supplier_hist_HOC_run.sql` | `Agresso_HoC` | `CA`, `CM` | `supplier_history_HOC.csv` |
+| `supplier_hist_HOL_run.sql` | `agresso_HoL` | `LA` | `supplier_history_HOL.csv` |
+
+### Supplier address (`agladdress`)
+Supplier addresses are not stored on `asuheader` — they live in the shared `agladdress` table. The join to get the primary address:
+
+```sql
+LEFT JOIN (
+    SELECT client, dim_value, address, place, zip_code, province,
+           ROW_NUMBER() OVER (PARTITION BY client, dim_value ORDER BY sequence_no) AS rn
+    FROM agladdress
+    WHERE attribute_id = 'A5'
+      AND address_type = '1'
+) a ON  a.client    = h.client
+    AND a.dim_value = h.apar_id
+    AND a.rn        = 1
+```
+
+Key facts:
+- `agladdress` is shared across all entity types (suppliers, customers, cost centres) — `attribute_id` discriminates supplier records
+- **HoC confirmed `attribute_id = 'A5'`** for suppliers — verify for HoL before relying on it (run: `SELECT DISTINCT attribute_id FROM agladdress WHERE client = 'LA' AND address_type = '1'`)
+- `address_type = '1'` is the primary address — other types exist (delivery, remittance, etc.)
+- 183 HoC suppliers have multiple rows at `address_type = '1'` — `ROW_NUMBER() ORDER BY sequence_no` picks the primary one
+- Columns extracted: `address` (street), `place` (town/city), `zip_code` (postcode), `province` (county)
+- `00000000` bank account values are Unit4 placeholders (not valid bank accounts) — the `SUP_BACS_NO_BANK` check should eventually be updated to treat these as missing
+
+### Address DQ checks added
+Five new checks on `asuheader` (all Low/Medium severity, active suppliers only):
+- `SUP_ADDR_MISSING` — `address` blank/null (Completeness, Low)
+- `SUP_PLACE_MISSING` — `place` blank/null (Completeness, Low)
+- `SUP_ZIP_MISSING` — `zip_code` blank/null (Completeness, Low)
+- `SUP_PROVINCE_MISSING` — `province` blank/null (Completeness, Low)
+- `SUP_ZIP_FORMAT` — zip populated + known country + format wrong (Validity, Medium). Validates GB postcodes, US zips, most EU 4-5 digit formats, NL, IE Eircodes. Unknown country codes are not flagged.
+
+### SUP_NAME_DUP exemption
+Duplicate name check now requires name + address + zip_code to all match. Same supplier name at a different address or postcode is treated as a legitimate separate supplier.
+
+### SUP_DORMANT exemption
+`apar_id` values starting with `1000` are exempt from the dormant check for **both houses**.
+
+---
+
+## SSMS Extraction Quirks
+
+Known issues when extracting data on the Parliament laptop and saving via Excel:
+
+**SSMS save location** — SSMS runs under the `adminleitchtb` admin profile. Files saved via "Save Results As" go to `C:\Users\adminleitchtb\Documents\`, not the regular user's Documents. Navigate manually to `C:\Users\leitchtb\HoP_Data_Assessment\data\<subfolder>\` in the Save As dialog and SSMS remembers it next time.
+
+**Headers missing in CSV** — Enable via Tools → Options → Query Results → SQL Server → Results to Grid → tick "Include column headers when copying or saving results". Must close and reopen the query tab for the setting to take effect.
+
+**Leading zeros stripped (sort codes, bank accounts)** — Do not open CSVs by double-clicking in Explorer. Import via Excel: Data → Get Data → From Text/CSV → set affected columns to Text type in Power Query before loading. This preserves leading zeros.
+
+**Large numbers converted to scientific notation / dates** — Click "Don't Convert" when Excel prompts during CSV open. The dashboard handles all type parsing in `data_engine.py`.
+
+**Comma-formatted numbers** — `rest_amount` and similar numeric fields may arrive from SSMS as `1,234.56` — `data_engine.py` strips commas in pre-processing.
+
+---
+
 ## GL Domain — Implementation Details
 
 ### SQL extracts (`sql/`)
@@ -428,7 +508,7 @@ All five GL tables load as split files. `house` is assigned from the filename su
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier/AP data confirmed working. GL CSV extraction is in progress (May 2026) — `gl_chart_of_accounts` and `gl_dimension_values` extracts are being run; `gl_opening_balances`, `gl_transact_dimensions`, and `gl_journals` still to be extracted. Customers, GL, and assets still need real CSVs placed in `data/` subfolders. This machine uses dummy data.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL CSV extraction in progress — `gl_chart_of_accounts` and `gl_dimension_values` extracts running; `gl_opening_balances`, `gl_transact_dimensions`, and `gl_journals` still to be extracted. Customers, GL, and assets still need real CSVs placed in `data/` subfolders. This machine uses dummy data.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
