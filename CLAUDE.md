@@ -41,10 +41,16 @@ Run the SQL files in `sql/` against each database in SSMS (server `mdata837`). E
 ## Running the App
 
 ```bash
-python run_dashboard.py
+python run_dashboard.py              # all tabs
+python run_dashboard.py suppliers    # suppliers + AP only
+python run_dashboard.py gl           # GL only
+python run_dashboard.py customers    # customers + AR only
+python run_dashboard.py assets       # assets only
 ```
 
 App starts at `http://127.0.0.1:8050`. No build step. Place CSV extracts in `data/` before launching.
+
+**Per-tab mode** — passing a tab name loads only that domain's CSV files and runs only its DQ checks. Use this on the Parliament laptop to reduce startup time when working on one domain. `ap` and `ar` are accepted as aliases for `suppliers` and `customers`. Implemented via `DASHBOARD_TAB` env var read by `app.py`; `load_data(tab=)` and `run_dq_analysis(frames, tab=)` in `data_engine.py` both accept the filter.
 
 There are no automated tests. The scripts in `scripts/` generate dummy data for development on this machine:
 ```bash
@@ -421,18 +427,32 @@ Key facts:
 - `00000000` bank account values are Unit4 placeholders (not valid bank accounts) — the `SUP_BACS_NO_BANK` check should eventually be updated to treat these as missing
 
 ### Address DQ checks added
-Five new checks on `asuheader` (all Low/Medium severity, active suppliers only):
+Five checks on `asuheader` (all Low/Medium severity, active suppliers only):
 - `SUP_ADDR_MISSING` — `address` blank/null (Completeness, Low)
 - `SUP_PLACE_MISSING` — `place` blank/null (Completeness, Low)
 - `SUP_ZIP_MISSING` — `zip_code` blank/null (Completeness, Low)
 - `SUP_PROVINCE_MISSING` — `province` blank/null (Completeness, Low)
 - `SUP_ZIP_FORMAT` — zip populated + known country + format wrong (Validity, Medium). Validates GB postcodes, US zips, most EU 4-5 digit formats, NL, IE Eircodes. Unknown country codes are not flagged.
 
-### SUP_NAME_DUP exemption
-Duplicate name check now requires name + address + zip_code to all match. Same supplier name at a different address or postcode is treated as a legitimate separate supplier.
+**HOC address exemptions**: `apar_id` values starting with `1000` (iTrent employees — address not held in Unit4) or `74` are excluded from all four address completeness checks. HOL is unaffected.
+
+### Supplier Uniqueness checks (full set)
+Within-house checks on `asuheader` (Uniqueness dimension):
+- `SUP_NAME_DUP` — duplicate name + address + zip_code within same house (Medium). Same name at different address/postcode is not flagged.
+- `SUP_NAME_DUP_ANY` — duplicate name within same house regardless of address (Low). Flags any same-name record for review.
+- `SUP_VAT_DUP` — duplicate VAT registration number within same house (High).
+- `SUP_BANK_SORT_DUP` — duplicate bank account + sort code combination within same house (High).
+- `SUP_BANK_DUP` — duplicate bank account + sort code + VAT registration (all three) within same house (High).
+- `SUP_CLIENT_APAR_DUP` — duplicate `(client, apar_id)` primary key (Critical).
+
+Cross-house checks (lambda signature `df, frames`) — see Adding a Cross-House Uniqueness Check above:
+- `SUP_XHOUSE_VAT_DUP`, `SUP_XHOUSE_COMP_REG_DUP`, `SUP_XHOUSE_IBAN_DUP`, `SUP_XHOUSE_BANK_DUP`, `SUP_XHOUSE_NAME_DUP`
 
 ### SUP_DORMANT exemption
 `apar_id` values starting with `1000` are exempt from the dormant check for **both houses**.
+
+### AP_ORPHANED_TRANS modal evidence
+The `get_failing_records` early-return for `AP_ORPHANED_TRANS` returns a summary grouped by `apar_id` with a transaction count — one row per orphaned supplier ID rather than one row per transaction. Columns returned: `AP_INVOICES.apar_id`, `AP_INVOICES.transaction_count`.
 
 ---
 
@@ -508,7 +528,7 @@ All five GL tables load as split files. `house` is assigned from the filename su
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL CSV extraction in progress — `gl_chart_of_accounts` and `gl_dimension_values` extracts running; `gl_opening_balances`, `gl_transact_dimensions`, and `gl_journals` still to be extracted. Customers, GL, and assets still need real CSVs placed in `data/` subfolders. This machine uses dummy data.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL, customers, and assets still need real CSVs placed in `data/` subfolders on the Parliament laptop. This machine uses dummy data. All five GL extract SQL files now have HOC/HOL split run files ready to execute — no GL data has been extracted yet.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
