@@ -86,9 +86,34 @@ _FORCE_STR_DTYPE = {col: str for col in [
 ]}
 
 
-def load_data():
-    """Loads all CSV files from the data directory and combines HOC/HOL."""
+# Maps CLI/SUBDIR domain names to SCOPE_CONFIG keys for check filtering
+_SUBDIR_TO_SCOPE = {
+    'suppliers': 'ap',
+    'customers': 'ar',
+    'gl':        'gl',
+    'assets':    'assets',
+}
+
+# User-friendly aliases accepted on the command line
+TAB_ALIASES = {
+    'suppliers': 'suppliers', 'ap': 'suppliers',
+    'customers': 'customers', 'ar': 'customers',
+    'gl':        'gl',
+    'assets':    'assets',
+}
+
+
+def load_data(tab=None):
+    """Loads CSV files from the data directory and combines HOC/HOL.
+
+    If *tab* is provided (e.g. 'suppliers'), only files for that domain are
+    loaded.  Pass None (default) to load everything.
+    """
     frames = {}
+
+    names_to_load = set(SUBDIR.get(tab, [])) if tab else {
+        n for names in SUBDIR.values() for n in names
+    }
 
     # Tables where house is determined by the filename suffix (_HOC / _HOL),
     # not by the client column. The client column contains internal Unit4 client
@@ -121,6 +146,8 @@ def load_data():
         'gl_transact_dimensions': 'agltransact',
     }
     for base_name, table in split_files.items():
+        if base_name not in names_to_load:
+            continue
         dfs = []
         for house in ['HOC', 'HOL']:
             path = _data_path(base_name, f'_{house}')
@@ -178,10 +205,19 @@ def get_dq_checks():
     checks.extend(get_asset_checks())
     return checks
 
-def run_dq_analysis(frames):
-    """Executes all DQ checks and returns a summary DataFrame."""
+def run_dq_analysis(frames, tab=None):
+    """Executes DQ checks and returns a summary DataFrame.
+
+    If *tab* is provided, only checks for that domain's scope IDs are run.
+    """
+    from dashboard.core.config import SCOPE_CONFIG
     results = []
     checks = get_dq_checks()
+    if tab:
+        scope_key = _SUBDIR_TO_SCOPE.get(tab)
+        if scope_key and scope_key in SCOPE_CONFIG:
+            allowed = set(SCOPE_CONFIG[scope_key]['scope_ids'])
+            checks = [c for c in checks if c[1] in allowed]
     
     for check_id, scope_id, obj, dim, sev, desc, intent, rem, table, joined_table, logic, filter_func in checks:
         if table not in frames:

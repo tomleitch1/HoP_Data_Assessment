@@ -1,4 +1,5 @@
 import dash
+import os
 import re
 import numpy as np
 
@@ -27,10 +28,14 @@ from dashboard.tabs.aging import render_aging
 # DATA INITIALIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_active_tab = os.environ.get('DASHBOARD_TAB')  # None = load all tabs
+if _active_tab:
+    print(f"Tab filter active: loading '{_active_tab}' data only")
+
 print("Loading data...")
-frames = load_data()
+frames = load_data(tab=_active_tab)
 print("Running DQ analysis...")
-dq_results = run_dq_analysis(frames)
+dq_results = run_dq_analysis(frames, tab=_active_tab)
 print("Building aging analysis...")
 aging_results = build_aging_analysis(frames)
 check_col_map = get_check_columns()
