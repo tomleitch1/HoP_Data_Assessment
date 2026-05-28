@@ -194,12 +194,12 @@ def get_gl_checks():
          'Finds transactions coded to a Cost Centre dimension value that does not exist or is inactive in master data — the coding is invalid and would create orphaned reporting entries.',
          'Check agltransact.dim_1 against agldimvalue.dim_value.', 'agltransact', 'agldimvalue',
          'agltransact.dim_1 NOT IN (SELECT dim_value FROM agldimvalue WHERE status = "N")',
-         lambda df, frames: df['dim_1'].notna() & ~df[['house', 'dim_1']].apply(tuple, axis=1).isin(
-             frames.get('agldimvalue', pd.DataFrame())[
-                 (frames.get('agldimvalue', pd.DataFrame())['status'] == 'N') &
-                 (frames.get('agldimvalue', pd.DataFrame())['dim_position'] == 1)
+         lambda df, frames: (lambda dv: df['dim_1'].notna() & (df['dim_1'] != '') & ~df[['house', 'dim_1']].apply(tuple, axis=1).isin(
+             dv[
+                 (dv['status'] == 'N') &
+                 ((pd.to_numeric(dv['dim_position'], errors='coerce') == 1) if 'dim_position' in dv.columns else True)
              ][['house', 'dim_value']].apply(tuple, axis=1)
-         ) if 'agldimvalue' in frames else pd.Series([False]*len(df))),
+         ))(frames.get('agldimvalue', pd.DataFrame())) if 'agldimvalue' in frames else pd.Series([False]*len(df))),
 
         # ======================================================================
         # --- GL JOURNALS (agltransact) ---

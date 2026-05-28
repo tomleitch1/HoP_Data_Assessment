@@ -229,19 +229,20 @@ def generate_dimension_values(account_pool):
     anal2_codes = [f"A2{str(i).zfill(2)}" for i in range(10, 25)]
 
     dimension_configs = [
-        (ATTR_COSTC, cc_codes, 'Cost Centre', cc_parents),
-        (ATTR_SUBJ,  subj_codes, 'Subjective', None),
-        (ATTR_ANAL1, anal1_codes, 'Programme', None),
-        (ATTR_ANAL2, anal2_codes, 'Project', None),
+        (ATTR_COSTC, cc_codes, 'Cost Centre', cc_parents, 1),
+        (ATTR_SUBJ,  subj_codes, 'Subjective', None,      2),
+        (ATTR_ANAL1, anal1_codes, 'Programme', None,      3),
+        (ATTR_ANAL2, anal2_codes, 'Project', None,        4),
     ]
 
     for client in CLIENTS:
-        for (attr_id, codes, desc_prefix, parents) in dimension_configs:
+        for (attr_id, codes, desc_prefix, parents, dim_pos) in dimension_configs:
             for i, code in enumerate(codes):
                 rel_value = random.choice(parents) if parents else None
                 rows.append({
                     'client': client,
                     'attribute_id': attr_id,
+                    'dim_position': dim_pos,
                     'dim_value': code,
                     'description': f"{desc_prefix} {code}",
                     'status': random.choice(['N', 'N', 'N', 'C']),
@@ -256,65 +257,65 @@ def generate_dimension_values(account_pool):
     edge_cases = [
 
         # COMPLETENESS: Missing description
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D001',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D001',
          'description': None, 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # COMPLETENESS: Missing rel_value where hierarchy expected (Cost Centre)
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D002',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D002',
          'description': 'EC No Parent CC', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': None, 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # VALIDITY: period_from greater than period_to
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D003',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D003',
          'description': 'EC Invalid Period Range', 'status': 'N',
          'period_from': 1225, 'period_to': 125,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # VALIDITY: Period expired but status still N
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D004',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D004',
          'description': 'EC Expired Period Active', 'status': 'N',
          'period_from': 100, 'period_to': 200,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # VALIDITY: Stuck in workflow
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D005',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D005',
          'description': 'EC Stuck Workflow', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'W'},
 
         # CONSISTENCY: rel_value references non-existent parent
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D006',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D006',
          'description': 'EC Orphaned Parent', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_GHOST', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # CONSISTENCY: Same description different code within HOC COSTC
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D007',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D007',
          'description': 'Duplicate Dimension Description', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D008',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D008',
          'description': 'Duplicate Dimension Description', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_B', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # DUPLICATE: Same dim_value exists in both Houses - consolidation candidate
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'CC999',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'CC999',
          'description': 'Cross House Cost Centre HOC', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
-        {'client': 'HOL', 'attribute_id': ATTR_COSTC, 'dim_value': 'CC999',
+        {'client': 'HOL', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'CC999',
          'description': 'Cross House Cost Centre HOL', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
 
         # SCOPE: Stale dimension value
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D009',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D009',
          'description': 'EC Stale Dimension', 'status': 'N',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A',
@@ -323,7 +324,7 @@ def generate_dimension_values(account_pool):
 
         # BACKWARD COMPAT: Inactive dimension value
         # will be referenced by transactions in aglyearend
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_value': 'EC_D010',
+        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D010',
          'description': 'EC Inactive With Balances', 'status': 'C',
          'period_from': 125, 'period_to': 1225,
          'rel_value': 'DEPT_A', 'last_update': random_date(730, 365), 'wf_state': 'T'},
