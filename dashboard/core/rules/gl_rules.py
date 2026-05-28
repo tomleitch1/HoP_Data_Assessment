@@ -40,26 +40,31 @@ def get_gl_checks():
 
         ('GL_BAL_PL_NONZERO',
          22, 'GL Opening Balances', 'Validity', 'Medium',
-         'P&L account carries a non-zero net balance across all posted periods',
-         'P&L accounts (res_bal = R) must carry a zero net balance at year end after year-end close journals have been posted. '
-         'A non-zero net balance on a P&L account indicates either that the year-end close has not been completed '
-         'or that a posting was not reversed. '
-         'P&L balances that are not zeroed off will create incorrect opening positions in the new system. '
-         'Note: this check may fire legitimately if year-end adjustment periods (13, 14, 15) are still being posted.',
-         'Confirm whether the year-end close has been completed for all periods. '
-         'If so, investigate the postings on the affected account and reverse or reclassify as appropriate.',
+         'P&L account carries a non-zero net balance after year-end close',
+         'P&L accounts (res_bal = R) must carry a zero net balance after year-end close journals have been posted in periods 13, 14, or 15. '
+         'A non-zero net balance at that point means the year-end close did not fully zero the account, '
+         'or a post-close adjustment was made without a corresponding reversal. '
+         'P&L balances carried into migration will create incorrect opening positions in the new system. '
+         'This check is suppressed automatically when no period 13, 14, or 15 data is present in the extract — '
+         'it only becomes active once year-end close journals have been posted.',
+         'Confirm that year-end close is complete for all periods (13, 14, and 15 as applicable). '
+         'Investigate any P&L account with a residual balance and post a correcting journal or reclassify before cutover.',
          'aglyearend', 'aglaccounts',
-         "WHERE res_bal = 'R' (from aglaccounts) AND SUM(amount) <> 0 GROUP BY account",
+         "WHERE res_bal = 'R' (joined from aglaccounts) AND period 13/14/15 exists AND SUM(amount) <> 0 GROUP BY account",
          lambda df, frames: (
-             df['account'].isin(
-                 frames['aglaccounts'][
-                     (frames['aglaccounts']['house'] == df['house'].iloc[0]) &
-                     (frames['aglaccounts']['res_bal'] == 'R')
-                 ]['account']
-             ) &
-             df['account'].map(
-                 df.groupby('account')['amount'].sum().round(2)
-             ).ne(0)
+             pd.Series(False, index=df.index)
+             if not (pd.to_numeric(df['period'], errors='coerce') % 100 >= 13).any()
+             else (
+                 df['account'].isin(
+                     frames['aglaccounts'][
+                         (frames['aglaccounts']['house'] == df['house'].iloc[0]) &
+                         (frames['aglaccounts']['res_bal'] == 'R')
+                     ]['account']
+                 ) &
+                 df['account'].map(
+                     df.groupby('account')['amount'].sum().round(2)
+                 ).ne(0)
+             )
          )),
 
         # ---------------------------------------------------------------
