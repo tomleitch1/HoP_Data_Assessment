@@ -37,7 +37,7 @@ SELECT
     user_id
 FROM agltransact
 WHERE client IN ('CA', 'CM')
-  AND fiscal_year = [CURRENT_FISCAL_YEAR]
+  AND fiscal_year = 2026
   AND status = ''
 ORDER BY
     client,
