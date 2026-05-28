@@ -496,6 +496,7 @@ Do not add checks speculatively against a schema that has not been seen in real 
 | Frame key | Files | Source table | Checks live |
 |-----------|-------|--------------|-------------|
 | `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` | `aglaccounts` | Yes — 11 GL_ACC_* checks |
+| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` | Yes — 3 GL_BAL_* checks |
 
 ### Planned datasets (not yet loaded)
 
@@ -504,7 +505,6 @@ These files are extracted and the SQL exists, but the data schema has not been c
 | Frame key | Files | Source table | Status |
 |-----------|-------|--------------|--------|
 | `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` | SQL ready, schema not confirmed |
-| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` | SQL ready, schema not confirmed |
 | `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` | `agltransact` | SQL ready, schema not confirmed |
 | `gl_journals` | `gl_journals_HOC/HOL.csv` | `agltransact` | SQL ready, 50k rows, schema not confirmed |
 
@@ -529,6 +529,32 @@ Columns extracted: `client, account, description, account_grp, account_type, sta
 **Population filter in `run_dq_analysis`:** active accounts (`status == 'N'`) for all checks except `GL_ACC_DUP_CODE` which uses full population.
 
 **Deferred check:** `GL_ACC_BFLAG_CON` (reconciliation account not flagged as AP/AR type) is not yet implemented — the specific `bflag` bit that means "reconciliation" has not been confirmed from real data. Implement once Parliament confirms the bitmask definition.
+
+### Opening Balances (`aglyearend` / `aglperiodic`) — confirmed schema
+
+Columns extracted: `client, account, period, dim_1, dim_2, dim_3, dim_4, dim_5, dim_6, dim_7, amount, cur_amount, currency, dc_flag, voucher_type, voucher_no, trans_date, tax_code, apar_id, apar_type, status, description`
+
+**Confirmed from real Parliament data (May 2026):**
+- Row count: ~3,000 HOC, ~1,600 HOL — very manageable
+- `period`: 6-digit YYYYPP integer (e.g. `202601` = FY2025/26 period 1)
+- `amount`: **signed** — positive = debit, negative = credit. `dc_flag` is always `0` and is not used for sign.
+- `currency`: always `GBP`. `cur_amount` is always blank — `GL_BAL_FX_MISSING` is not applicable.
+- `dim_1`: populated with dimension codes. `dim_2` through `dim_7`: always blank.
+- `trans_date`: stored as integer `1` in SSMS/Excel (system placeholder, not a real date). Parsed to NaT by the engine. Do not write checks on `trans_date`.
+- `status`: mostly blank; a small number of rows have D, N, T, X — meaning unknown, no checks written.
+- `apar_id`: always blank — sub-ledger reconciliation checks not possible from this extract.
+- `voucher_type`: standard Agresso picklist (BU/BV excluded in SQL extract).
+
+**Population filter in `run_dq_analysis`:** all rows for the house — no status filter (falls through to `else` branch).
+
+**Implemented checks (3):**
+- `GL_BAL_AMT_MISSING` — `amount IS NULL` (Completeness, High)
+- `GL_BAL_ORPHAN_ACC` — account not in `aglaccounts` for same house (Consistency, High) — joined check
+- `GL_BAL_PL_NONZERO` — P&L account (res_bal=R) has non-zero net across all periods (Validity, Medium) — joined check. Will fire legitimately if year-end close journals (periods 13–15) are still pending.
+
+**Skipped checks:**
+- `GL_BAL_FX_MISSING` — not applicable, currency always GBP
+- `GL_BAL_TOTAL_NET` — aggregate check (SUM across all rows), does not fit the row-level DQ model
 
 ### SQL extracts (`sql/`)
 All GL extract files exist in two forms:
@@ -580,15 +606,17 @@ Key facts about `aglperiodic`:
 - Cross-house uniqueness checks for suppliers (VAT, company reg, IBAN, bank account+sort code, name)
 
 **GL tab — iterative build in progress:**
-- Chart of Accounts (`aglaccounts`) loaded and 11 checks live (GL_ACC_*)
-- Dimension values, opening balances, transaction dimensions, journals: SQL extracted but not yet loaded — schema confirmation required before checks are written
-- GL tab displays CoA checks only; other datasets added one at a time as schema is confirmed
+- Chart of Accounts (`aglaccounts`) loaded — 11 checks live (GL_ACC_*)
+- Opening Balances (`aglyearend` / `aglperiodic`) loaded — 3 checks live (GL_BAL_*): AMT_MISSING, ORPHAN_ACC, PL_NONZERO
+- Dimension values, transaction dimensions, journals: SQL extracted but not yet loaded — schema confirmation required before checks are written
+- GL tab displays CoA + opening balance checks; other datasets added one at a time as schema is confirmed
 - Deferred: `GL_ACC_BFLAG_CON` — bflag reconciliation bit not yet confirmed from real data
+- Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate check, does not fit row-level model)
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match confirmed real data format: client codes CA/CM/LA, HOL letter-prefix accounts (A1000), bflag as powers of 2, period/date fields as Excel serial integers.
+**Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match confirmed real data format: client codes CA/CM/LA, HOL letter-prefix accounts (A1000), bflag as powers of 2, period/date fields as Excel serial integers. Opening balances: signed amounts, dc_flag=0, trans_date=1, only dim_1 populated, periods spread across 202601–202612.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 

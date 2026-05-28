@@ -21,7 +21,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        ['gl_chart_of_accounts'],
+    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -122,6 +122,7 @@ def load_data(tab=None):
         'asset_master', 'asset_depreciation', 'asset_balances',
         'asset_trans_flags', 'asset_groups',
         'gl_chart_of_accounts',
+        'gl_opening_balances',
     }
 
     # Load split files
@@ -137,7 +138,8 @@ def load_data(tab=None):
         'asset_balances':      'asset_balances',
         'asset_trans_flags':   'asset_trans_flags',
         'asset_groups':        'asset_groups',
-        'gl_chart_of_accounts': 'aglaccounts',
+        'gl_chart_of_accounts':  'aglaccounts',
+        'gl_opening_balances':   'aglyearend',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -314,6 +316,11 @@ def run_dq_analysis(frames, tab=None):
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
+
+        # GL Opening Balances
+        'GL_BAL_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
+        'GL_BAL_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
+        'GL_BAL_PL_NONZERO':      ['client', 'account', 'period', 'dim_1', 'amount', 'voucher_type'],
 
         # GL Chart of Accounts
         'GL_ACC_DESC_MISSING':    ['account', 'description', 'account_type', 'status'],

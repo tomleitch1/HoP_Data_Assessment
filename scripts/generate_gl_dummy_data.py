@@ -310,14 +310,23 @@ def generate_dimension_values(df_accounts: pd.DataFrame) -> pd.DataFrame:
 
 # ===========================================================================
 # OPENING BALANCES — aglperiodic (frame key: aglyearend for backwards compat)
-# period is YYYYPP integer (e.g. 202612 = FY2025/26 period 12)
+# Confirmed from real Parliament data (May 2026):
+#   - period: YYYYPP integer (202601–202699)
+#   - amount: signed — positive = debit, negative = credit; dc_flag always 0
+#   - currency: always GBP; cur_amount always blank
+#   - dim_1 only populated; dim_2–dim_7 always blank
+#   - trans_date: stored as 1 in SSMS/Excel (placeholder, not a real date)
+#   - status: mostly blank; occasional D, N, T, X on a small subset
+#   - apar_id: blank
 # ===========================================================================
 
-FISCAL_YEAR       = 2026
-YEAR_END_PERIOD   = 202612   # Period 12 of FY2025/26
+FISCAL_PERIODS = [202601, 202604, 202607, 202610, 202612]
 
 def random_amount(min_val=100, max_val=500_000):
-    return round(random.uniform(min_val, max_val), 2)
+    sign = random.choice([-1, -1, 1, 1, 1])   # ~40% credit (negative), ~60% debit
+    return round(random.uniform(min_val, max_val) * sign, 2)
+
+_BALANCE_STATUSES = [''] * 10 + ['D', 'N', 'T', 'X']   # mostly blank
 
 def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
     active = df_accounts[
@@ -325,61 +334,53 @@ def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
         (~df_accounts['account'].astype(str).str.startswith('8'))  # exclude edge cases
     ][['_house', 'client', 'account', 'res_bal', 'account_type']].values.tolist()
 
-    cc_codes   = [f"CC{i:03d}" for i in range(100, 130)]
-    subj_codes = [f"S{i:03d}" for i in range(100, 125)]
+    cc_codes = [f"CC{i:03d}" for i in range(100, 130)]
 
     rows = []
     for i in range(200):
         house, client, account, res_bal, acc_type = random.choice(active)
-        amount = random_amount()
-        dc_flag = random.choice(['D', 'C'])
         rows.append({
             '_house':       house,
             'client':       client,
             'account':      account,
-            'period':       YEAR_END_PERIOD,
+            'period':       random.choice(FISCAL_PERIODS),
             'dim_1':        random.choice(cc_codes),
-            'dim_2':        random.choice(subj_codes),
-            'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-            'amount':       amount,
-            'cur_amount':   amount,
+            'dim_2': None, 'dim_3': None, 'dim_4': None,
+            'dim_5': None, 'dim_6': None, 'dim_7': None,
+            'amount':       random_amount(),
+            'cur_amount':   None,
             'currency':     'GBP',
-            'dc_flag':      dc_flag,
-            'voucher_type': 'JO',
+            'dc_flag':      0,
+            'voucher_type': random.choice(['JO', 'AC', 'PI', 'PY', 'YE', 'JL']),
             'voucher_no':   f"OB{i:04d}",
-            'trans_date':   to_excel(date(2026, 4, 1)),
+            'trans_date':   1,          # confirmed placeholder value in real data
             'tax_code':     None,
             'apar_id':      None,
             'apar_type':    None,
-            'status':       '',
-            'description':  'Opening balance',
+            'status':       random.choice(_BALANCE_STATUSES),
+            'description':  f"Balance posting {i+1:03d}",
         })
 
-    # Edge cases — completeness and referential integrity
+    # Edge cases
+    _ec = lambda account, amount, voucher, desc, house='HOC', client='CA': {
+        '_house': house, 'client': client, 'account': account,
+        'period': 202612, 'dim_1': 'CC100',
+        'dim_2': None, 'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
+        'amount': amount, 'cur_amount': None, 'currency': 'GBP', 'dc_flag': 0,
+        'voucher_type': 'JO', 'voucher_no': voucher, 'trans_date': 1,
+        'tax_code': None, 'apar_id': None, 'apar_type': None, 'status': '', 'description': desc,
+    }
+
     edge_cases = [
         # GL_BAL_AMT_MISSING: balance record with no amount
-        {'_house': 'HOC', 'client': 'CA', 'account': '4000', 'period': YEAR_END_PERIOD,
-         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
-         'dim_6': None, 'dim_7': None, 'amount': None, 'cur_amount': None, 'currency': 'GBP',
-         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9001',
-         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
-         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC Missing Amount'},
+        _ec('4000', None, 'OB9001', 'EC Missing Amount'),
 
-        # GL_BAL_ORPHAN_ACC: balance against account that doesn't exist in CoA
-        {'_house': 'HOC', 'client': 'CA', 'account': '9999', 'period': YEAR_END_PERIOD,
-         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
-         'dim_6': None, 'dim_7': None, 'amount': 15000, 'cur_amount': 15000, 'currency': 'GBP',
-         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9002',
-         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
-         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC Ghost Account'},
+        # GL_BAL_ORPHAN_ACC: account 9999 does not exist in the CoA (range is 9000–9011)
+        _ec('9999', 15000.00, 'OB9002', 'EC Ghost Account'),
 
-        # GL_BAL_PL_NONZERO: P&L account with non-zero balance at year end
-        {'_house': 'HOC', 'client': 'CA', 'account': '4000', 'period': YEAR_END_PERIOD,
-         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
-         'dim_6': None, 'dim_7': None, 'amount': 25000, 'cur_amount': 25000, 'currency': 'GBP',
-         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9003',
-         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
-         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC PL Nonzero'},
+        # GL_BAL_PL_NONZERO: two positive postings to a P&L account — net is clearly non-zero
+        _ec('4000', 25000.00, 'OB9003', 'EC PL Nonzero A'),
+        _ec('4000', 18500.00, 'OB9004', 'EC PL Nonzero B'),
     ]
 
     return pd.DataFrame(rows + edge_cases)

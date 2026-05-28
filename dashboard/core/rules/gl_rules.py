@@ -5,6 +5,64 @@ def get_gl_checks():
     return [
 
         # ---------------------------------------------------------------
+        # OPENING BALANCES — aglyearend (source: aglperiodic)
+        # Population: all rows for the house — no status filter
+        # Confirmed schema: amount is signed (dc_flag always 0), currency always GBP,
+        # only dim_1 populated, trans_date is placeholder value 1 (not a real date),
+        # apar_id always blank. Scope.GL_BALANCES = 22.
+        # ---------------------------------------------------------------
+
+        ('GL_BAL_AMT_MISSING',
+         22, 'GL Opening Balances', 'Completeness', 'High',
+         'Balance record has no amount',
+         'Every row in the period balance table must have an amount populated. '
+         'A record with no amount cannot be included in any balance or reconciliation calculation. '
+         'Blank amounts at cutover will mean the opening balance in the new system is incomplete and the GL will fail to balance.',
+         'Investigate the posting that created this record. Correct the amount in the legacy system '
+         'or exclude the record from migration if it is invalid.',
+         'aglyearend', None,
+         'WHERE amount IS NULL',
+         lambda df: df['amount'].isna()),
+
+        ('GL_BAL_ORPHAN_ACC',
+         22, 'GL Opening Balances', 'Consistency', 'High',
+         'Balance record references an account not in the Chart of Accounts',
+         'Every balance row must reference an account code that exists in aglaccounts. '
+         'An orphaned balance cannot be loaded into the new system — the account must exist before balances can be posted against it. '
+         'Orphaned balances will cause the opening balance load to fail at cutover.',
+         'Either add the missing account to the Chart of Accounts, or investigate whether the balance '
+         'was posted in error and should be reversed before migration.',
+         'aglyearend', 'aglaccounts',
+         "WHERE account NOT IN (SELECT account FROM aglaccounts WHERE client = p.client)",
+         lambda df, frames: ~df['account'].isin(
+             frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]['account']
+         )),
+
+        ('GL_BAL_PL_NONZERO',
+         22, 'GL Opening Balances', 'Validity', 'Medium',
+         'P&L account carries a non-zero net balance across all posted periods',
+         'P&L accounts (res_bal = R) must carry a zero net balance at year end after year-end close journals have been posted. '
+         'A non-zero net balance on a P&L account indicates either that the year-end close has not been completed '
+         'or that a posting was not reversed. '
+         'P&L balances that are not zeroed off will create incorrect opening positions in the new system. '
+         'Note: this check may fire legitimately if year-end adjustment periods (13, 14, 15) are still being posted.',
+         'Confirm whether the year-end close has been completed for all periods. '
+         'If so, investigate the postings on the affected account and reverse or reclassify as appropriate.',
+         'aglyearend', 'aglaccounts',
+         "WHERE res_bal = 'R' (from aglaccounts) AND SUM(amount) <> 0 GROUP BY account",
+         lambda df, frames: (
+             df['account'].isin(
+                 frames['aglaccounts'][
+                     (frames['aglaccounts']['house'] == df['house'].iloc[0]) &
+                     (frames['aglaccounts']['res_bal'] == 'R')
+                 ]['account']
+             ) &
+             df['account'].map(
+                 df.groupby('account')['amount'].sum().round(2)
+             ).ne(0)
+         )),
+
+        # ---------------------------------------------------------------
         # CHART OF ACCOUNTS — aglaccounts
         # Population: active accounts (status == 'N'), except GL_ACC_DUP_CODE (full)
         # period_from, period_to, last_update arrive as datetime64 after _parse_dates()
@@ -164,12 +222,12 @@ def get_gl_checks():
 #   GL_DIM_ORPHAN_REL     Hierarchy link to a parent that is missing or inactive
 #   GL_DIM_DUP            Duplicate dimension code within the same attribute and House
 #
-# Opening Balances / Period Balances (aglperiodic → frame key aglyearend)
-#   GL_BAL_AMT_MISSING    Opening balance record has no amount
-#   GL_BAL_FX_MISSING     Foreign currency balance missing transaction currency amount
-#   GL_BAL_PL_NONZERO     P&L account carries a non-zero balance at year end
-#   GL_BAL_TOTAL_NET      General Ledger is out of balance (Total Debits <> Credits)
-#   GL_BAL_ORPHAN_ACC     Balance refers to an account code not in the chart of accounts
+# Opening Balances / Period Balances (aglperiodic → frame key aglyearend) — 3 of 5 IMPLEMENTED
+#   GL_BAL_AMT_MISSING    Opening balance record has no amount                             ✓ LIVE
+#   GL_BAL_ORPHAN_ACC     Balance refers to an account code not in the chart of accounts   ✓ LIVE
+#   GL_BAL_PL_NONZERO     P&L account carries a non-zero balance at year end               ✓ LIVE
+#   GL_BAL_FX_MISSING     Foreign currency balance missing cur_amount — SKIP (always GBP)
+#   GL_BAL_TOTAL_NET      GL out of balance (aggregate check — does not fit row-level model)
 #
 # Transactions (agltransact)
 #   GL_TRA_ORPHAN_DIM1    Transaction coded to a dimension value that does not exist or is inactive
