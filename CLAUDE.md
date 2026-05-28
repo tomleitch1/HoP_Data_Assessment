@@ -131,11 +131,11 @@ data/
 ├── customers/   customer_master_HOC/HOL.csv
 │                customer_open_trans_HOC/HOL.csv
 │                customer_history_HOC/HOL.csv
-├── gl/          gl_chart_of_accounts_HOC/HOL.csv
-│                gl_dimension_values_HOC/HOL.csv
-│                gl_opening_balances_HOC/HOL.csv
-│                gl_transact_dimensions_HOC/HOL.csv
-│                gl_journals_HOC/HOL.csv
+├── gl/          gl_chart_of_accounts_HOC/HOL.csv        ← LOADED (11 checks live)
+│                gl_dimension_values_HOC/HOL.csv         ← extracted, not yet loaded
+│                gl_opening_balances_HOC/HOL.csv         ← extracted, not yet loaded
+│                gl_transact_dimensions_HOC/HOL.csv      ← extracted, not yet loaded
+│                gl_journals_HOC/HOL.csv                 ← not yet extracted (50k rows)
 └── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
                  asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
                  asset_groups_HOC/HOL.csv
@@ -474,6 +474,62 @@ Known issues when extracting data on the Parliament laptop and saving via Excel:
 
 ## GL Domain — Implementation Details
 
+### Iterative build approach
+
+**The GL tab is built one dataset at a time.** A new dataset and its checks are only added when:
+1. The SQL extract has been run against real Parliament data and the output has been reviewed
+2. The column names, data types, and value formats are confirmed (not assumed from dummy data or spec)
+3. The dummy data generator has been updated to match the real format
+
+Do not add checks speculatively against a schema that has not been seen in real data. The cost of a wrong assumption is a check that always shows 0% or 100% and has to be reworked later.
+
+**When adding a new GL dataset, the steps are:**
+1. Run the SQL on the Parliament laptop, inspect the first ~20 rows in Excel — note column names, value formats, nulls, and any surprises
+2. Update the dummy data generator (`scripts/generate_gl_dummy_data.py`) to match the real format exactly
+3. Register the file in `SUBDIR['gl']`, `split_files`, and `house_from_filename` in `data_engine.py`
+4. Add the checks to `gl_rules.py` as tuples, import via `get_gl_checks()`
+5. Add the population filter branch for the new table to `run_dq_analysis()` and `get_failing_records()`
+6. Add `get_check_columns()` entries for each new check
+
+### Currently loaded datasets (active)
+
+| Frame key | Files | Source table | Checks live |
+|-----------|-------|--------------|-------------|
+| `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` | `aglaccounts` | Yes — 11 GL_ACC_* checks |
+
+### Planned datasets (not yet loaded)
+
+These files are extracted and the SQL exists, but the data schema has not been confirmed well enough to write reliable checks:
+
+| Frame key | Files | Source table | Status |
+|-----------|-------|--------------|--------|
+| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` | SQL ready, schema not confirmed |
+| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` | SQL ready, schema not confirmed |
+| `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` | `agltransact` | SQL ready, schema not confirmed |
+| `gl_journals` | `gl_journals_HOC/HOL.csv` | `agltransact` | SQL ready, 50k rows, schema not confirmed |
+
+To add one of these: review real data first, then follow the iterative build steps above.
+
+### Chart of Accounts (`aglaccounts`) — confirmed schema
+
+Columns extracted: `client, account, description, account_grp, account_type, status, res_bal, bflag, account_rule, period_from, period_to, last_update, head_account`
+
+**Confirmed from real Parliament data:**
+- `client`: HOC = `CA` or `CM` (same account codes appear for both); HOL = `LA`
+- `account`: HOC = numeric string (e.g. `1000`); HOL = letter-prefix + number (e.g. `A1000`)
+- `account_grp`: HOC = numeric `1`–`9`; HOL = single letter `A`–`F` (6 groups — exact meaning TBD)
+- `account_type`: `GL`, `AP`, or `AR`
+- `status`: `N` (active) or `C` (closed)
+- `res_bal`: `R` (P&L) or `B` (Balance Sheet)
+- `bflag`: bitmask integer — `0` or powers of 2 (`8`, `16`, `32`, `64`, `128`). Specific bit meanings not yet confirmed. **Do not use `bflag == 7` from old spec** — that was a placeholder.
+- `account_rule`: integer; HOC up to 39, HOL up to 89
+- `period_from`, `period_to`, `last_update`: **Excel serial date integers** (e.g. `45698`) — parsed to datetime by `_parse_dates()`. Engine parse range is 20000–55000 (~1954–2050); use dates within this range in dummy data.
+- `head_account`: blank for both houses
+
+**Population filter in `run_dq_analysis`:** active accounts (`status == 'N'`) for all checks except `GL_ACC_DUP_CODE` which uses full population.
+
+**Deferred check:** `GL_ACC_BFLAG_CON` (reconciliation account not flagged as AP/AR type) is not yet implemented — the specific `bflag` bit that means "reconciliation" has not been confirmed from real data. Implement once Parliament confirms the bitmask definition.
+
 ### SQL extracts (`sql/`)
 All GL extract files exist in two forms:
 - `gl_*_run.sql` — **original full spec** with documentation, assumptions, and DQ test descriptions
@@ -481,8 +537,8 @@ All GL extract files exist in two forms:
 
 Use the `_HOC_run.sql` / `_HOL_run.sql` files when extracting on the Parliament laptop.
 
-### Dimension values (`agldimvalue` / `gl_dimension_values`)
-Unit4 stores GL dimension values (cost centres, subjectives, analysis codes, etc.) in `agldimvalue`. Each row has an `attribute_id` which identifies the dimension type — but these codes are opaque short strings (e.g. `C1`, `ZZ`) not human-readable names.
+### Dimension values (`agldimvalue` / `gl_dimension_values`) — not yet loaded
+Unit4 stores GL dimension values (cost centres, subjectives, analysis codes, etc.) in `agldimvalue`. Each row has an `attribute_id` which identifies the dimension type.
 
 The mapping between dim positions (dim_1 through dim_7 on journal lines) and attribute_ids is held in the `agldimension` table:
 
@@ -494,53 +550,45 @@ The mapping between dim positions (dim_1 through dim_7 on journal lines) and att
 | `description` | Human-readable name e.g. "Cost Centre", "Subjective" |
 | `status` | N=Active — filter to N only |
 
-A single dim_position can have multiple active `attribute_id` codes (e.g. dim_2 may hold both "Cost Centre" and "Seconded Staff Customer" depending on context).
+The `gl_dimension_values_HOC/HOL_run.sql` joins `agldimvalue` to `agldimension` automatically — output includes `dim_position` and `dim_description` columns. **Before adding checks:** confirm attribute_id codes, dim_position values, and wf_state values from real data. The 277k-row HOC extract may need SQL-level filtering to reduce load time.
 
-The `gl_dimension_values_HOC/HOL_run.sql` Step 2 query joins `agldimvalue` to `agldimension` automatically — no manual attribute_id codes need to be entered. The output includes `dim_position` and `dim_description` columns.
-
-### GL opening balances (`aglperiodic` — not `aglyearend`)
+### GL opening balances (`aglperiodic` — not `aglyearend`) — not yet loaded
 `aglyearend` is **not used** in Parliament's Agresso installation — it contains only legacy pre-2008 data. The correct table is `aglperiodic`.
 
 Key facts about `aglperiodic`:
 - `period` is a **6-digit YYYYPP integer** (e.g. `202610` = FY2025/26 period 10). There is no separate `fiscal_year` column.
-- The table is **transactional** (one row per posting), not a cumulative balance snapshot. Rules that assume one row per account (e.g. `GL_BAL_PL_NONZERO`) will need reworking once run against real data.
-- Budget and virement entries (`voucher_type IN ('BU', 'BV')`) are stored in the same table and can appear with **future-dated periods** (e.g. 203407 = FY2034 period 7) — these are planning entries, not real postings, and are excluded in the SQL extract.
+- The table is **transactional** (one row per posting), not a cumulative balance snapshot.
+- Budget and virement entries (`voucher_type IN ('BU', 'BV')`) can appear with future-dated periods (e.g. 203407) — excluded in the SQL extract.
 - `BA` (Batch Input adj) is a real financial posting and is **not** excluded.
-- The SQL extract filters to `period BETWEEN 202601 AND 202699` for FY2025/26 (current year). Update this range at cutover.
-- The frame key in the engine remains `aglyearend` for backwards compatibility — the CSV filename (`gl_opening_balances_HOC/HOL.csv`) is unchanged.
+- SQL extract filters to `period BETWEEN 202601 AND 202699` for FY2025/26. Update this range at cutover.
+- Frame key in the engine is `aglyearend` (for backwards compatibility) — CSV filename unchanged.
 
-### GL journals fiscal year convention
-`agltransact` (journals) uses an **end-year** convention: `fiscal_year = 2026` means FY2025/26. Filter confirmed as `AND fiscal_year = 2026` in the HOC/HOL run files.
-
-### File loading
-All five GL tables load as split files. `house` is assigned from the filename suffix (not the `client` column):
-
-| Frame key | Files | Source table |
-|-----------|-------|--------------|
-| `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` | `aglaccounts` |
-| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` |
-| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` (not `aglyearend`) |
-| `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` | `agltransact` |
-| `gl_journals` | `gl_journals_HOC/HOL.csv` | `agltransact` |
+### GL journals fiscal year convention — not yet loaded
+`agltransact` (journals) uses an **end-year** convention: `fiscal_year = 2026` means FY2025/26. Filter confirmed as `AND fiscal_year = 2026` in the HOC/HOL run files. The journals extract has ~50k rows — confirm column names and value formats before adding any checks.
 
 ---
 
 ## Current State (as of May 2026)
 
-**Implemented and tested with dummy data:**
-- GL (Chart of Accounts, Dimension Values, Opening Balances, Journals)
-- Suppliers / AP (master, open transactions, history)
-- Customers / AR (master, open transactions, history)
-- Fixed Assets (master, depreciation, balances, groups, transactions)
+**Implemented and running against real data on Parliament laptop:**
+- Suppliers / AP (master, open transactions, history) — full check suite live
+- Customers / AR (master, open transactions, history) — full check suite live
+- Fixed Assets (master, depreciation, balances, groups, transactions) — full check suite live
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
-- Modal drill-down inspector (redesigned — dark header, sidebar metrics, flat content panels)
+- Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
-- Cross-house uniqueness checks for suppliers (VAT, company reg, IBAN, bank account+sort code, name) with side-by-side modal evidence tables
+- Cross-house uniqueness checks for suppliers (VAT, company reg, IBAN, bank account+sort code, name)
+
+**GL tab — iterative build in progress:**
+- Chart of Accounts (`aglaccounts`) loaded and 11 checks live (GL_ACC_*)
+- Dimension values, opening balances, transaction dimensions, journals: SQL extracted but not yet loaded — schema confirmation required before checks are written
+- GL tab displays CoA checks only; other datasets added one at a time as schema is confirmed
+- Deferred: `GL_ACC_BFLAG_CON` — bflag reconciliation bit not yet confirmed from real data
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL customers, and assets still need real CSVs placed in `data/` subfolders on the Parliament laptop. This machine uses dummy data. All five GL extract SQL files have HOC/HOL split run files ready to execute. GL chart of accounts and dimension values have been extracted. GL journals SQL fixed (fiscal_year placeholder replaced with 2026). GL opening balances SQL rewritten to use `aglperiodic` (aglyearend had no current data).
+**Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match confirmed real data format: client codes CA/CM/LA, HOL letter-prefix accounts (A1000), bflag as powers of 2, period/date fields as Excel serial integers.
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
