@@ -8,7 +8,6 @@ import numpy as np
 import os
 from datetime import date
 from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
-from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks   
@@ -21,8 +20,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        ['gl_chart_of_accounts', 'gl_dimension_values', 'gl_opening_balances',
-                  'gl_transact_dimensions', 'gl_journals'],
+    'gl':        [],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -121,9 +119,7 @@ def load_data(tab=None):
     house_from_filename = {
         'supplier_master', 'supplier_open_trans', 'supplier_history',
         'asset_master', 'asset_depreciation', 'asset_balances',
-        'asset_trans_flags', 'asset_groups', 'gl_journals',
-        'gl_chart_of_accounts', 'gl_dimension_values', 'gl_opening_balances',
-        'gl_transact_dimensions',
+        'asset_trans_flags', 'asset_groups',
     }
 
     # Load split files
@@ -139,11 +135,6 @@ def load_data(tab=None):
         'asset_balances':     'asset_balances',
         'asset_trans_flags':  'asset_trans_flags',
         'asset_groups':       'asset_groups',
-        'gl_journals':            'gl_journals',
-        'gl_chart_of_accounts':   'aglaccounts',
-        'gl_dimension_values':    'agldimvalue',
-        'gl_opening_balances':    'aglyearend',
-        'gl_transact_dimensions': 'agltransact',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -199,7 +190,6 @@ def load_data(tab=None):
 def get_dq_checks():
     """Returns a list of DQ check definitions based on SQL requirements."""
     checks = []
-    checks.extend(get_gl_checks())
     checks.extend(get_ap_checks())
     checks.extend(get_ar_checks())
     checks.extend(get_asset_checks())
@@ -258,17 +248,6 @@ def run_dq_analysis(frames, tab=None):
                 elif house == 'HOL':
                     mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
-            elif table == 'aglaccounts':
-                if check_id in ['GL_ACC_STALE_N', 'GL_ACC_DUP_CODE']:
-                    h_df = df_table[df_table['house'] == house]
-                else:
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
-            elif table == 'agldimvalue':
-                if check_id in ['GL_DIM_DUP']:
-                    h_df = df_table[df_table['house'] == house]
-                else:
-                    # Precision: only run stuck/orphan checks on active records
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -325,37 +304,6 @@ def run_dq_analysis(frames, tab=None):
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
-        # GL Accounts
-        'GL_ACC_DESC_MISSING': ['description', 'status'],
-        'GL_ACC_GRP_MISSING': ['account_grp', 'status'],
-        'GL_ACC_RESBAL_MISSING': ['res_bal'],
-        'GL_ACC_RULE_MISSING': ['account_rule'],
-        'GL_ACC_PERIOD_MISSING': ['period_from'],
-        'GL_ACC_RESBAL_INVALID': ['res_bal'],
-        'GL_ACC_TYPE_INVALID': ['account_type'],
-        'GL_ACC_PERIOD_INV': ['period_from', 'period_to'],
-        'GL_ACC_STALE_N': ['period_to', 'status'],
-        'GL_ACC_BFLAG_CON': ['bflag', 'account_type'],
-        'GL_ACC_DUP_CODE': ['account', 'client'],
-        'GL_ACC_STALE_MOD': ['last_update'],
-
-        # GL Dimensions
-        'GL_DIM_DESC_MISSING': ['description', 'status'],
-        'GL_DIM_PERIOD_MISSING': ['period_from'],
-        'GL_DIM_PERIOD_INV': ['period_from', 'period_to'],
-        'GL_DIM_WF_STUCK': ['wf_state'],
-        'GL_DIM_ORPHAN_REL': ['rel_value', 'attribute_id', 'status'],
-        'GL_DIM_DUP': ['dim_value', 'attribute_id', 'client'],
-
-        # GL Balances
-        'GL_BAL_AMT_MISSING': ['amount'],
-        'GL_BAL_FX_MISSING': ['currency', 'cur_amount'],
-        'GL_BAL_PL_NONZERO': ['amount', 'account', 'res_bal'],
-        'GL_BAL_TOTAL_NET': ['amount', 'dc_flag', 'client'],
-        'GL_BAL_ORPHAN_ACC': ['account'],
-
-        # GL Transactions
-        'GL_TRA_ORPHAN_DIM1': ['dim_1', 'dim_value', 'status'],
 
         # Suppliers
         'SUP_VAT_MISSING': ['vat_reg_no', 'apar_gr_id', 'status'],
@@ -545,42 +493,6 @@ def get_check_columns():
         'DQ-AG-X03': ['depr_method', 'asset_group'],
         'DQ-AG-X04': ['lifetime', 'asset_group'],
 
-        # GL Journals (agltransact — Seq 20)
-        # Completeness
-        'DQ-GJ-C01': ['voucher_no', 'client'],
-        'DQ-GJ-C02': ['account', 'voucher_no'],
-        'DQ-GJ-C03': ['amount', 'voucher_no'],
-        'DQ-GJ-C04': ['trans_date', 'voucher_no'],
-        'DQ-GJ-C05': ['voucher_date', 'voucher_no'],
-        'DQ-GJ-C06': ['voucher_type', 'voucher_no'],
-        'DQ-GJ-C07': ['description', 'voucher_type'],
-        'DQ-GJ-C08': ['user_id', 'voucher_no'],
-        # Validity
-        'DQ-GJ-V01': ['update_flag', 'voucher_no'],
-        'DQ-GJ-V02': ['trans_date', 'voucher_no'],
-        'DQ-GJ-V03': ['voucher_date', 'voucher_no'],
-        'DQ-GJ-V04': ['trans_date', 'voucher_date'],
-        'DQ-GJ-V05': ['currency', 'voucher_no'],
-        'DQ-GJ-V06': ['currency', 'cur_amount'],
-        'DQ-GJ-V07': ['period', 'fiscal_year'],
-        'DQ-GJ-V08': ['apar_id', 'account'],
-        # Consistency
-        'DQ-GJ-K01': ['voucher_no', 'amount', 'update_flag'],
-        'DQ-GJ-K02': ['trans_date', 'period'],
-        'DQ-GJ-K03': ['apar_id', 'apar_type'],
-        'DQ-GJ-K04': ['voucher_no', 'period'],
-        'DQ-GJ-K05': ['tax_code', 'tax_system'],
-        # Duplicates
-        'DQ-GJ-D01': ['voucher_no', 'sequence_no', 'client'],
-        'DQ-GJ-D02': ['voucher_no', 'account', 'amount', 'trans_date'],
-        # Scope / Info
-        'DQ-GJ-S02': ['period', 'voucher_no', 'client'],
-        'DQ-GJ-S04': ['currency', 'cur_amount'],
-        'DQ-GJ-S05': ['apar_id', 'apar_type', 'account'],
-        # Cross-extract
-        'DQ-GJ-X01': ['account', 'voucher_no'],
-        'DQ-GJ-X02': ['account', 'voucher_no'],
-        'DQ-GJ-X03': ['dim_1', 'account'],
     }
 
 def get_failing_records(check_id, house, frames, base_cols=None):
@@ -1489,80 +1401,6 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         master = master.drop_duplicates(subset=join_cols)
         master.columns = join_cols + ['Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=join_cols, how='left')
-
-    if table == 'aglyearend' and check_id == 'GL_BAL_ORPHAN_ACC':
-        failing = failing.rename(columns={
-            'account': 'GL_BALANCES.account',
-            'amount':  'GL_BALANCES.amount',
-        })
-        if 'aglaccounts' in frames:
-            acc_link = frames['aglaccounts'][['house', 'account']].copy()
-            acc_link = acc_link.drop_duplicates(subset=['house', 'account'])
-            acc_link = acc_link.rename(columns={'account': 'GL_ACCOUNTS.account'})
-            failing = failing.merge(acc_link,
-                left_on=['house', 'GL_BALANCES.account'],
-                right_on=['house', 'GL_ACCOUNTS.account'],
-                how='left')
-        cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account']
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
-        failing = failing.rename(columns={
-            'account': 'GL_BALANCES.account',
-            'amount':  'GL_BALANCES.amount',
-        })
-        if 'aglaccounts' in frames:
-            acc_link = frames['aglaccounts'][['house', 'account', 'res_bal']].copy()
-            acc_link = acc_link.drop_duplicates(subset=['house', 'account'])
-            acc_link = acc_link.rename(columns={
-                'account': 'GL_ACCOUNTS.account',
-                'res_bal': 'GL_ACCOUNTS.res_bal',
-            })
-            failing = failing.merge(acc_link,
-                left_on=['house', 'GL_BALANCES.account'],
-                right_on=['house', 'GL_ACCOUNTS.account'],
-                how='left')
-        cols = ['GL_BALANCES.account', 'GL_BALANCES.amount', 'GL_ACCOUNTS.account', 'GL_ACCOUNTS.res_bal']
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if table == 'agltransact' and check_id == 'GL_TRA_ORPHAN_DIM1':
-        failing = failing.rename(columns={
-            'dim_1': 'GL_TRANSACTIONS.dim_1',
-        })
-        if 'agldimvalue' in frames:
-            dim_link = frames['agldimvalue'][['house', 'dim_value', 'status']].copy()
-            dim_link = dim_link.drop_duplicates(subset=['house', 'dim_value'])
-            dim_link = dim_link.rename(columns={
-                'dim_value': 'GL_DIMENSIONS.dim_value',
-                'status':    'GL_DIMENSIONS.status',
-            })
-            failing = failing.merge(dim_link,
-                left_on=['house', 'GL_TRANSACTIONS.dim_1'],
-                right_on=['house', 'GL_DIMENSIONS.dim_value'],
-                how='left')
-        cols = ['GL_TRANSACTIONS.dim_1', 'GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.status']
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if table == 'agldimvalue' and check_id == 'GL_DIM_ORPHAN_REL':
-        failing = failing.rename(columns={
-            'dim_value': 'GL_DIMENSIONS.dim_value',
-            'rel_value': 'GL_DIMENSIONS.rel_value',
-        })
-        if 'agldimvalue' in frames:
-            parent_link = frames['agldimvalue'][['house', 'dim_value']].copy()
-            parent_link = parent_link.drop_duplicates(subset=['house', 'dim_value'])
-            parent_link = parent_link.rename(columns={'dim_value': 'GL_DIMENSIONS (TARGET).dim_value'})
-            failing = failing.merge(parent_link,
-                left_on=['house', 'GL_DIMENSIONS.rel_value'],
-                right_on=['house', 'GL_DIMENSIONS (TARGET).dim_value'],
-                how='left')
-        cols = ['GL_DIMENSIONS.dim_value', 'GL_DIMENSIONS.rel_value', 'GL_DIMENSIONS (TARGET).dim_value']
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if table == 'aglyearend' and 'aglaccounts' in frames:
-        acc = frames['aglaccounts'][['house', 'account', 'description', 'res_bal', 'status']].copy()
-        acc.columns = ['house', 'account', 'Account_Description', 'Res_Bal', 'Account_Status']
-        failing = failing.merge(acc, on=['house', 'account'], how='left')
 
     # Generic Join Logic for Referential Integrity
     if joined_table and joined_table in frames:

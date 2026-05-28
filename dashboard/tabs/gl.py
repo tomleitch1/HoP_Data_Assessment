@@ -1,20 +1,27 @@
 from dash import html
-from dashboard.shared.ui import render_gl_volumetrics_card
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid, render_dimensions_table
-from dashboard.core.volumetrics import get_gl_volumetrics
+
 
 def render_tab(dq_results, frames):
-    gl_vol = get_gl_volumetrics(frames)
-    hoc_cards = render_gl_volumetrics_card(gl_vol['HOC'])
-    hol_cards = render_gl_volumetrics_card(gl_vol['HOL'])
-    
     return html.Div([
         render_dimension_scorecard(dq_results),
-        html.Div(style={'marginBottom': '24px'}, children=[
-            html.Div(style={'display': 'flex', 'gap': '20px', 'marginBottom': '20px'}, children=hoc_cards),
-            html.Div(style={'display': 'flex', 'gap': '20px'}, children=hol_cards),
+        html.Div(style={
+            'borderTop': '1px solid #e2d9f3',
+            'margin': '8px 0 20px',
+            'paddingTop': '20px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'gap': '12px',
+        }, children=[
+            html.Span('Data Quality Checks', style={
+                'fontSize': '15px', 'fontWeight': '700', 'color': '#2a1f3d',
+            }),
+            html.Span('Being configured against live data', style={
+                'fontSize': '11px', 'color': '#9080b0',
+                'background': '#f0ebfa', 'padding': '2px 8px',
+                'borderRadius': '4px',
+            }),
         ]),
         render_dimension_grid(dq_results),
         render_dimensions_table(dq_results),
-        html.Div(id='dim-drill-down-container', style={'marginTop': '24px'})
     ])

@@ -20,7 +20,6 @@ from dashboard.core.config import (
     CustomerConfig,
     APConfig,
     ARConfig,
-    GLConfig
 )
 
 
@@ -94,8 +93,6 @@ def get_overview_volumetrics(frames: dict) -> dict:
     cus  = frames.get('acuheader')
     ap   = frames.get('asutrans')
     ar   = frames.get('acutrans')
-    gl_coa = frames.get('aglaccounts')
-    gl_ob  = frames.get('aglyearend')
 
     result = {}
     for house in CLIENTS:
@@ -149,21 +146,6 @@ def get_overview_volumetrics(frames: dict) -> dict:
         ar_date  = _safe_max_date(ar_h,    'trans_date')   if not ar_h.empty  else None
         cus_date = _safe_max_date(cus_all, 'last_update')  if not cus_all.empty else None
 
-        # ── GL summary ────────────────────────────────────────────────────────
-        coa_h        = _filter_house(gl_coa, house)
-        gl_coa_total = len(coa_h)
-        gl_accounts  = int(coa_h['status'].isin(GLConfig.ACTIVE_STATUSES).sum()) if not coa_h.empty and 'status' in coa_h.columns else 0
-        gl_pl        = int((coa_h['res_bal'] == 'R').sum()) if not coa_h.empty and 'res_bal' in coa_h.columns else 0
-        gl_bs        = int((coa_h['res_bal'] == 'B').sum()) if not coa_h.empty and 'res_bal' in coa_h.columns else 0
-        ob_h         = _filter_house(gl_ob, house)
-        gl_ob_total  = len(ob_h)
-        gl_ob_bal    = float(pd.to_numeric(ob_h.get('amount', pd.Series(dtype=float)), errors='coerce').sum()) if not ob_h.empty else 0.0
-        gl_coa_date  = _safe_max_date(coa_h, 'last_update') if not coa_h.empty else None
-        # Total across all three scored GL tables (CoA + OB; dim_values counted separately)
-        gl_dim_df    = frames.get('agldimvalue')
-        gl_dim_h     = _filter_house(gl_dim_df, house)
-        gl_total_all = gl_coa_total + gl_ob_total + len(gl_dim_h)
-
         result[house] = {
             'suppliers_active':      sup_active,
             'suppliers_inactive':    sup_inactive,
@@ -181,14 +163,6 @@ def get_overview_volumetrics(frames: dict) -> dict:
             'customer_extract_date': cus_date,
             'ap_extract_date':       ap_date,
             'ar_extract_date':       ar_date,
-            # ── GL ────────────────────────────────────────────────────────────
-            'gl_total_records':   gl_total_all,    # CoA + Dim Values + Opening Balances
-            'gl_accounts_active': gl_accounts,
-            'gl_pl_accounts':     gl_pl,
-            'gl_bs_accounts':     gl_bs,
-            'gl_ob_rows':         gl_ob_total,
-            'gl_ob_balance':      gl_ob_bal,
-            'gl_extract_date':    gl_coa_date,
         }
 
     return result
@@ -261,15 +235,6 @@ def get_tab_volumetrics(frames: dict, scope_key: str) -> dict:
         active_stats  = CustomerConfig.ACTIVE_STATUSES
         inactive_stats= CustomerConfig.INACTIVE_STATUSES
         open_stats    = ARConfig.OPEN_TRANSACTION_STATUSES
-    elif scope_key == 'gl':
-        master_key    = 'aglaccounts'
-        trans_key     = 'aglyearend'
-        hist_key      = None
-        master_label  = 'Chart of Accounts'
-        trans_label   = 'Opening Balances'
-        active_stats  = GLConfig.ACTIVE_STATUSES
-        inactive_stats= GLConfig.INACTIVE_STATUSES   # C, P, T — same pattern as suppliers/customers
-        open_stats    = []   # opening balances have no status filter
     else:
         return {}
 
@@ -658,72 +623,6 @@ def get_ar_volumetrics(df_dict: dict) -> dict:
     return results
 
 
-def get_gl_volumetrics(df_dict: dict) -> dict:
-    """
-    Returns calculated GL volumetrics for both Houses.
-    Calculates Chart of Accounts, Opening Balances, and Dimension Values stats.
-    """
-    import pandas as pd
-    CLIENTS = ['HOC', 'HOL']
-    
-    coa = df_dict.get('aglaccounts', pd.DataFrame())
-    ob = df_dict.get('aglyearend', pd.DataFrame())
-    dim = df_dict.get('agldimvalue', pd.DataFrame())
-    
-    def _safe_max_date(df, col):
-        if df.empty or col not in df.columns:
-            return None
-        valid = pd.to_datetime(df[col], errors='coerce').dropna()
-        return valid.max().strftime('%d %b %Y').lstrip('0') if not valid.empty else None
-
-    results = {}
-    for house in CLIENTS:
-        # COA
-        h_coa = _filter_house(coa, house)
-        coa_active = int((h_coa['status'] == 'N').sum()) if not h_coa.empty and 'status' in h_coa.columns else 0
-        coa_inactive = int((h_coa['status'] == 'C').sum()) if not h_coa.empty and 'status' in h_coa.columns else 0
-        coa_types = h_coa['account_type'].value_counts().to_dict() if not h_coa.empty and 'account_type' in h_coa.columns else {}
-
-        # OB
-        h_ob = _filter_house(ob, house)
-        if not h_ob.empty and 'amount' in h_ob.columns and 'dc_flag' in h_ob.columns:
-            debits = float(pd.to_numeric(h_ob.loc[h_ob['dc_flag'] == 1, 'amount'], errors='coerce').sum())
-            credits = float(pd.to_numeric(h_ob.loc[h_ob['dc_flag'] == -1, 'amount'], errors='coerce').sum())
-        else:
-            debits = 0.0
-            credits = 0.0
-
-        # Dim
-        h_dim = _filter_house(dim, house)
-        dim_active = int((h_dim['status'] == 'N').sum()) if not h_dim.empty and 'status' in h_dim.columns else 0
-        dim_inactive = int((h_dim['status'] != 'N').sum()) if not h_dim.empty and 'status' in h_dim.columns else 0
-        dim_types = h_dim['attribute_id'].value_counts().to_dict() if not h_dim.empty and 'attribute_id' in h_dim.columns else {}
-
-        results[house] = {
-            'house': house,
-            'coa': {
-                'total': len(h_coa),
-                'active': coa_active,
-                'inactive': coa_inactive,
-                'type_breakdown': coa_types,
-                'extract_date': _safe_max_date(h_coa, 'last_update')
-            },
-            'ob': {
-                'total_rows': len(h_ob),
-                'debits': debits,
-                'credits': credits,
-                'net_balance': abs(debits - credits),
-                'extract_date': _safe_max_date(h_ob, 'trans_date')
-            },
-            'dim': {
-                'total': len(h_dim),
-                'active': dim_active,
-                'inactive': dim_inactive,
-                'type_breakdown': dim_types,
-                'extract_date': _safe_max_date(h_dim, 'last_update')
-            }
-        }
-    return results
 
 # ── ADDITION TO volumetrics.py for assets ────────────────────────────────────────────────
 
