@@ -101,7 +101,7 @@ def get_ap_checks():
          'Populate agladdress.address for this supplier.', 'asuheader', None,
          'agladdress.address IS NULL OR empty',
          lambda df: (df['address'].isna() | (df['address'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
          )),
 
         ('SUP_PLACE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
@@ -110,7 +110,7 @@ def get_ap_checks():
          'Populate agladdress.place for this supplier.', 'asuheader', None,
          'agladdress.place IS NULL OR empty',
          lambda df: (df['place'].isna() | (df['place'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
          )),
 
         ('SUP_ZIP_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
@@ -119,7 +119,7 @@ def get_ap_checks():
          'Populate agladdress.zip_code for this supplier.', 'asuheader', None,
          'agladdress.zip_code IS NULL OR empty',
          lambda df: (df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
          )),
 
         ('SUP_PROVINCE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
@@ -128,7 +128,7 @@ def get_ap_checks():
          'Populate agladdress.province for this supplier.', 'asuheader', None,
          'agladdress.province IS NULL OR empty',
          lambda df: (df['province'].isna() | (df['province'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
          )),
 
         ('SUP_VAT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
