@@ -100,28 +100,36 @@ def get_ap_checks():
          'Every supplier should have an address line on record. Address data is required for correspondence, contract administration and to support Know Your Supplier checks before migration.',
          'Populate agladdress.address for this supplier.', 'asuheader', None,
          'agladdress.address IS NULL OR empty',
-         lambda df: df['address'].isna() | (df['address'].str.strip().str.len() == 0)),
+         lambda df: (df['address'].isna() | (df['address'].str.strip().str.len() == 0)) & ~(
+             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_PLACE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier has no town or city populated',
          'Every supplier should have a town or city recorded. Address data supports supplier verification and correspondence before migration.',
          'Populate agladdress.place for this supplier.', 'asuheader', None,
          'agladdress.place IS NULL OR empty',
-         lambda df: df['place'].isna() | (df['place'].str.strip().str.len() == 0)),
+         lambda df: (df['place'].isna() | (df['place'].str.strip().str.len() == 0)) & ~(
+             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_ZIP_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier has no postcode or zip code populated',
          'Every supplier should have a postcode or zip code recorded. This is required for postal correspondence and automated address verification.',
          'Populate agladdress.zip_code for this supplier.', 'asuheader', None,
          'agladdress.zip_code IS NULL OR empty',
-         lambda df: df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)),
+         lambda df: (df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)) & ~(
+             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_PROVINCE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier has no county or province populated',
          'Every supplier should have a county or province recorded to complete the address.',
          'Populate agladdress.province for this supplier.', 'asuheader', None,
          'agladdress.province IS NULL OR empty',
-         lambda df: df['province'].isna() | (df['province'].str.strip().str.len() == 0)),
+         lambda df: (df['province'].isna() | (df['province'].str.strip().str.len() == 0)) & ~(
+             (df['house'] == 'HOC') & df['apar_id'].astype(str).str[:4].isin(['1000'])
+         )),
 
         ('SUP_VAT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
          'VAT number format is invalid (Expected GB + 9 digits)',
