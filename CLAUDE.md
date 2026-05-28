@@ -498,8 +498,6 @@ A single dim_position can have multiple active `attribute_id` codes (e.g. dim_2 
 
 The `gl_dimension_values_HOC/HOL_run.sql` Step 2 query joins `agldimvalue` to `agldimension` automatically — no manual attribute_id codes need to be entered. The output includes `dim_position` and `dim_description` columns.
 
-**Known issue — hardcoded attribute_id in gl_rules.py:** `GL_TRA_ORPHAN_DIM1` at `dashboard/core/rules/gl_rules.py:200` filters `attribute_id == 'COSTC'` — a dummy-data placeholder. This must be updated with the real Cost Centre attribute_id once confirmed from the `agldimension` extract.
-
 ### GL opening balances (`aglperiodic` — not `aglyearend`)
 `aglyearend` is **not used** in Parliament's Agresso installation — it contains only legacy pre-2008 data. The correct table is `aglperiodic`.
 
