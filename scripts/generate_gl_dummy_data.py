@@ -1,577 +1,439 @@
 import pandas as pd
 import random
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 
 random.seed(42)
 
-# ============================================================
-# CONFIGURATION
-# Parliament-specific values would replace these placeholders
-# ============================================================
+# ---------------------------------------------------------------------------
+# EXCEL SERIAL DATE HELPERS
+# Excel counts days since 1899-12-30 (accounting for the 1900 leap-year bug)
+# Data extracted from SSMS via Excel arrives with date fields as these serials
+# ---------------------------------------------------------------------------
+EXCEL_EPOCH = date(1899, 12, 30)
 
-CLIENTS = ['HOC', 'HOL']
-FISCAL_YEAR = 2025
-YEAR_END_PERIOD = 1200  # Period 12 of FY2025
+def to_excel(d: date) -> int:
+    return (d - EXCEL_EPOCH).days
 
-# Simulated attribute_ids - in real data these come from Step 1 profile query
-ATTR_ACCOUNT = 'ACCT'
+def excel_rand(start: date, end: date) -> int:
+    days = (end - start).days
+    return to_excel(start + timedelta(days=random.randint(0, days)))
+
+TODAY = date.today()
+
+# Pre-computed serials for common sentinel dates
+PERIOD_FROM_NORMAL = to_excel(date(2000, 1, 1))   # 36526 — account created ~Y2K
+PERIOD_TO_NORMAL   = to_excel(date(2099, 12, 31))  # 72684 — effectively no expiry
+PERIOD_TO_EXPIRED  = to_excel(date(2010, 6, 1))    # ~40330 — expired account
+LAST_UPDATE_STALE  = to_excel(date(2018, 1, 1))    # ~43101 — > 3 years ago
+
+# ---------------------------------------------------------------------------
+# UNIT4 / AGRESSO CONSTANTS (confirmed from real Parliament data)
+# ---------------------------------------------------------------------------
+HOC_CLIENTS = ['CA', 'CM']
+HOL_CLIENT  = 'LA'
+
+HOC_GRPS    = [str(i) for i in range(1, 10)]   # '1' .. '9'
+HOL_GRPS    = ['A', 'B', 'C', 'D', 'E', 'F']  # 6 letters — exact meaning TBD
+
+# bflag is a bitmask — powers of 2; 0 = no special flag. Specific bit meanings TBD.
+BFLAG_NONE = 0
+BFLAG_VALUES = [0, 8, 16, 32, 64, 128]
+
+def last_update_recent() -> int:
+    return excel_rand(date(2021, 1, 1), TODAY)
+
+def make_period_from() -> int:
+    return excel_rand(date(1995, 1, 1), date(2010, 1, 1))
+
+def client_to_house(client: str) -> str:
+    return 'HOL' if client == HOL_CLIENT else 'HOC'
+
+
+# ===========================================================================
+# CHART OF ACCOUNTS — aglaccounts
+# HOC: numeric account codes (1000+), client CA or CM, grp 1–9, rule 1–39
+# HOL: letter-prefixed codes (A1000, B2000...), client LA, grp A–F, rule 1–89
+# Both: bflag in {0,8,16,32,64,128}, period_from/to & last_update as Excel serials
+# ===========================================================================
+
+def generate_chart_of_accounts() -> pd.DataFrame:
+    rows = []
+
+    # HOC account structure — each account code appears once for CA and once for CM
+    hoc_configs = [
+        # (grp, start, count, res_bal, acc_type, desc_prefix, bflag)
+        ('1', 1000, 12, 'B', 'GL', 'Cash and Bank',         BFLAG_NONE),
+        ('2', 1200,  8, 'B', 'AR', 'Receivables Control',   32),
+        ('3', 2000,  8, 'B', 'GL', 'Accounts Payable',      BFLAG_NONE),
+        ('3', 2100,  6, 'B', 'GL', 'Accruals',              BFLAG_NONE),
+        ('4', 3000,  8, 'B', 'GL', 'Capital',               BFLAG_NONE),
+        ('4', 3500,  6, 'B', 'GL', 'Reserves',              BFLAG_NONE),
+        ('5', 4000, 18, 'R', 'GL', 'Staff Costs',           BFLAG_NONE),
+        ('6', 5000, 12, 'R', 'GL', 'Premises',              BFLAG_NONE),
+        ('7', 6000, 10, 'R', 'GL', 'IT and Technology',     BFLAG_NONE),
+        ('8', 7000, 10, 'R', 'GL', 'Professional Services', BFLAG_NONE),
+        ('9', 9000, 12, 'R', 'AR', 'Income',                BFLAG_NONE),
+    ]
+
+    for hoc_client in HOC_CLIENTS:
+        for (grp, start, count, res_bal, acc_type, desc_prefix, bflag) in hoc_configs:
+            for i in range(count):
+                rows.append({
+                    '_house': 'HOC',
+                    'client':       hoc_client,
+                    'account':      str(start + i),
+                    'description':  f"{desc_prefix} {i+1:02d}",
+                    'account_grp':  grp,
+                    'account_type': acc_type,
+                    'status':       'N' if random.random() > 0.04 else 'C',
+                    'res_bal':      res_bal,
+                    'bflag':        bflag,
+                    'account_rule': random.randint(1, 39),
+                    'period_from':  make_period_from(),
+                    'period_to':    PERIOD_TO_NORMAL,
+                    'last_update':  last_update_recent(),
+                    'head_account': None,
+                })
+
+    # HOL account structure — letter-prefixed codes, LA client only
+    hol_configs = [
+        # (grp, prefix, start_num, count, res_bal, acc_type, desc_prefix)
+        ('A', 'A', 1000, 25, 'B', 'GL', 'Balance Sheet Assets'),
+        ('B', 'B', 2000, 20, 'B', 'GL', 'Liabilities'),
+        ('C', 'C', 3000, 15, 'B', 'GL', 'Capital and Reserves'),
+        ('D', 'D', 4000, 35, 'R', 'GL', 'Staff Costs'),
+        ('E', 'E', 5000, 30, 'R', 'GL', 'Premises and Overheads'),
+        ('F', 'F', 9000, 25, 'R', 'AR', 'Income'),
+    ]
+
+    for (grp, prefix, start_num, count, res_bal, acc_type, desc_prefix) in hol_configs:
+        for i in range(count):
+            rows.append({
+                '_house': 'HOL',
+                'client':       HOL_CLIENT,
+                'account':      f"{prefix}{start_num + i}",
+                'description':  f"{desc_prefix} {i+1:02d}",
+                'account_grp':  grp,
+                'account_type': acc_type,
+                'status':       'N' if random.random() > 0.04 else 'C',
+                'res_bal':      res_bal,
+                'bflag':        BFLAG_NONE,
+                'account_rule': random.randint(1, 89),
+                'period_from':  make_period_from(),
+                'period_to':    PERIOD_TO_NORMAL,
+                'last_update':  last_update_recent(),
+                'head_account': None,
+            })
+
+    # --- Edge cases (HOC, client CA, accounts in 8001–8013 range) ---
+    # Each edge case maps to a specific planned DQ check
+    edge_cases = [
+        # GL_ACC_DESC_MISSING: active account, no description
+        {'_house': 'HOC', 'client': 'CA', 'account': '8001', 'description': None,
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_GRP_MISSING: active account, no account_grp
+        {'_house': 'HOC', 'client': 'CA', 'account': '8002', 'description': 'EC Missing Group',
+         'account_grp': None, 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_RESBAL_MISSING: active account, no res_bal
+        {'_house': 'HOC', 'client': 'CA', 'account': '8003', 'description': 'EC Missing ResBal',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': None,
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_RULE_MISSING: active account, no account_rule
+        {'_house': 'HOC', 'client': 'CA', 'account': '8004', 'description': 'EC Missing Rule',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': None, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_PERIOD_MISSING: active account, no period_from
+        {'_house': 'HOC', 'client': 'CA', 'account': '8005', 'description': 'EC Missing Period From',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': None,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_RESBAL_INVALID: res_bal = 'X' (not R or B)
+        {'_house': 'HOC', 'client': 'CA', 'account': '8006', 'description': 'EC Invalid ResBal',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'X',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_TYPE_INVALID: account_type not in GL/AP/AR
+        {'_house': 'HOC', 'client': 'CA', 'account': '8007', 'description': 'EC Invalid Type',
+         'account_grp': '5', 'account_type': 'XX', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_PERIOD_INV: period_from > period_to (swapped)
+        {'_house': 'HOC', 'client': 'CA', 'account': '8008', 'description': 'EC Invalid Period Range',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_TO_NORMAL,
+         'period_to': PERIOD_FROM_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_STALE_N: period_to in the past but status still N
+        {'_house': 'HOC', 'client': 'CA', 'account': '8009', 'description': 'EC Expired Still Active',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_EXPIRED, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_BFLAG_CON: reconciliation-type bflag but account_type = GL (not AR/AP)
+        # bflag = 32 used as placeholder — update once reconciliation bit is confirmed
+        {'_house': 'HOC', 'client': 'CA', 'account': '8010', 'description': 'EC Recon Flag Not Control',
+         'account_grp': '2', 'account_type': 'GL', 'status': 'N', 'res_bal': 'B',
+         'bflag': 32, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_DUP_CODE: same (client, account) appears twice — a true duplicate
+        {'_house': 'HOC', 'client': 'CA', 'account': '8011', 'description': 'EC Dup Account A',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+        {'_house': 'HOC', 'client': 'CA', 'account': '8011', 'description': 'EC Dup Account B',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': last_update_recent(), 'head_account': None},
+
+        # GL_ACC_STALE_MOD: last_update > 3 years ago
+        {'_house': 'HOC', 'client': 'CA', 'account': '8012', 'description': 'EC Stale Account',
+         'account_grp': '5', 'account_type': 'GL', 'status': 'N', 'res_bal': 'R',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': LAST_UPDATE_STALE, 'head_account': None},
+
+        # Closed account — for backward-compat checks (will have transactions against it)
+        {'_house': 'HOC', 'client': 'CA', 'account': '8013', 'description': 'EC Closed With Transactions',
+         'account_grp': '1', 'account_type': 'GL', 'status': 'C', 'res_bal': 'B',
+         'bflag': 0, 'account_rule': 5, 'period_from': PERIOD_FROM_NORMAL,
+         'period_to': PERIOD_TO_NORMAL, 'last_update': LAST_UPDATE_STALE, 'head_account': None},
+    ]
+
+    return pd.DataFrame(rows + edge_cases)
+
+
+# ===========================================================================
+# DIMENSION VALUES — agldimvalue (joined with agldimension for dim_position)
+# Format not yet confirmed from real data — client codes updated, structure TBD
+# ===========================================================================
+
 ATTR_COSTC = 'COSTC'
-ATTR_SUBJ = 'SUBJ'
+ATTR_SUBJ  = 'SUBJ'
 ATTR_ANAL1 = 'ANL1'
 ATTR_ANAL2 = 'ANL2'
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def random_client():
-    return random.choice(CLIENTS)
-
-def random_date(start_days_ago=730, end_days_ago=0):
-    days = random.randint(end_days_ago, start_days_ago)
-    return (datetime.now() - timedelta(days=days)).date()
-
-def random_period():
-    return random.randint(1, 12) * 100 + FISCAL_YEAR % 100
-
-def random_account():
-    return str(random.randint(1000, 9999))
-
-def random_cost_centre():
-    return f"CC{str(random.randint(100, 999))}"
-
-def random_subjective():
-    return f"S{str(random.randint(100, 999))}"
-
-def random_anal1():
-    return f"A1{str(random.randint(10, 99))}"
-
-def random_anal2():
-    return f"A2{str(random.randint(10, 99))}"
-
-def random_wf_state():
-    return random.choice(['', 'T', 'T', 'T', 'W'])
-
-def random_status():
-    return random.choice(['N', 'N', 'N', 'N', 'C', 'T'])
-
-def random_amount(min_val=100, max_val=500000):
-    return round(random.uniform(min_val, max_val), 2)
-
-
-# ============================================================
-# CHART OF ACCOUNTS — aglaccounts
-# ============================================================
-
-def generate_chart_of_accounts(n=80):
-
-    # Define realistic account ranges
-    # Balance sheet accounts: 1000-4999
-    # P&L accounts: 5000-9999
-    account_configs = [
-        # (account_range_start, count, res_bal, account_type, description_prefix, bflag)
-        (1000, 10, 'B', 'GL', 'Cash and Bank',        0),
-        (1100, 8,  'B', 'GL', 'Accounts Receivable',  7),   # AR control
-        (1200, 6,  'B', 'GL', 'Prepayments',           9),
-        (2000, 8,  'B', 'GL', 'Accounts Payable',      7),   # AP control
-        (2100, 6,  'B', 'GL', 'Accruals',              0),
-        (3000, 6,  'B', 'GL', 'Capital',               0),
-        (3100, 6,  'B', 'GL', 'Reserves',              0),
-        (5000, 10, 'R', 'GL', 'Staff Costs',           0),
-        (5100, 8,  'R', 'GL', 'Premises',              0),
-        (5200, 6,  'R', 'GL', 'IT and Technology',     0),
-        (5300, 6,  'R', 'GL', 'Professional Services', 0),
-        (9000, 10, 'R', 'AR', 'Income',                0),
-    ]
-
-    rows = []
-    account_pool = {}  # track accounts per client for cross-checks
-
-    for client in CLIENTS:
-        account_pool[client] = []
-        for (start, count, res_bal, acc_type, desc_prefix, bflag) in account_configs:
-            for i in range(count):
-                account = str(start + i)
-                account_pool[client].append(account)
-                rows.append({
-                    'client': client,
-                    'account': account,
-                    'description': f"{desc_prefix} {i+1:02d}",
-                    'account_grp': f"GRP{start // 1000}",
-                    'account_type': acc_type,
-                    'status': 'N',
-                    'res_bal': res_bal,
-                    'bflag': bflag,
-                    'account_rule': random.randint(1, 10),
-                    'period_from': 100 + (FISCAL_YEAR % 100),
-                    'period_to': 1200 + (FISCAL_YEAR % 100),
-                    'last_update': random_date(365, 30),
-                    'head_account': None
-                })
-
-    # --- Edge cases ---
-    edge_cases = [
-
-        # COMPLETENESS: Missing description
-        {'client': 'HOC', 'account': 'EC_A001', 'description': None,
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # COMPLETENESS: Missing account_grp
-        {'client': 'HOC', 'account': 'EC_A002', 'description': 'EC Missing Group',
-         'account_grp': None, 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # COMPLETENESS: Missing res_bal
-        {'client': 'HOC', 'account': 'EC_A003', 'description': 'EC Missing ResBal',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': None, 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # VALIDITY: Invalid res_bal value
-        {'client': 'HOC', 'account': 'EC_A004', 'description': 'EC Invalid ResBal',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'X', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # VALIDITY: period_from greater than period_to
-        {'client': 'HOC', 'account': 'EC_A005', 'description': 'EC Invalid Period Range',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 1225, 'period_to': 125,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # VALIDITY: Period expired but status still N
-        {'client': 'HOC', 'account': 'EC_A006', 'description': 'EC Expired Period Active',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 100, 'period_to': 200,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # CONSISTENCY: P&L account in balance sheet group
-        {'client': 'HOC', 'account': 'EC_A007', 'description': 'EC PL in BS Group',
-         'account_grp': 'GRP1', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # CONSISTENCY: Balance sheet account in P&L group
-        {'client': 'HOC', 'account': 'EC_A008', 'description': 'EC BS in PL Group',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'B', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # CONSISTENCY: Reconciliation bflag but not AP or AR type
-        {'client': 'HOC', 'account': 'EC_A009', 'description': 'EC Recon Not Control',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 7, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # DUPLICATE: Same description different code within HOC
-        {'client': 'HOC', 'account': 'EC_A010', 'description': 'Duplicate Account Description',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        {'client': 'HOC', 'account': 'EC_A011', 'description': 'Duplicate Account Description',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(90, 30), 'head_account': None},
-
-        # SCOPE: Stale account - last updated 4 years ago
-        {'client': 'HOC', 'account': 'EC_A012', 'description': 'EC Stale Account',
-         'account_grp': 'GRP5', 'account_type': 'GL', 'status': 'N',
-         'res_bal': 'R', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': (datetime.now() - timedelta(days=1500)).date(),
-         'head_account': None},
-
-        # BACKWARD COMPAT: Closed account - will have balances against it in aglyearend
-        {'client': 'HOC', 'account': 'EC_A013', 'description': 'EC Closed With Balance',
-         'account_grp': 'GRP1', 'account_type': 'GL', 'status': 'C',
-         'res_bal': 'B', 'bflag': 0, 'account_rule': 1,
-         'period_from': 125, 'period_to': 1225,
-         'last_update': random_date(730, 365), 'head_account': None},
-    ]
-
-    return pd.DataFrame(rows + edge_cases), account_pool
-
-
-# ============================================================
-# DIMENSION VALUES — agldimvalue
-# ============================================================
-
-def generate_dimension_values(account_pool):
-
+def generate_dimension_values(df_accounts: pd.DataFrame) -> pd.DataFrame:
     rows = []
 
-    # Cost centres - realistic Parliament-style codes
-    cc_codes = [f"CC{str(i).zfill(3)}" for i in range(100, 130)]
-    cc_parents = ['DEPT_A', 'DEPT_B', 'DEPT_C', 'DEPT_D']
-
-    # Subjectives
-    subj_codes = [f"S{str(i).zfill(3)}" for i in range(100, 125)]
-
-    # Analysis 1 - programme codes
-    anal1_codes = [f"A1{str(i).zfill(2)}" for i in range(10, 30)]
-
-    # Analysis 2 - project codes
-    anal2_codes = [f"A2{str(i).zfill(2)}" for i in range(10, 25)]
+    cc_codes    = [f"CC{i:03d}" for i in range(100, 130)]
+    cc_parents  = ['DEPT_A', 'DEPT_B', 'DEPT_C', 'DEPT_D']
+    subj_codes  = [f"S{i:03d}" for i in range(100, 125)]
+    anal1_codes = [f"A1{i:02d}" for i in range(10, 30)]
+    anal2_codes = [f"A2{i:02d}" for i in range(10, 25)]
 
     dimension_configs = [
-        (ATTR_COSTC, cc_codes, 'Cost Centre', cc_parents, 1),
-        (ATTR_SUBJ,  subj_codes, 'Subjective', None,      2),
-        (ATTR_ANAL1, anal1_codes, 'Programme', None,      3),
-        (ATTR_ANAL2, anal2_codes, 'Project', None,        4),
+        (ATTR_COSTC, cc_codes,    'Cost Centre', cc_parents, 1),
+        (ATTR_SUBJ,  subj_codes,  'Subjective',  None,       2),
+        (ATTR_ANAL1, anal1_codes, 'Programme',   None,       3),
+        (ATTR_ANAL2, anal2_codes, 'Project',     None,       4),
     ]
 
-    for client in CLIENTS:
+    # Generate for both houses using confirmed client codes
+    all_clients = HOC_CLIENTS + [HOL_CLIENT]
+    for client in all_clients:
+        house = client_to_house(client)
         for (attr_id, codes, desc_prefix, parents, dim_pos) in dimension_configs:
-            for i, code in enumerate(codes):
+            for code in codes:
                 rel_value = random.choice(parents) if parents else None
                 rows.append({
-                    'client': client,
+                    '_house':       house,
+                    'client':       client,
                     'attribute_id': attr_id,
                     'dim_position': dim_pos,
-                    'dim_value': code,
-                    'description': f"{desc_prefix} {code}",
-                    'status': random.choice(['N', 'N', 'N', 'C']),
-                    'period_from': 100 + (FISCAL_YEAR % 100),
-                    'period_to': 1200 + (FISCAL_YEAR % 100),
-                    'rel_value': rel_value,
-                    'last_update': random_date(365, 30),
-                    'wf_state': random_wf_state()
+                    'dim_value':    code,
+                    'description':  f"{desc_prefix} {code}",
+                    'status':       random.choice(['N', 'N', 'N', 'C']),
+                    'period_from':  make_period_from(),
+                    'period_to':    PERIOD_TO_NORMAL,
+                    'rel_value':    rel_value,
+                    'last_update':  last_update_recent(),
+                    'wf_state':     random.choice(['T', 'T', 'T', 'W', '']),
                 })
 
-    # --- Edge cases ---
     edge_cases = [
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D001', 'description': None, 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
 
-        # COMPLETENESS: Missing description
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D001',
-         'description': None, 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D002', 'description': 'EC No Parent CC', 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': None, 'last_update': last_update_recent(), 'wf_state': 'T'},
 
-        # COMPLETENESS: Missing rel_value where hierarchy expected (Cost Centre)
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D002',
-         'description': 'EC No Parent CC', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': None, 'last_update': random_date(90, 30), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D003', 'description': 'EC Invalid Period', 'status': 'N',
+         'period_from': PERIOD_TO_NORMAL, 'period_to': PERIOD_FROM_NORMAL,
+         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
 
-        # VALIDITY: period_from greater than period_to
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D003',
-         'description': 'EC Invalid Period Range', 'status': 'N',
-         'period_from': 1225, 'period_to': 125,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D004', 'description': 'EC Expired Active', 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_EXPIRED,
+         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
 
-        # VALIDITY: Period expired but status still N
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D004',
-         'description': 'EC Expired Period Active', 'status': 'N',
-         'period_from': 100, 'period_to': 200,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D005', 'description': 'EC Stuck Workflow', 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'W'},
 
-        # VALIDITY: Stuck in workflow
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D005',
-         'description': 'EC Stuck Workflow', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'W'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D006', 'description': 'EC Orphaned Parent', 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': 'DEPT_GHOST', 'last_update': last_update_recent(), 'wf_state': 'T'},
 
-        # CONSISTENCY: rel_value references non-existent parent
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D006',
-         'description': 'EC Orphaned Parent', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_GHOST', 'last_update': random_date(90, 30), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D009', 'description': 'EC Stale Dimension', 'status': 'N',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': 'DEPT_A', 'last_update': LAST_UPDATE_STALE, 'wf_state': 'T'},
 
-        # CONSISTENCY: Same description different code within HOC COSTC
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D007',
-         'description': 'Duplicate Dimension Description', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
-
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D008',
-         'description': 'Duplicate Dimension Description', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_B', 'last_update': random_date(90, 30), 'wf_state': 'T'},
-
-        # DUPLICATE: Same dim_value exists in both Houses - consolidation candidate
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'CC999',
-         'description': 'Cross House Cost Centre HOC', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
-
-        {'client': 'HOL', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'CC999',
-         'description': 'Cross House Cost Centre HOL', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(90, 30), 'wf_state': 'T'},
-
-        # SCOPE: Stale dimension value
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D009',
-         'description': 'EC Stale Dimension', 'status': 'N',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A',
-         'last_update': (datetime.now() - timedelta(days=1500)).date(),
-         'wf_state': 'T'},
-
-        # BACKWARD COMPAT: Inactive dimension value
-        # will be referenced by transactions in aglyearend
-        {'client': 'HOC', 'attribute_id': ATTR_COSTC, 'dim_position': 1, 'dim_value': 'EC_D010',
-         'description': 'EC Inactive With Balances', 'status': 'C',
-         'period_from': 125, 'period_to': 1225,
-         'rel_value': 'DEPT_A', 'last_update': random_date(730, 365), 'wf_state': 'T'},
+        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
+         'dim_value': 'EC_D010', 'description': 'EC Inactive With Balances', 'status': 'C',
+         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
+         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
     ]
 
     return pd.DataFrame(rows + edge_cases)
 
 
-# ============================================================
-# OPENING BALANCES — aglyearend
-# ============================================================
+# ===========================================================================
+# OPENING BALANCES — aglperiodic (frame key: aglyearend for backwards compat)
+# period is YYYYPP integer (e.g. 202612 = FY2025/26 period 12)
+# ===========================================================================
 
-def generate_opening_balances(df_accounts, df_dimensions):
+FISCAL_YEAR       = 2026
+YEAR_END_PERIOD   = 202612   # Period 12 of FY2025/26
 
-    # Get active accounts and dimension values for realistic data
-    active_accounts = df_accounts[
+def random_amount(min_val=100, max_val=500_000):
+    return round(random.uniform(min_val, max_val), 2)
+
+def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
+    active = df_accounts[
         (df_accounts['status'] == 'N') &
-        (~df_accounts['account'].str.startswith('EC_'))
-    ][['client', 'account', 'res_bal', 'account_type']].values.tolist()
+        (~df_accounts['account'].astype(str).str.startswith('8'))  # exclude edge cases
+    ][['_house', 'client', 'account', 'res_bal', 'account_type']].values.tolist()
 
-    active_cc = df_dimensions[
-        (df_dimensions['attribute_id'] == ATTR_COSTC) &
-        (df_dimensions['status'] == 'N') &
-        (~df_dimensions['dim_value'].str.startswith('EC_'))
-    ]['dim_value'].tolist()
-
-    active_subj = df_dimensions[
-        (df_dimensions['attribute_id'] == ATTR_SUBJ) &
-        (df_dimensions['status'] == 'N') &
-        (~df_dimensions['dim_value'].str.startswith('EC_'))
-    ]['dim_value'].tolist()
+    cc_codes   = [f"CC{i:03d}" for i in range(100, 130)]
+    subj_codes = [f"S{i:03d}" for i in range(100, 125)]
 
     rows = []
-    balance_sheet_total = {'HOC': 0, 'HOL': 0}
-
-    for i in range(150):
-        client, account, res_bal, acc_type = random.choice(active_accounts)
+    for i in range(200):
+        house, client, account, res_bal, acc_type = random.choice(active)
         amount = random_amount()
-        dc_flag = random.choice([1, -1])  # 1=debit, -1=credit
-
-        # Track balance sheet totals for reconciliation check
-        if res_bal == 'B':
-            balance_sheet_total[client] += amount * dc_flag
-
+        dc_flag = random.choice(['D', 'C'])
         rows.append({
-            'client': client,
-            'account': account,
-            'fiscal_year': FISCAL_YEAR,
-            'period': YEAR_END_PERIOD,
-            'dim_1': random.choice(active_cc),     # Cost Centre
-            'dim_2': random.choice(active_subj),   # Subjective
-            'dim_3': None,
-            'dim_4': None,
-            'dim_5': None,
-            'dim_6': None,
-            'dim_7': None,
-            'amount': amount,
-            'cur_amount': amount,
-            'currency': 'GBP',
-            'dc_flag': dc_flag,
-            'voucher_type': 'YEBAL',
-            'tax_code': random.choice(['S20', 'Z0', None]),
-            'apar_id': None,
-            'apar_type': None
-        })
-
-    # Add AP and AR control account balances with apar_id populated
-    # These are the rows used for sub-ledger reconciliation
-    for client in CLIENTS:
-        # AP control account balance
-        rows.append({
-            'client': client,
-            'account': '2000',          # AP control account
-            'fiscal_year': FISCAL_YEAR,
-            'period': YEAR_END_PERIOD,
-            'dim_1': 'CC100',
-            'dim_2': 'S100',
+            '_house':       house,
+            'client':       client,
+            'account':      account,
+            'period':       YEAR_END_PERIOD,
+            'dim_1':        random.choice(cc_codes),
+            'dim_2':        random.choice(subj_codes),
             'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-            'amount': random_amount(50000, 500000),
-            'cur_amount': random_amount(50000, 500000),
-            'currency': 'GBP',
-            'dc_flag': -1,              # Credit - AP is a liability
-            'voucher_type': 'YEBAL',
-            'tax_code': None,
-            'apar_id': 'SUP_CONTROL',
-            'apar_type': 'P'
+            'amount':       amount,
+            'cur_amount':   amount,
+            'currency':     'GBP',
+            'dc_flag':      dc_flag,
+            'voucher_type': 'JO',
+            'voucher_no':   f"OB{i:04d}",
+            'trans_date':   to_excel(date(2026, 4, 1)),
+            'tax_code':     None,
+            'apar_id':      None,
+            'apar_type':    None,
+            'status':       '',
+            'description':  'Opening balance',
         })
 
-        # AR control account balance
-        rows.append({
-            'client': client,
-            'account': '1100',          # AR control account
-            'fiscal_year': FISCAL_YEAR,
-            'period': YEAR_END_PERIOD,
-            'dim_1': 'CC100',
-            'dim_2': 'S100',
-            'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-            'amount': random_amount(50000, 500000),
-            'cur_amount': random_amount(50000, 500000),
-            'currency': 'GBP',
-            'dc_flag': 1,               # Debit - AR is an asset
-            'voucher_type': 'YEBAL',
-            'tax_code': None,
-            'apar_id': 'CUST_CONTROL',
-            'apar_type': 'R'
-        })
-
-    # --- Edge cases ---
+    # Edge cases — completeness and referential integrity
     edge_cases = [
+        # GL_BAL_AMT_MISSING: balance record with no amount
+        {'_house': 'HOC', 'client': 'CA', 'account': '4000', 'period': YEAR_END_PERIOD,
+         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
+         'dim_6': None, 'dim_7': None, 'amount': None, 'cur_amount': None, 'currency': 'GBP',
+         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9001',
+         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
+         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC Missing Amount'},
 
-        # COMPLETENESS: Missing amount
-        {'client': 'HOC', 'account': '5000', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': None, 'cur_amount': None, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
+        # GL_BAL_ORPHAN_ACC: balance against account that doesn't exist in CoA
+        {'_house': 'HOC', 'client': 'CA', 'account': '9999', 'period': YEAR_END_PERIOD,
+         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
+         'dim_6': None, 'dim_7': None, 'amount': 15000, 'cur_amount': 15000, 'currency': 'GBP',
+         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9002',
+         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
+         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC Ghost Account'},
 
-        # VALIDITY: Duplicate coding string - same account and dimensions
-        {'client': 'HOC', 'account': '5001', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC_DUP', 'dim_2': 'S_DUP',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 10000, 'cur_amount': 10000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        {'client': 'HOC', 'account': '5001', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC_DUP', 'dim_2': 'S_DUP',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 5000, 'cur_amount': 5000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # VALIDITY: P&L account with non-zero balance at year end
-        {'client': 'HOC', 'account': '5002', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 25000, 'cur_amount': 25000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # VALIDITY: Wrong period - not year end period
-        {'client': 'HOC', 'account': '5003', 'fiscal_year': FISCAL_YEAR,
-         'period': 600,   # Period 6 not year end
-         'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 8000, 'cur_amount': 8000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # CONSISTENCY: Balance against non-existent account
-        {'client': 'HOC', 'account': 'GHOST_ACC', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 15000, 'cur_amount': 15000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # CONSISTENCY: Balance against closed account (EC_A013)
-        {'client': 'HOC', 'account': 'EC_A013', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 5000, 'cur_amount': 5000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # CONSISTENCY: Balance against inactive dimension value (EC_D010)
-        {'client': 'HOC', 'account': '5004', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'EC_D010', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 3000, 'cur_amount': 3000, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # CONSISTENCY: Balance against non-existent dimension value
-        {'client': 'HOC', 'account': '5005', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC_GHOST', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 7500, 'cur_amount': 7500, 'currency': 'GBP', 'dc_flag': 1,
-         'voucher_type': 'YEBAL', 'tax_code': None, 'apar_id': None, 'apar_type': None},
-
-        # RECONCILIATION: AP control account with deliberately mismatched amount
-        # Sum of open supplier rest_amounts will not match this value
-        {'client': 'HOC', 'account': '2000', 'fiscal_year': FISCAL_YEAR,
-         'period': YEAR_END_PERIOD, 'dim_1': 'CC100', 'dim_2': 'S100',
-         'dim_3': None, 'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
-         'amount': 999999.99,    # Deliberately wrong for reconciliation test
-         'cur_amount': 999999.99, 'currency': 'GBP', 'dc_flag': -1,
-         'voucher_type': 'YEBAL', 'tax_code': None,
-         'apar_id': 'SUP_RECON_EC', 'apar_type': 'P'},
+        # GL_BAL_PL_NONZERO: P&L account with non-zero balance at year end
+        {'_house': 'HOC', 'client': 'CA', 'account': '4000', 'period': YEAR_END_PERIOD,
+         'dim_1': 'CC100', 'dim_2': 'S100', 'dim_3': None, 'dim_4': None, 'dim_5': None,
+         'dim_6': None, 'dim_7': None, 'amount': 25000, 'cur_amount': 25000, 'currency': 'GBP',
+         'dc_flag': 'D', 'voucher_type': 'JO', 'voucher_no': 'OB9003',
+         'trans_date': to_excel(date(2026, 4, 1)), 'tax_code': None,
+         'apar_id': None, 'apar_type': None, 'status': '', 'description': 'EC PL Nonzero'},
     ]
 
     return pd.DataFrame(rows + edge_cases)
 
 
-# ============================================================
-# GENERATE ALL THREE
-# ============================================================
-
-df_accounts, account_pool = generate_chart_of_accounts()
-df_dimensions = generate_dimension_values(account_pool)
-df_balances = generate_opening_balances(df_accounts, df_dimensions)
-
-# ============================================================
-# SAVE TO CSV
-# ============================================================
+# ===========================================================================
+# GENERATE AND SAVE
+# ===========================================================================
 
 import os
 os.makedirs('data/gl', exist_ok=True)
 
+df_coa  = generate_chart_of_accounts()
+df_dims = generate_dimension_values(df_coa)
+df_bal  = generate_opening_balances(df_coa)
+
 for house in ['HOC', 'HOL']:
-    df_accounts[df_accounts['client'] == house].to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv', index=False)
-    df_dimensions[df_dimensions['client'] == house].to_csv(f'data/gl/gl_dimension_values_{house}.csv', index=False)
-    df_balances[df_balances['client'] == house].to_csv(f'data/gl/gl_opening_balances_{house}.csv', index=False)
+    coa_out  = df_coa [df_coa ['_house'] == house].drop(columns=['_house'])
+    dims_out = df_dims[df_dims['_house'] == house].drop(columns=['_house'])
+    bal_out  = df_bal [df_bal ['_house'] == house].drop(columns=['_house'])
 
-    # gl_transact_dimensions — distinct dim combinations derived from opening balances
+    coa_out .to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv',  index=False)
+    dims_out.to_csv(f'data/gl/gl_dimension_values_{house}.csv',   index=False)
+    bal_out .to_csv(f'data/gl/gl_opening_balances_{house}.csv',   index=False)
+
+    # gl_transact_dimensions: distinct dim combinations from opening balances
     dim_cols = ['client', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7']
-    df_trans_dims = df_balances[df_balances['client'] == house][dim_cols].drop_duplicates()
-    df_trans_dims.to_csv(f'data/gl/gl_transact_dimensions_{house}.csv', index=False)
+    bal_out[dim_cols].drop_duplicates().to_csv(
+        f'data/gl/gl_transact_dimensions_{house}.csv', index=False
+    )
 
-print(f"Chart of accounts:  {len(df_accounts)} rows -> data/gl/gl_chart_of_accounts_HOC/HOL.csv")
-print(f"Dimension values:   {len(df_dimensions)} rows -> data/gl/gl_dimension_values_HOC/HOL.csv")
-print(f"Opening balances:   {len(df_balances)} rows -> data/gl/gl_opening_balances_HOC/HOL.csv")
-print(f"Transact dims:      derived from balances -> data/gl/gl_transact_dimensions_HOC/HOL.csv")
+print(f"Chart of accounts:  {len(df_coa)} rows total")
+print(f"  HOC ({', '.join(HOC_CLIENTS)}): {len(df_coa[df_coa['_house']=='HOC'])} rows")
+print(f"  HOL ({HOL_CLIENT}):         {len(df_coa[df_coa['_house']=='HOL'])} rows")
+print(f"Dimension values:   {len(df_dims)} rows total")
+print(f"Opening balances:   {len(df_bal)} rows total")
 
-print("\n--- Account Type Split ---")
-print(df_accounts[df_accounts['status'] == 'N']['account_type'].value_counts())
+print("\n--- HOC account_type split (active only) ---")
+hoc_active = df_coa[(df_coa['_house'] == 'HOC') & (df_coa['status'] == 'N')]
+print(hoc_active['account_type'].value_counts().to_dict())
 
-print("\n--- Dimension Value Split by attribute_id ---")
-print(df_dimensions[df_dimensions['status'] == 'N']['attribute_id'].value_counts())
+print("\n--- HOC client split ---")
+print(df_coa[df_coa['_house'] == 'HOC']['client'].value_counts().to_dict())
 
-print("\n--- Balance Split by res_bal (joined) ---")
-merged = df_balances.merge(
-    df_accounts[['client', 'account', 'res_bal']],
-    on=['client', 'account'],
-    how='left'
-)
-print(merged['res_bal'].value_counts())
+print("\n--- HOL account prefix sample ---")
+print(df_coa[df_coa['_house'] == 'HOL']['account'].head(10).tolist())
 
-print("\n--- Edge Cases in Accounts ---")
-print(df_accounts[df_accounts['account'].str.startswith('EC_')][
-    ['account', 'description', 'status', 'res_bal']
-])
+print("\n--- bflag distribution (HOC active) ---")
+print(hoc_active['bflag'].value_counts().to_dict())
 
-print("\n--- Edge Cases in Dimensions ---")
-print(df_dimensions[df_dimensions['dim_value'].str.startswith('EC_')][
-    ['attribute_id', 'dim_value', 'description', 'status']
-])
+print("\n--- period_from/to format (HOC sample) ---")
+sample = df_coa[df_coa['_house'] == 'HOC'][['account', 'period_from', 'period_to', 'last_update']].head(3)
+print(sample.to_string(index=False))
 
-print("\n--- Edge Cases in Balances ---")
-ec_balances = df_balances[
-    df_balances['account'].str.startswith('EC_') |
-    df_balances['account'].str.startswith('GHOST') |
-    df_balances['dim_1'].str.startswith('EC_') |
-    df_balances['dim_1'].str.startswith('CC_') |
-    (df_balances['amount'] == 999999.99)
-][['client', 'account', 'dim_1', 'amount', 'dc_flag']]
-print(ec_balances)
+print("\n--- Edge cases ---")
+ec = df_coa[df_coa['account'].astype(str).str.startswith('8')]
+print(ec[['client', 'account', 'description', 'status', 'res_bal', 'bflag', 'period_to', 'last_update']].to_string(index=False))
