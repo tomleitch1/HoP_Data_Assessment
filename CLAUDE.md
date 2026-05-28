@@ -500,16 +500,30 @@ The `gl_dimension_values_HOC/HOL_run.sql` Step 2 query joins `agldimvalue` to `a
 
 **Known issue — hardcoded attribute_id in gl_rules.py:** `GL_TRA_ORPHAN_DIM1` at `dashboard/core/rules/gl_rules.py:200` filters `attribute_id == 'COSTC'` — a dummy-data placeholder. This must be updated with the real Cost Centre attribute_id once confirmed from the `agldimension` extract.
 
+### GL opening balances (`aglperiodic` — not `aglyearend`)
+`aglyearend` is **not used** in Parliament's Agresso installation — it contains only legacy pre-2008 data. The correct table is `aglperiodic`.
+
+Key facts about `aglperiodic`:
+- `period` is a **6-digit YYYYPP integer** (e.g. `202610` = FY2025/26 period 10). There is no separate `fiscal_year` column.
+- The table is **transactional** (one row per posting), not a cumulative balance snapshot. Rules that assume one row per account (e.g. `GL_BAL_PL_NONZERO`) will need reworking once run against real data.
+- Budget and virement entries (`voucher_type IN ('BU', 'BV')`) are stored in the same table and can appear with **future-dated periods** (e.g. 203407 = FY2034 period 7) — these are planning entries, not real postings, and are excluded in the SQL extract.
+- `BA` (Batch Input adj) is a real financial posting and is **not** excluded.
+- The SQL extract filters to `period BETWEEN 202601 AND 202699` for FY2025/26 (current year). Update this range at cutover.
+- The frame key in the engine remains `aglyearend` for backwards compatibility — the CSV filename (`gl_opening_balances_HOC/HOL.csv`) is unchanged.
+
+### GL journals fiscal year convention
+`agltransact` (journals) uses an **end-year** convention: `fiscal_year = 2026` means FY2025/26. Filter confirmed as `AND fiscal_year = 2026` in the HOC/HOL run files.
+
 ### File loading
 All five GL tables load as split files. `house` is assigned from the filename suffix (not the `client` column):
 
-| Frame key | Files |
-|-----------|-------|
-| `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` |
-| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` |
-| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` |
-| `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` |
-| `gl_journals` | `gl_journals_HOC/HOL.csv` |
+| Frame key | Files | Source table |
+|-----------|-------|--------------|
+| `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` | `aglaccounts` |
+| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` |
+| `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` (not `aglyearend`) |
+| `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` | `agltransact` |
+| `gl_journals` | `gl_journals_HOC/HOL.csv` | `agltransact` |
 
 ---
 
@@ -528,7 +542,7 @@ All five GL tables load as split files. `house` is assigned from the filename su
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL, customers, and assets still need real CSVs placed in `data/` subfolders on the Parliament laptop. This machine uses dummy data. All five GL extract SQL files now have HOC/HOL split run files ready to execute — no GL data has been extracted yet.
+**Live data:** The Parliament laptop (`leitchtb`) is running against real Agresso data as of May 2026. Supplier data refreshed May 2026 — master, open transactions, and history CSVs re-extracted with address fields (`address`, `place`, `zip_code`, `province`) added via `agladdress` join. GL customers, and assets still need real CSVs placed in `data/` subfolders on the Parliament laptop. This machine uses dummy data. All five GL extract SQL files have HOC/HOL split run files ready to execute. GL chart of accounts and dimension values have been extracted. GL journals SQL fixed (fiscal_year placeholder replaced with 2026). GL opening balances SQL rewritten to use `aglperiodic` (aglyearend had no current data).
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
