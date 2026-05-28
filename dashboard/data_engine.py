@@ -1393,20 +1393,14 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asutrans' and check_id == 'AP_ORPHANED_TRANS':
-        failing = failing.rename(columns={
-            'voucher_no': 'AP_INVOICES.voucher_no',
-            'apar_id':    'AP_INVOICES.apar_id',
-        })
-        if 'asuheader' in frames:
-            sup_link = frames['asuheader'][['house', 'apar_id']].copy()
-            sup_link = sup_link.drop_duplicates(subset=['house', 'apar_id'])
-            sup_link = sup_link.rename(columns={'apar_id': 'SUPPLIER_MASTER.apar_id'})
-            failing = failing.merge(sup_link,
-                left_on=['house', 'AP_INVOICES.apar_id'],
-                right_on=['house', 'SUPPLIER_MASTER.apar_id'],
-                how='left')
-        cols = ['AP_INVOICES.voucher_no', 'AP_INVOICES.apar_id', 'SUPPLIER_MASTER.apar_id']
-        return failing[[c for c in cols if c in failing.columns]]
+        summary = (
+            failing.groupby('apar_id')
+            .size()
+            .reset_index(name='AP_INVOICES.transaction_count')
+            .rename(columns={'apar_id': 'AP_INVOICES.apar_id'})
+            .sort_values('AP_INVOICES.transaction_count', ascending=False)
+        )
+        return summary
 
     if table == 'asutrans' and check_id == 'AP_TRANS_SUP_CLOSED':
         failing = failing.rename(columns={
