@@ -221,6 +221,13 @@ def get_ap_checks():
          'COUNT(*) OVER(PARTITION BY house, apar_name, address, zip_code) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name', 'address', 'zip_code'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
+        ('SUP_NAME_DUP_ANY', 10, 'Suppliers', 'Uniqueness', 'Low',
+         'Duplicate supplier name exists within the same House (any address)',
+         'Supplier names appear more than once within the same House. Unlike SUP_NAME_DUP, this check does not require address or postcode to match. Records sharing a name at different addresses may be legitimate separate entities, but should be reviewed to confirm they are not accidental duplicates.',
+         'Review asuheader.apar_name for any same-name records and confirm each is a distinct legal entity.', 'asuheader', None,
+         'COUNT(*) OVER(PARTITION BY house, apar_name) > 1',
+         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
+
         ('SUP_BANK_DUP', 10, 'Suppliers', 'Uniqueness', 'High',
          'Duplicate bank account, sort code and VAT registration combination within the same House',
          'The combination of bank account, sort code and VAT registration number should be unique within a House. The same combination appearing on multiple supplier records is a strong indicator of duplicate registrations and must be investigated before migration to avoid misdirected payments.',
