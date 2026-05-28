@@ -2,31 +2,35 @@ USE agresso_HoL;
 
 -- HOW TO RUN
 -- Run against agresso_HoL (server mdata837)  → save as gl_opening_balances_HOL.csv
--- Replace [CURRENT_FISCAL_YEAR] e.g. 2025 for FY2025/26 (confirm format with Parliament)
--- Replace [YEAR_END_PERIOD] — likely period 12 or 15 depending on year-end adjustments
+-- Extracts all posted GL transactions for FY2025/26 from aglperiodic (periods 202601-202699)
+-- aglyearend is not used in this Agresso installation (contains only legacy pre-2008 data)
+-- Budget/forecast entries (BU, BV) are excluded; future-dated rows in aglperiodic are budget artefacts
 
 SELECT
-    y.client,
-    y.account,
-    y.fiscal_year,
-    y.period,
-    y.dim_1,
-    y.dim_2,
-    y.dim_3,
-    y.dim_4,
-    y.dim_5,
-    y.dim_6,
-    y.dim_7,
-    y.amount,
-    y.cur_amount,
-    y.currency,
-    y.dc_flag,
-    y.voucher_type,
-    y.tax_code,
-    y.apar_id,
-    y.apar_type
-FROM aglyearend y
-WHERE y.client = 'LA'
-  AND y.fiscal_year = '[CURRENT_FISCAL_YEAR]'
-  AND y.period = '[YEAR_END_PERIOD]'
-ORDER BY y.account, y.dim_1;
+    p.client,
+    p.account,
+    p.period,
+    p.dim_1,
+    p.dim_2,
+    p.dim_3,
+    p.dim_4,
+    p.dim_5,
+    p.dim_6,
+    p.dim_7,
+    p.amount,
+    p.cur_amount,
+    p.currency,
+    p.dc_flag,
+    p.voucher_type,
+    p.voucher_no,
+    p.trans_date,
+    p.tax_code,
+    p.apar_id,
+    p.apar_type,
+    p.status,
+    p.description
+FROM aglperiodic p
+WHERE p.client = 'LA'
+  AND p.period BETWEEN 202601 AND 202699
+  AND p.voucher_type NOT IN ('BU', 'BV')
+ORDER BY p.client, p.period, p.account, p.dim_1;
