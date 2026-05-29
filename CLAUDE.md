@@ -29,7 +29,7 @@ A Dash/Plotly web application that executes data quality (DQ) checks against fin
 ### Parliament laptop setup (already done)
 - Server: `mdata837`, databases: `Agresso_HoC` and `agresso_HoL`
 - Git installed, repo cloned to `C:\Users\leitchtb\HoP_Data_Assessment`
-- Dependencies installed: `pip install dash plotly pandas faker python-dotenv dash-iconify`
+- Dependencies installed: `pip install dash plotly pandas numpy faker python-dotenv dash-iconify openpyxl`
 - Real CSVs live in `data/` on the Parliament laptop — **never commit the `data/` folder**
 - App confirmed working with real supplier data as of May 2026
 
