@@ -1415,6 +1415,28 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         cols = ['AP_HISTORY.voucher_no', 'AP_HISTORY.apar_id', 'SUPPLIER_MASTER.apar_id']
         return failing[[c for c in cols if c in failing.columns]]
 
+    if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
+        if 'aglaccounts' in frames:
+            coa = frames['aglaccounts'][frames['aglaccounts']['house'] == house][['account', 'res_bal', 'description']].copy()
+            coa = coa.drop_duplicates(subset=['account'])
+            coa = coa.rename(columns={
+                'res_bal':     'AGLACCOUNTS.res_bal',
+                'description': 'AGLACCOUNTS.description',
+            })
+            failing = failing.merge(coa, on='account', how='left')
+        failing = failing.rename(columns={
+            'client':       'GL_BALANCES.client',
+            'account':      'GL_BALANCES.account',
+            'period':       'GL_BALANCES.period',
+            'dim_1':        'GL_BALANCES.dim_1',
+            'amount':       'GL_BALANCES.amount',
+            'voucher_type': 'GL_BALANCES.voucher_type',
+        })
+        cols = ['GL_BALANCES.client', 'GL_BALANCES.account', 'AGLACCOUNTS.res_bal',
+                'AGLACCOUNTS.description', 'GL_BALANCES.period', 'GL_BALANCES.amount',
+                'GL_BALANCES.voucher_type', 'GL_BALANCES.dim_1']
+        return failing[[c for c in cols if c in failing.columns]]
+
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
         # asuheader unique key is (client, apar_id) — one row per supplier per
         # client code. Join on (client, apar_id) to get the exact supplier name
