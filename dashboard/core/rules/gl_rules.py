@@ -56,6 +56,8 @@ def get_gl_checks():
              pd.Series(False, index=df.index)
              if not (pd.to_numeric(df['period'], errors='coerce') % 100 >= 12).any()
              else (
+                 lambda full_mask: full_mask & ~df.loc[full_mask, 'account'].duplicated(keep='first').reindex(df.index, fill_value=False)
+             )(
                  df['account'].isin(
                      frames['aglaccounts'][
                          (frames['aglaccounts']['house'] == df['house'].iloc[0]) &
