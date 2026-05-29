@@ -45,15 +45,16 @@ def get_gl_checks():
          'A non-zero net balance at that point means the year-end close did not fully zero the account, '
          'or a post-close adjustment was made without a corresponding reversal. '
          'P&L balances carried into migration will create incorrect opening positions in the new system. '
-         'This check is suppressed automatically when no period 13, 14, or 15 data is present in the extract — '
-         'it only becomes active once year-end close journals have been posted.',
+         'This check is suppressed automatically until period 12 data is present in the extract. '
+         'HOL closes within period 12; HOC posts additional adjustment journals in periods 13 and sometimes 14. '
+         'For HOC the check may fire before period 13 is posted — those results should be treated as indicative until the full close is complete.',
          'Confirm that year-end close is complete for all periods (13, 14, and 15 as applicable). '
          'Investigate any P&L account with a residual balance and post a correcting journal or reclassify before cutover.',
          'aglyearend', 'aglaccounts',
          "WHERE res_bal = 'R' (joined from aglaccounts) AND period 13/14/15 exists AND SUM(amount) <> 0 GROUP BY account",
          lambda df, frames: (
              pd.Series(False, index=df.index)
-             if not (pd.to_numeric(df['period'], errors='coerce') % 100 >= 13).any()
+             if not (pd.to_numeric(df['period'], errors='coerce') % 100 >= 12).any()
              else (
                  df['account'].isin(
                      frames['aglaccounts'][
