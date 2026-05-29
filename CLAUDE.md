@@ -586,7 +586,12 @@ Key facts about `aglperiodic`:
 - The table is **transactional** (one row per posting), not a cumulative balance snapshot.
 - Budget and virement entries (`voucher_type IN ('BU', 'BV')`) can appear with future-dated periods (e.g. 203407) — excluded in the SQL extract.
 - `BA` (Batch Input adj) is a real financial posting and is **not** excluded.
-- SQL extract filters to `period BETWEEN 202601 AND 202699` for FY2025/26. Update this range at cutover.
+- **HOC and HOL use different fiscal year naming conventions** — confirmed from real data (May 2026):
+  - **HOC** (`Agresso_HoC`): **start-year** — `fiscal_year = 2025` and `period BETWEEN 202501 AND 202515` is FY2025/26
+  - **HOL** (`agresso_HoL`): **end-year** — `fiscal_year = 2026` and `period BETWEEN 202601 AND 202612` is FY2025/26
+  - HOL historically never uses period 13 or 14 — period 12 is always the final period
+  - HOC typically posts year-end journals in period 13; occasionally period 14
+- SQL run files updated to use the correct period ranges per house. Update at cutover to FY2028/29 (HOC: 202801–202815, HOL: 202901–202912).
 - Frame key in the engine is `aglyearend` (for backwards compatibility) — CSV filename unchanged.
 
 ### GL journals fiscal year convention — not yet loaded

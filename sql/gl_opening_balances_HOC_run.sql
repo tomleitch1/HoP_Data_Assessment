@@ -2,9 +2,18 @@ USE Agresso_HoC;
 
 -- HOW TO RUN
 -- Run against Agresso_HoC (server mdata837)  → save as gl_opening_balances_HOC.csv
--- Extracts all posted GL transactions for FY2025/26 from aglperiodic (periods 202601-202699)
+-- Extracts all posted GL transactions for FY2025/26 from aglperiodic
+--
+-- HOC FISCAL YEAR CONVENTION: start-year naming — fiscal year 2025 = April 2025 to March 2026
+-- HOC periods run 202501 (April 2025) through 202513 (year-end adjustment period)
+-- HOC typically posts year-end journals in period 13; occasionally period 14 in prior years
+-- HOL uses end-year naming (fiscal year 2026 = same real year) — see HOL run file
+--
 -- aglyearend is not used in this Agresso installation (contains only legacy pre-2008 data)
--- Budget/forecast entries (BU, BV) are excluded; future-dated rows in aglperiodic are budget artefacts
+-- Budget/forecast entries (BU, BV) are excluded; future-dated rows are budget artefacts
+-- dc_flag is always 0 — amount is signed (positive = debit, negative = credit)
+-- currency is always GBP; cur_amount is always blank; apar_id is always blank
+-- trans_date is stored as integer 1 (system placeholder, not a real date)
 
 SELECT
     p.client,
@@ -31,6 +40,6 @@ SELECT
     p.description
 FROM aglperiodic p
 WHERE p.client IN ('CA', 'CM')
-  AND p.period BETWEEN 202601 AND 202699
+  AND p.period BETWEEN 202501 AND 202515
   AND p.voucher_type NOT IN ('BU', 'BV')
 ORDER BY p.client, p.period, p.account, p.dim_1;
