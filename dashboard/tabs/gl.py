@@ -46,14 +46,13 @@ def _build_treemap(df_config, house):
     for _, r in df_gl.iterrows():
         total = max(int(r['total_values']), 1)
         rows.append({
-            'scope': f"GL Posting Dimensions ({len(df_gl)} attributes)",
-            'label': f"{r['description']}<br>dim {r['dim_position']} · {int(r['active']):,} active",
+            'scope': f"GL Dimensions · {len(df_gl)} attributes",
+            'label': r['description'],
             'active': max(int(r['active']), 1),
             'closed_pct': round(int(r['closed']) / total * 100, 1),
             'tip': (f"<b>{r['description']}</b><br>"
-                    f"Attribute: {r['attribute_id']} | Position: dim_{r['dim_position']}<br>"
-                    f"Active: {int(r['active']):,} &nbsp; Closed: {int(r['closed']):,} &nbsp; "
-                    f"Total: {int(r['total_values']):,}"),
+                    f"dim_{r['dim_position']} &nbsp;·&nbsp; {r['attribute_id']}<br>"
+                    f"Active: {int(r['active']):,} &nbsp; Closed: {int(r['closed']):,}"),
         })
 
     # X-position — aggregate into one block
@@ -62,13 +61,12 @@ def _build_treemap(df_config, house):
         t = max(int(df_x['total_values'].sum()), 1)
         rows.append({
             'scope': 'Out of Scope',
-            'label': f"X-position<br>{len(df_x):,} attributes",
+            'label': f"X-position ({len(df_x)} attributes)",
             'active': max(int(df_x['active'].sum()), 1),
             'closed_pct': round(int(df_x['closed'].sum()) / t * 100, 1),
-            'tip': (f"<b>X-position attributes ({len(df_x):,})</b><br>"
-                    f"Not mapped to any GL journal line dimension<br>"
-                    f"Active values: {int(df_x['active'].sum()):,} &nbsp; "
-                    f"Total values: {int(df_x['total_values'].sum()):,}"),
+            'tip': (f"<b>X-position ({len(df_x)} attributes)</b><br>"
+                    f"Not mapped to any GL journal line<br>"
+                    f"Active values: {int(df_x['active'].sum()):,}"),
         })
 
     # Letter-coded (not 0-7 and not X) — aggregate
@@ -77,13 +75,12 @@ def _build_treemap(df_config, house):
         t = max(int(df_letter['total_values'].sum()), 1)
         rows.append({
             'scope': 'Out of Scope',
-            'label': f"Other coded<br>{len(df_letter)} attributes",
+            'label': f"Other ({len(df_letter)} attributes)",
             'active': max(int(df_letter['active'].sum()), 1),
             'closed_pct': round(int(df_letter['closed'].sum()) / t * 100, 1),
-            'tip': (f"<b>Other letter-coded attributes ({len(df_letter)})</b><br>"
-                    f"Mapped to non-GL positions (e.g. G, F, ...)<br>"
-                    f"Active values: {int(df_letter['active'].sum()):,} &nbsp; "
-                    f"Total values: {int(df_letter['total_values'].sum()):,}"),
+            'tip': (f"<b>Other coded ({len(df_letter)} attributes)</b><br>"
+                    f"Non-GL positions (G, F, ...)<br>"
+                    f"Active values: {int(df_letter['active'].sum()):,}"),
         })
 
     if not rows:
@@ -93,7 +90,7 @@ def _build_treemap(df_config, house):
     # both houses have equal-width OOS blocks regardless of absolute value counts.
     # Real counts are preserved in tooltips; only the visual weight is adjusted.
     _OOS_FRACTION = 0.22
-    gl_total = sum(r['active'] for r in rows if 'GL Posting' in r['scope'])
+    gl_total = sum(r['active'] for r in rows if 'GL Dimensions' in r['scope'])
     oos_total = sum(r['active'] for r in rows if r['scope'] == 'Out of Scope')
     if gl_total > 0 and oos_total > 0:
         target = gl_total * _OOS_FRACTION / (1 - _OOS_FRACTION)
@@ -110,9 +107,9 @@ def _build_treemap(df_config, house):
         values='active',
         color='closed_pct',
         color_continuous_scale=[
-            [0.0,  '#4ade80'],
-            [0.35, '#facc15'],
-            [1.0,  '#f87171'],
+            [0.0,  '#059669'],
+            [0.35, '#d97706'],
+            [1.0,  '#dc2626'],
         ],
         range_color=[0, 80],
         custom_data=['tip'],
@@ -120,25 +117,19 @@ def _build_treemap(df_config, house):
 
     fig.update_traces(
         hovertemplate='%{customdata[0]}<extra></extra>',
-        textfont_size=12,
-        insidetextfont_size=11,
-        pathbar=dict(
-            thickness=22,
-            textfont=dict(size=11, color='#4a3d6b'),
-        ),
+        texttemplate='%{label}',
+        textfont=dict(size=12, color='white'),
+        insidetextfont=dict(size=11, color='white'),
+        marker=dict(line=dict(width=2, color='white')),
+        pathbar=dict(visible=False),
     )
 
     fig.update_layout(
-        margin=dict(t=8, l=4, r=4, b=32),
-        height=440,
-        coloraxis_colorbar=dict(
-            title='% closed',
-            tickformat='.0f',
-            ticksuffix='%',
-            thickness=12,
-            len=0.6,
-        ),
-        paper_bgcolor='white',
+        margin=dict(t=0, l=0, r=0, b=0),
+        height=360,
+        coloraxis_showscale=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
     )
 
     return fig
@@ -146,6 +137,16 @@ def _build_treemap(df_config, house):
 
 _HOUSE_LABEL = {'HOC': 'HoC', 'HOL': 'HoL'}
 _HOUSE_COLOR = {'HOC': '#16a34a', 'HOL': '#dc2626'}
+
+_CARD = {
+    'flex': '1', 'minWidth': 0,
+    'background': '#ffffff',
+    'border': '1px solid #ede9f8',
+    'borderRadius': '12px',
+    'padding': '16px 16px 12px',
+    'display': 'flex',
+    'flexDirection': 'column',
+}
 
 
 def _render_dim_structure(frames):
@@ -160,18 +161,21 @@ def _render_dim_structure(frames):
         if fig:
             color = _HOUSE_COLOR[house]
             charts.append(html.Div([
-                html.Div(
-                    _HOUSE_LABEL[house],
-                    style={
-                        'fontSize': '13px', 'fontWeight': '700',
-                        'color': color,
-                        'borderBottom': f'2px solid {color}',
-                        'paddingBottom': '5px', 'marginBottom': '2px',
-                    },
-                ),
+                html.Div([
+                    html.Div(style={
+                        'width': '8px', 'height': '8px', 'borderRadius': '50%',
+                        'background': color, 'flexShrink': '0',
+                    }),
+                    html.Span(_HOUSE_LABEL[house], style={
+                        'fontSize': '13px', 'fontWeight': '700', 'color': color,
+                    }),
+                ], style={
+                    'display': 'flex', 'alignItems': 'center', 'gap': '7px',
+                    'marginBottom': '10px',
+                }),
                 dcc.Graph(
                     figure=fig,
-                    style={'minWidth': 0, 'overflow': 'visible'},
+                    style={'minWidth': 0, 'flex': '1'},
                     config={
                         'displayModeBar': True,
                         'modeBarButtonsToRemove': [
@@ -182,13 +186,37 @@ def _render_dim_structure(frames):
                         'displaylogo': False,
                     },
                 ),
-            ], style={'flex': '1', 'minWidth': 0, 'display': 'flex', 'flexDirection': 'column'}))
+            ], style=_CARD))
 
     if not charts:
         return html.Div()
 
+    legend = html.Div([
+        html.Div([
+            html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px',
+                            'background': '#059669', 'flexShrink': '0'}),
+            html.Span('mostly active', style={'fontSize': '11px', 'color': '#9080b0'}),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}),
+        html.Div([
+            html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px',
+                            'background': '#d97706', 'flexShrink': '0'}),
+            html.Span('~35% closed', style={'fontSize': '11px', 'color': '#9080b0'}),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}),
+        html.Div([
+            html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px',
+                            'background': '#dc2626', 'flexShrink': '0'}),
+            html.Span('mostly closed', style={'fontSize': '11px', 'color': '#9080b0'}),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}),
+        html.Div(style={'width': '1px', 'background': '#e2d9f3', 'alignSelf': 'stretch', 'margin': '0 6px'}),
+        html.Span('tile area ∝ active value count · click to drill in · ↺ to reset',
+                  style={'fontSize': '11px', 'color': '#9080b0'}),
+    ], style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '14px',
+        'justifyContent': 'center', 'marginTop': '12px',
+    })
+
     return html.Div([
-        html.Div(style={**_SECTION_HEADER, 'marginTop': '24px'}, children=[
+        html.Div(style={**_SECTION_HEADER, 'marginTop': '32px'}, children=[
             html.Span('Dimension Structure', style=_SECTION_TITLE),
             html.Span('Volumetrics — not a DQ check', style=_SECTION_BADGE),
         ]),
@@ -196,29 +224,18 @@ def _render_dim_structure(frames):
             style={'display': 'flex', 'gap': '16px'},
             children=charts,
         ),
-        html.P(
-            'Click any rectangle to drill in and zoom. Use the home button (↺) to reset. '
-            'Rectangle size = active dimension values (migration volume). '
-            'Colour = % of all values that are closed (green = mostly active · red = high closed ratio). '
-            'Out of Scope groups are aggregated — X-position and letter-coded attributes are not '
-            'mapped to GL journal lines and are not in migration scope.',
-            style={
-                'fontSize': '11px', 'color': '#9080b0',
-                'margin': '8px 4px 0', 'textAlign': 'center',
-                'lineHeight': '1.6',
-            },
-        ),
+        legend,
     ])
 
 
 def render_tab(dq_results, frames):
     return html.Div([
         render_dimension_scorecard(dq_results),
-        _render_dim_structure(frames),
         html.Div(style=_SECTION_HEADER, children=[
             html.Span('Data Quality Checks', style=_SECTION_TITLE),
             html.Span('Being configured against live data', style=_SECTION_BADGE),
         ]),
         render_dimension_grid(dq_results),
         render_dimensions_table(dq_results),
+        _render_dim_structure(frames),
     ])
