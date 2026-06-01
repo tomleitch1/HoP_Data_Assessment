@@ -309,6 +309,98 @@ def generate_dimension_values(df_accounts: pd.DataFrame) -> pd.DataFrame:
 
 
 # ===========================================================================
+# DIMENSION CONFIG — agldimension joined to agldimvalue (summary/reference only)
+# Mirrors the output of gl_dimension_config_HOC/HOL_run.sql.
+# Columns: client, attribute_id, description, dim_position, total_values, active, closed
+#
+# dim_position key:
+#   '1'–'7' → GL journal line dimensions (in scope for migration)
+#   letter   → header/cross-module dimensions (review)
+#   'X'      → not mapped to GL lines (likely out of scope)
+#
+# Attribute_ids below are FICTIONAL placeholders — replace once real data is
+# confirmed from the Parliament laptop. The structure (positions, rough counts)
+# is realistic for a typical Agresso installation.
+# ===========================================================================
+
+# HOC attributes — same definitions for CA and CM
+_HOC_ATTRS = [
+    # (attribute_id, description,          dim_position, total, active, closed)
+    # --- GL journal line dimensions (positions 1–7) ---
+    ('COSTC', 'Cost Centre',               '1',  350,  185, 165),
+    ('SUBJ',  'Subjective Code',           '2',  820,  510, 310),
+    ('ACTV',  'Activity',                  '3',   75,   55,  20),
+    ('PROJ',  'Project Code',              '4', 3200,  980, 2220),
+    ('CTPT',  'Counterpart',               '5',   45,   32,  13),
+    ('FUND',  'Fund',                      '6',   18,   12,   6),
+    ('PROG',  'Programme',                 '7',   28,   20,   8),
+    # --- Letter-position dimensions (not GL journal lines) ---
+    ('HRCC',  'HR Cost Centre',            'A',  220,  140,  80),
+    ('BUNT',  'Budget Unit',               'B',   65,   40,  25),
+    # --- X-position dimensions (not mapped to GL transaction lines) ---
+    ('RGRP',  'Reporting Group',           'X',   45,   30,  15),
+    ('SCAT',  'Spend Category',            'X',  130,   88,  42),
+    ('VOTE',  'Vote Type',                 'X',   12,    8,   4),
+    ('DEPT',  'Department',                'X',   95,   60,  35),
+    ('TCAT',  'Transaction Category',      'X',   40,   28,  12),
+]
+
+# HOL attributes — LA client; similar structure but independent configuration
+_HOL_ATTRS = [
+    # (attribute_id, description,          dim_position, total, active, closed)
+    # --- GL journal line dimensions (positions 1–7) ---
+    ('LOSTC', 'Cost Centre',               '1',  180,  110,  70),
+    ('LSUBJ', 'Subjective Code',           '2',  640,  420, 220),
+    ('LACTV', 'Activity',                  '3',   55,   45,  10),
+    ('LPROJ', 'Project Code',              '4', 1800,  620, 1180),
+    ('LCTPT', 'Counterpart',               '5',   30,   22,   8),
+    ('LFUND', 'Fund',                      '6',   10,    8,   2),
+    ('LPROG', 'Programme',                 '7',   20,   15,   5),
+    # --- Letter-position dimensions ---
+    ('LHRCC', 'HR Cost Centre',            'A',  160,  100,  60),
+    # --- X-position dimensions ---
+    ('LRGRP', 'Reporting Group',           'X',   35,   24,  11),
+    ('LSCAT', 'Spend Category',            'X',   95,   65,  30),
+    ('LDEPT', 'Department',                'X',   70,   48,  22),
+]
+
+
+def generate_dimension_config() -> pd.DataFrame:
+    """
+    Generates the gl_dimension_config summary file — matches the output of
+    gl_dimension_config_HOC/HOL_run.sql. One row per (client, attribute_id).
+    """
+    rows = []
+
+    # HOC: CA and CM share the same attribute definitions with near-identical counts
+    for attr_id, desc, dim_pos, total, active, closed in _HOC_ATTRS:
+        for client in HOC_CLIENTS:
+            rows.append({
+                'client':       client,
+                'attribute_id': attr_id,
+                'description':  desc,
+                'dim_position': dim_pos,
+                'total_values': total,
+                'active':       active,
+                'closed':       closed,
+            })
+
+    # HOL: LA only
+    for attr_id, desc, dim_pos, total, active, closed in _HOL_ATTRS:
+        rows.append({
+            'client':       HOL_CLIENT,
+            'attribute_id': attr_id,
+            'description':  desc,
+            'dim_position': dim_pos,
+            'total_values': total,
+            'active':       active,
+            'closed':       closed,
+        })
+
+    return pd.DataFrame(rows)
+
+
+# ===========================================================================
 # OPENING BALANCES — aglperiodic (frame key: aglyearend for backwards compat)
 # Confirmed from real Parliament data (May 2026):
 #   - period: YYYYPP integer (202601–202699)
@@ -392,10 +484,12 @@ def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
 
 import os
 os.makedirs('data/gl', exist_ok=True)
+os.makedirs('data/gl/reference', exist_ok=True)
 
-df_coa  = generate_chart_of_accounts()
-df_dims = generate_dimension_values(df_coa)
-df_bal  = generate_opening_balances(df_coa)
+df_coa    = generate_chart_of_accounts()
+df_dims   = generate_dimension_values(df_coa)
+df_bal    = generate_opening_balances(df_coa)
+df_dimcfg = generate_dimension_config()
 
 for house in ['HOC', 'HOL']:
     coa_out  = df_coa [df_coa ['_house'] == house].drop(columns=['_house'])
@@ -412,6 +506,20 @@ for house in ['HOC', 'HOL']:
         f'data/gl/gl_transact_dimensions_{house}.csv', index=False
     )
 
+    # Dimension config: reference summary matching gl_dimension_config_*_run.sql output
+    clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
+    cfg_out = df_dimcfg[df_dimcfg['client'].isin(clients)]
+    cfg_out.to_csv(f'data/gl/reference/gl_dimension_config_{house}.csv', index=False)
+
+print(f"Dimension config:   {len(df_dimcfg)} rows  (reference summary — data/gl/reference/)")
+print(f"  HOC (CA+CM): {len(df_dimcfg[df_dimcfg['client'].isin(['CA','CM'])])} rows  "
+      f"| dim 1-7: {len(df_dimcfg[(df_dimcfg['client']=='CA') & df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7'])])} attributes  "
+      f"| letter: {len(df_dimcfg[(df_dimcfg['client']=='CA') & ~df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7','X'])])}  "
+      f"| X: {len(df_dimcfg[(df_dimcfg['client']=='CA') & (df_dimcfg['dim_position']=='X')])}")
+print(f"  HOL (LA):    {len(df_dimcfg[df_dimcfg['client']=='LA'])} rows  "
+      f"| dim 1-7: {len(df_dimcfg[(df_dimcfg['client']=='LA') & df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7'])])} attributes  "
+      f"| letter: {len(df_dimcfg[(df_dimcfg['client']=='LA') & ~df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7','X'])])}  "
+      f"| X: {len(df_dimcfg[(df_dimcfg['client']=='LA') & (df_dimcfg['dim_position']=='X')])}")
 print(f"Chart of accounts:  {len(df_coa)} rows total")
 print(f"  HOC ({', '.join(HOC_CLIENTS)}): {len(df_coa[df_coa['_house']=='HOC'])} rows")
 print(f"  HOL ({HOL_CLIENT}):         {len(df_coa[df_coa['_house']=='HOL'])} rows")
