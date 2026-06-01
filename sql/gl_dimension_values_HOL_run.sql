@@ -5,8 +5,9 @@ USE agresso_HoL;
 -- Output   : gl_dimension_values_HOL.csv  →  data/gl/
 -- Scope    : GL-mapped dimension attributes only (dim_position 0–7).
 --            Excludes the out-of-scope X-position and letter-coded attributes.
---            All value statuses included (N and C) — active-only filtering is
---            done in the DQ engine so orphan-parent checks can see closed parents.
+--            Active values only (status = N). Orphan checks work with active-only
+--            data: if a parent (rel_value) is not present as an active value in the
+--            same attribute, it is either closed or missing — both are flagged.
 --
 -- EXTRACTION TIPS
 --   Enable column headers: Tools → Options → Query Results → SQL Server →
@@ -18,7 +19,7 @@ USE agresso_HoL;
 --
 -- EXPECTED OUTPUT
 --   HOL has one in-scope client code (LA).
---   Expect roughly 5,000–15,000 rows (GL positions only, all statuses).
+--   Expect roughly 2,000–8,000 rows (GL positions, active values only).
 --   If the row count looks unexpectedly high, re-check that dim.dim_position
 --   IN ('0','1','2','3','4','5','6','7') is filtering correctly.
 --
@@ -63,5 +64,6 @@ INNER JOIN agldimension dim
     AND dim.client       = d.client
     AND dim.status       = 'N'
 WHERE d.client = 'LA'
+  AND d.status = 'N'
   AND dim.dim_position IN ('0', '1', '2', '3', '4', '5', '6', '7')
 ORDER BY dim.dim_position, d.attribute_id, d.dim_value;
