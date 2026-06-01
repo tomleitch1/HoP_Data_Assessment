@@ -5,10 +5,11 @@ USE Agresso_HoC;
 -- Output   : gl_budgets_HOC.csv  →  data/gl/
 -- Scope    : GL budget and virement entries for the current fiscal year.
 --            HOC uses the start-year convention: fiscal_year = 2025 = FY2025/26.
---            Budget entries (BU) and virements (BV) are excluded from the opening
---            balances extract — this is the complementary extract covering Seq 23.
---            Note: budget entries can carry future-dated periods (e.g. 203407) for
---            multi-year budget planning. These are intentional and not data errors.
+--            Parliament does not use standard Agresso budget codes BU/BV. Budget
+--            entries are identified by future-dated periods: GI extends to 202707
+--            (operational budgets) and SI extends to 203407 (capital/long-term).
+--            All other voucher types in aglperiodic max out at the current period.
+--            Future-dated periods on GI/SI rows are intentional, not data errors.
 --
 -- EXTRACTION TIPS
 --   Enable column headers: Tools → Options → Query Results → SQL Server →
@@ -54,6 +55,6 @@ SELECT
 FROM aglperiodic
 WHERE client IN ('CA', 'CM')
   AND period BETWEEN 202501 AND 209912
-  AND voucher_type IN ('BU', 'BV')
+  AND voucher_type IN ('GI', 'SI')
   AND (status IS NULL OR status = '')
 ORDER BY client, account, period;
