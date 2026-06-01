@@ -1,32 +1,55 @@
 USE Agresso_HoC;
 
 -- HOW TO RUN
--- Run against Agresso_HoC (server mdata837)  → save as gl_dimension_values_HOC.csv
+-- Database : Agresso_HoC (server mdata837)
+-- Output   : gl_dimension_values_HOC.csv  →  data/gl/
+-- Scope    : GL-mapped dimension attributes only (dim_position 0–7).
+--            Excludes the 650+ X-position and letter-coded attributes that are
+--            out of scope for GL journal line migration.
+--            All value statuses included (N and C) — active-only filtering is
+--            done in the DQ engine so orphan-parent checks can see closed parents.
 --
--- OPTIONAL STEP 1: Run the profile query to understand which attribute_ids
---                  map to which dim positions before extracting.
--- STEP 2: Run the main extract directly — it joins agldimension automatically
---         so no manual attribute_id codes need to be entered.
-
--- ============================================================
--- STEP 1 (optional): Profile — which attribute_id maps to which dim position
--- ============================================================
-
-SELECT client, dim_position, attribute_id, description, status
-FROM agldimension
-WHERE client IN ('CA', 'CM')
-  AND status = 'N'
-ORDER BY dim_position, attribute_id;
-
--- ============================================================
--- STEP 2: Main extract — save this output as gl_dimension_values_HOC.csv
--- ============================================================
+-- EXTRACTION TIPS
+--   Enable column headers: Tools → Options → Query Results → SQL Server →
+--     Results to Grid → tick "Include column headers when copying or saving results"
+--     (close and reopen the query tab for the setting to take effect)
+--   Save via "Save Results As" — go to C:\Users\leitchtb\HoP_Data_Assessment\data\gl\
+--   Do NOT open the CSV by double-clicking — use Excel Data → Get Data → From Text/CSV
+--     and set dim_value, rel_value to Text type to preserve leading zeros.
+--
+-- EXPECTED OUTPUT
+--   HOC has two in-scope client codes (CA and CM) — both are included.
+--   Expect roughly 10,000–30,000 rows (GL positions only, all statuses).
+--   If the row count looks unexpectedly high, re-check that dim.dim_position
+--   IN ('0','1','2','3','4','5','6','7') is filtering correctly.
+--
+-- COLUMNS
+--   client         : CA or CM
+--   attribute_id   : dimension type code (e.g. COSTC, SUBJ)
+--   dim_position   : GL journal position (1–7; 0 included if present)
+--   dim_description: human-readable name for the attribute type
+--   dim_value      : the actual code (e.g. ITSERV, 1000)
+--   description    : human-readable label for this value
+--   status         : N = active, C = closed
+--   period_from    : validity start (Excel serial integer from SSMS)
+--   period_to      : validity end  (Excel serial integer from SSMS)
+--   rel_value      : parent code in the dimension hierarchy (blank = root)
+--   last_update    : last modified date (Excel serial integer from SSMS)
+--   wf_state       : workflow state — blank or T = approved, W = pending approval
+--
+-- DQ CHECKS THIS EXTRACT ENABLES
+--   GL_DIM_DESC_MISSING   Active value has no description
+--   GL_DIM_PERIOD_MISSING Active value missing valid-from date
+--   GL_DIM_PERIOD_INV     Valid-from date is after valid-to date
+--   GL_DIM_WF_STUCK       Active value stuck in pending workflow state (wf_state = W)
+--   GL_DIM_ORPHAN_REL     Active value whose parent (rel_value) is missing or closed
+--   GL_DIM_DUP            Duplicate dim_value code within the same attribute and house
 
 SELECT
     d.client,
     d.attribute_id,
     dim.dim_position,
-    dim.description AS dim_description,
+    dim.description                      AS dim_description,
     d.dim_value,
     d.description,
     d.status,
@@ -41,4 +64,5 @@ INNER JOIN agldimension dim
     AND dim.client       = d.client
     AND dim.status       = 'N'
 WHERE d.client IN ('CA', 'CM')
-ORDER BY dim.dim_position, d.attribute_id, d.dim_value;
+  AND dim.dim_position IN ('0', '1', '2', '3', '4', '5', '6', '7')
+ORDER BY dim.dim_position, d.attribute_id, d.client, d.dim_value;
