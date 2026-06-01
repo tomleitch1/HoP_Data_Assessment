@@ -89,6 +89,19 @@ def _build_treemap(df_config, house):
     if not rows:
         return None
 
+    # Normalise Out of Scope display size to a fixed fraction of GL total so
+    # both houses have equal-width OOS blocks regardless of absolute value counts.
+    # Real counts are preserved in tooltips; only the visual weight is adjusted.
+    _OOS_FRACTION = 0.22
+    gl_total = sum(r['active'] for r in rows if 'GL Posting' in r['scope'])
+    oos_total = sum(r['active'] for r in rows if r['scope'] == 'Out of Scope')
+    if gl_total > 0 and oos_total > 0:
+        target = gl_total * _OOS_FRACTION / (1 - _OOS_FRACTION)
+        scale = target / oos_total
+        for r in rows:
+            if r['scope'] == 'Out of Scope':
+                r['active'] = max(1, round(r['active'] * scale))
+
     df_tree = pd.DataFrame(rows)
 
     fig = px.treemap(
