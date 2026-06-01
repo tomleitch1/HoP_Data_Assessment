@@ -23,15 +23,21 @@ _SECTION_BADGE = {
 
 def _build_treemap(df_config, house):
     """Return a px.treemap figure for one house, or None if no data."""
-    client = 'CA' if house == 'HOC' else 'LA'
-    df = df_config[df_config['client'] == client].copy()
-    if df.empty:
+    clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
+    raw = df_config[df_config['client'].isin(clients)].copy()
+    if raw.empty:
         return None
 
-    df['dim_position'] = df['dim_position'].astype(str).str.strip()
-    df['total_values'] = pd.to_numeric(df['total_values'], errors='coerce').fillna(0).astype(int)
-    df['active']       = pd.to_numeric(df['active'],       errors='coerce').fillna(0).astype(int)
-    df['closed']       = pd.to_numeric(df['closed'],       errors='coerce').fillna(0).astype(int)
+    raw['dim_position'] = raw['dim_position'].astype(str).str.strip()
+    raw['total_values'] = pd.to_numeric(raw['total_values'], errors='coerce').fillna(0).astype(int)
+    raw['active']       = pd.to_numeric(raw['active'],       errors='coerce').fillna(0).astype(int)
+    raw['closed']       = pd.to_numeric(raw['closed'],       errors='coerce').fillna(0).astype(int)
+
+    # Combine CA + CM counts for HOC (same attributes, separate reporting entities)
+    df = (
+        raw.groupby(['attribute_id', 'description', 'dim_position'], as_index=False)
+        [['total_values', 'active', 'closed']].sum()
+    )
 
     rows = []
 
