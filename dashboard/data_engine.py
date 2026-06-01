@@ -373,10 +373,12 @@ def get_check_columns():
         'GL_BAL_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
         'GL_BAL_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
+        'GL_BAL_DUP':             ['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount', 'voucher_type'],
         'GL_BAL_PL_NONZERO':      ['client', 'account', 'period', 'dim_1', 'amount', 'voucher_type'],
         'GL_BUD_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
         'GL_BUD_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BUD_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
+        'GL_BUD_DUP':             ['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount', 'voucher_type'],
 
         # GL Chart of Accounts
         'GL_ACC_DESC_MISSING':    ['account', 'description', 'account_type', 'status'],
@@ -389,6 +391,8 @@ def get_check_columns():
         'GL_ACC_PERIOD_INV':      ['account', 'period_from', 'period_to'],
         'GL_ACC_STALE_N':         ['account', 'period_from', 'period_to', 'status'],
         'GL_ACC_DUP_CODE':        ['client', 'account', 'description', 'status'],
+        'GL_ACC_DUP_DESC':        ['client', 'account', 'description', 'account_type', 'status'],
+        'GL_DIM_DUP_DESC':        ['client', 'attribute_id', 'dim_value', 'description'],
         'GL_ACC_STALE_MOD':       ['account', 'last_update', 'status'],
         'GL_ACC_NO_ACTIVITY':     ['account', 'description', 'account_grp', 'res_bal', 'account_type'],
 
@@ -664,7 +668,7 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         else:
             h_df = df_table[df_table['house'] == house]
     elif table == 'agldimvalue':
-        if check_id in ['GL_DIM_DUP']:
+        if check_id in ['GL_DIM_DUP', 'GL_DIM_DUP_DESC']:
             h_df = df_table[df_table['house'] == house]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]

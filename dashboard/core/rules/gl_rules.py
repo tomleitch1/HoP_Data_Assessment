@@ -121,6 +121,22 @@ def get_gl_checks():
          "WHERE (client, attribute_id, dim_value) appears more than once",
          lambda df: df.duplicated(subset=['client', 'attribute_id', 'dim_value'], keep=False)),
 
+        ('GL_DIM_DUP_DESC',
+         21, 'Dimension Values', 'Uniqueness', 'Low',
+         'Two active dimension values share the same description within the same attribute and client',
+         'Each dimension value description should be unique within a given attribute type and client. '
+         'Duplicate descriptions make it impossible to distinguish values in selection screens and reports, '
+         'leading to incorrect transaction coding. '
+         'The new ERP displays descriptions in all dimension selectors — ambiguous labels are a go-live risk.',
+         'Review each duplicate pair and clarify the description of at least one value to make it distinct.',
+         'agldimvalue', None,
+         "WHERE status = 'N' AND description appears more than once within the same (attribute_id, client)",
+         lambda df: (
+             df['description'].notna() &
+             (df['description'].astype(str).str.strip() != '') &
+             df.duplicated(subset=['client', 'attribute_id', 'description'], keep=False)
+         )),
+
         ('GL_DIM_DEEP_HIERARCHY',
          21, 'Dimension Values', 'Consistency', 'Low',
          'Dimension value is at hierarchy depth 3 or deeper',
@@ -279,6 +295,17 @@ def get_gl_checks():
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
         ),
 
+        ('GL_BAL_DUP',
+         22, 'GL Opening Balances', 'Uniqueness', 'High',
+         'Exact duplicate row in the opening balance data',
+         'Each balance entry must be unique. '
+         'Two rows with identical client, account, period, dimension code, voucher, and amount indicate the same posting was extracted or processed twice. '
+         'Duplicate rows will double-count the balance for that account and cause the opening position in the new system to be incorrect.',
+         'Investigate the source of the duplicate and remove the extraneous row before migration.',
+         'aglyearend', None,
+         'WHERE (client, account, period, dim_1, voucher_no, amount) appears more than once',
+         lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
+
         ('GL_BAL_PL_NONZERO',
          22, 'GL Opening Balances', 'Validity', 'Medium',
          'P&L account carries a non-zero net balance after year-end close',
@@ -367,6 +394,17 @@ def get_gl_checks():
                  .tolist()
              )
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)),
+
+        ('GL_BUD_DUP',
+         23, 'GL Budgets', 'Uniqueness', 'High',
+         'Exact duplicate row in the budget data',
+         'Each budget entry must be unique. '
+         'Two rows with identical client, account, period, dimension code, voucher, and amount indicate the same budget line was loaded or processed twice. '
+         'Duplicate budget rows will inflate the total budget for that account and produce incorrect budget vs actuals comparisons in the new system.',
+         'Investigate the source of the duplicate and remove the extraneous row before migration.',
+         'gl_budgets', None,
+         'WHERE (client, account, period, dim_1, voucher_no, amount) appears more than once',
+         lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
 
         # ---------------------------------------------------------------
         # CHART OF ACCOUNTS — aglaccounts
@@ -477,14 +515,30 @@ def get_gl_checks():
         # UNIQUENESS
         ('GL_ACC_DUP_CODE',
          20, 'Chart of Accounts', 'Uniqueness', 'Critical',
-         'Duplicate account code within the same client',
+         'Duplicate account code within the same client (both active)',
          'Each account code must be unique within a client. '
-         'Duplicate account codes indicate a data integrity failure in the source system. '
+         'Duplicate active account codes indicate a data integrity failure in the source system. '
          'They cannot be migrated without resolution as the new system enforces uniqueness on account code.',
          'Investigate each duplicate pair. Merge or delete the redundant account after confirming no live transactions depend on it.',
          'aglaccounts', None,
-         'WHERE (client, account) appears more than once',
-         lambda df: df.duplicated(subset=['client', 'account'], keep=False)),
+         "WHERE (client, account) appears more than once with status = 'N'",
+         lambda df: df.duplicated(subset=['client', 'account', 'status'], keep=False) & (df['status'] == 'N')),
+
+        ('GL_ACC_DUP_DESC',
+         20, 'Chart of Accounts', 'Uniqueness', 'Low',
+         'Two active accounts share the same description within the same client',
+         'Each active account description should be unique within a client. '
+         'Duplicate descriptions make it difficult to distinguish accounts in selection screens and reports. '
+         'Staff may code transactions to the wrong account when two accounts appear identical by name, '
+         'and the descriptions cannot both be used unambiguously in the new system.',
+         'Review each duplicate pair and clarify the description of at least one account to make it distinct.',
+         'aglaccounts', None,
+         "WHERE status = 'N' AND description appears more than once within the same client",
+         lambda df: (
+             df['description'].notna() &
+             (df['description'].astype(str).str.strip() != '') &
+             df.duplicated(subset=['client', 'description'], keep=False)
+         )),
 
         # TIMELINESS
         ('GL_ACC_STALE_MOD',
