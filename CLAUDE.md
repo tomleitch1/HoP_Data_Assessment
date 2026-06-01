@@ -131,10 +131,11 @@ data/
 ├── customers/   customer_master_HOC/HOL.csv
 │                customer_open_trans_HOC/HOL.csv
 │                customer_history_HOC/HOL.csv
-├── gl/          gl_chart_of_accounts_HOC/HOL.csv        ← LOADED (11 checks live)
-│                gl_dimension_values_HOC/HOL.csv         ← extracted, not yet loaded
-│                gl_opening_balances_HOC/HOL.csv         ← extracted, not yet loaded
-│                gl_transact_dimensions_HOC/HOL.csv      ← extracted, not yet loaded
+├── gl/          gl_chart_of_accounts_HOC/HOL.csv        ← LOADED (11 GL_ACC_* checks)
+│                gl_opening_balances_HOC/HOL.csv         ← LOADED (3 GL_BAL_* checks)
+│                gl_dimension_config_HOC/HOL.csv         ← LOADED (2 GL_DIM_ATTR_* checks, treemap)
+│                gl_dimension_values_HOC/HOL.csv         ← LOADED (5 GL_DIM_* checks)
+│                gl_transact_dimensions_HOC/HOL.csv      ← not yet loaded
 │                gl_journals_HOC/HOL.csv                 ← not yet extracted (50k rows)
 └── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
                  asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
@@ -497,14 +498,13 @@ Do not add checks speculatively against a schema that has not been seen in real 
 |-----------|-------|--------------|-------------|
 | `aglaccounts` | `gl_chart_of_accounts_HOC/HOL.csv` | `aglaccounts` | Yes — 11 GL_ACC_* checks |
 | `aglyearend` | `gl_opening_balances_HOC/HOL.csv` | `aglperiodic` | Yes — 3 GL_BAL_* checks |
+| `gl_dimconfig` | `gl_dimension_config_HOC/HOL.csv` | `agldimension` ⋈ `agldimvalue` (counts) | Yes — 2 GL_DIM_ATTR_* checks + treemap |
+| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` ⋈ `agldimension` | Yes — 5 GL_DIM_* checks |
 
 ### Planned datasets (not yet loaded)
 
-These files are extracted and the SQL exists, but the data schema has not been confirmed well enough to write reliable checks:
-
 | Frame key | Files | Source table | Status |
 |-----------|-------|--------------|--------|
-| `agldimvalue` | `gl_dimension_values_HOC/HOL.csv` | `agldimvalue` | SQL ready, schema not confirmed |
 | `agltransact` | `gl_transact_dimensions_HOC/HOL.csv` | `agltransact` | SQL ready, schema not confirmed |
 | `gl_journals` | `gl_journals_HOC/HOL.csv` | `agltransact` | SQL ready, 50k rows, schema not confirmed |
 
@@ -563,20 +563,56 @@ All GL extract files exist in two forms:
 
 Use the `_HOC_run.sql` / `_HOL_run.sql` files when extracting on the Parliament laptop.
 
-### Dimension values (`agldimvalue` / `gl_dimension_values`) — not yet loaded
-Unit4 stores GL dimension values (cost centres, subjectives, analysis codes, etc.) in `agldimvalue`. Each row has an `attribute_id` which identifies the dimension type.
+### Dimension Configuration (`gl_dimconfig`) — confirmed schema
 
-The mapping between dim positions (dim_1 through dim_7 on journal lines) and attribute_ids is held in the `agldimension` table:
+Summary/reference frame — one row per `(client, attribute_id)`. Not a DQ check frame in the traditional sense; used for the GL tab treemap visualisation and two attribute-level DQ checks.
 
-| Column | Description |
-|--------|-------------|
-| `client` | Fund/entity code |
-| `dim_position` | Which dim column this attribute maps to (e.g. `1` = dim_1) |
-| `attribute_id` | The attribute code used in agldimvalue |
-| `description` | Human-readable name e.g. "Cost Centre", "Subjective" |
-| `status` | N=Active — filter to N only |
+Columns: `client, attribute_id, description, dim_position, total_values, active, closed`
 
-The `gl_dimension_values_HOC/HOL_run.sql` joins `agldimvalue` to `agldimension` automatically — output includes `dim_position` and `dim_description` columns. **Before adding checks:** confirm attribute_id codes, dim_position values, and wf_state values from real data. The 277k-row HOC extract may need SQL-level filtering to reduce load time.
+**`dim_position` key:**
+- `1`–`7` → maps to `dim_1` through `dim_7` on GL journal lines — in scope for GL migration
+- Letters (`A`, `B`, ...) → header-level or cross-module dimensions — review for relevance
+- `X` → not mapped to any GL transaction line — out of scope for GL migration
+
+**Real Parliament data scale (June 2026):** HOC has ~50 GL-mapped attributes (dim_position 0–7) and ~700 total (mostly X). CA and CM share the same attribute definitions; both clients appear per attribute, so CA+CM counts must be **summed** before display (done in `_build_treemap()` in `gl.py`).
+
+**Population filter:** all rows for the house (SQL already filters `agldimension` to `status = 'N'`).
+
+**Implemented checks (2):**
+- `GL_DIM_ATTR_GL_EMPTY` — GL-mapped attribute (position 0–7) with zero active values (Completeness, High). Population scoped to GL-mapped rows only so error rate is not diluted by the 650+ X-position attributes.
+- `GL_DIM_ATTR_DESC_MISSING` — any attribute with blank description (Completeness, Low). Full population.
+
+**GL tab treemap (`dashboard/tabs/gl.py`):**
+- `_build_treemap(df_config, house)` renders a `px.treemap` per house. HOC aggregates CA+CM counts. GL attributes (position 0–7) are individual leaves sized by `active` values. X-position and letter-coded attributes are collapsed into "Out of Scope" blocks, normalised to ~22% of total width (`_OOS_FRACTION = 0.22`) so HOC and HOL are visually comparable. Colour = `closed_pct` (green→amber→red at 0–35–80%).
+- House labels ("HoC" / "HoL") live in Dash html elements above the chart — not in the plotly title — so the path bar (breadcrumb when drilling in) cannot overlap them.
+- Modebar enabled with reset/home button; irrelevant chart-type buttons removed.
+
+### Dimension Values (`agldimvalue`) — confirmed schema
+
+Columns extracted: `client, attribute_id, dim_position, dim_description, dim_value, description, status, period_from, period_to, rel_value, last_update, wf_state`
+
+**Confirmed from real Parliament data (June 2026):**
+- Extract scoped to GL-mapped positions only (`dim_position IN ('0','1','2','3','4','5','6','7')`) and active values (`status = 'N'`). Row counts: ~95k HOC, ~38k HOL. This is the real volume — Parliament has a large number of active dimension values across 50+ GL attributes.
+- `dim_position`: string (`'1'`–`'7'`); same key as gl_dimconfig
+- `dim_description`: the attribute type label from `agldimension` (e.g. `'Cost Centre'`)
+- `dim_value`: string code, may have leading zeros (e.g. `0101`) — preserved correctly via Excel import
+- `description`: human-readable label for the individual value
+- `status`: always `'N'` in the extract (SQL filters active only)
+- `period_from` / `period_to`: **YYYYMM integers** (e.g. `201202` = 2012 period 2, `209912` = 2099 period 12 open-ended sentinel). **NOT Excel serial dates.** Engine converts these to numeric with `pd.to_numeric()` — they are explicitly excluded from `_parse_dates()` for `agldimvalue`.
+- `last_update`: **Excel serial integer** (e.g. `46090`) — parsed normally by `_parse_dates()`.
+- `rel_value`: parent `dim_value` code within the same `(attribute_id, client)` for hierarchy; blank for root nodes. Can be letters, numbers, or alphanumeric (e.g. `RD`, `1101`).
+- `wf_state`: **not used** in Parliament's Agresso — always blank. Do not write `GL_DIM_WF_STUCK` checks.
+
+**Population filter in `run_dq_analysis` and `get_failing_records`:** all rows for the house (SQL already active-only; engine adds explicit `agldimvalue` branch for consistency).
+
+**Period handling in `data_engine.py`:** the post-processing loop has a table-specific branch for `agldimvalue` that converts `period_from` and `period_to` to numeric with `pd.to_numeric()` and excludes them from the `_parse_dates()` call. `last_update` is still date-parsed normally.
+
+**Implemented checks (5):**
+- `GL_DIM_DESC_MISSING` — active value with blank description (Completeness, Medium)
+- `GL_DIM_PERIOD_MISSING` — active value with no `period_from` (Completeness, Low)
+- `GL_DIM_PERIOD_INV` — `period_from > period_to` as YYYYMM integers (Validity, Medium)
+- `GL_DIM_ORPHAN_REL` — `rel_value` populated but does not exist as an active `dim_value` in the same `(attribute_id, client)` (Consistency, High). Vectorised via composite key string: `attribute_id + '||' + client + '||' + rel_value`. This catches both missing parents and closed parents (since only active values are in the extract).
+- `GL_DIM_DUP` — duplicate `(client, attribute_id, dim_value)` (Uniqueness, High)
 
 ### GL opening balances (`aglperiodic` — not `aglyearend`) — not yet loaded
 `aglyearend` is **not used** in Parliament's Agresso installation — it contains only legacy pre-2008 data. The correct table is `aglperiodic`.
@@ -599,7 +635,7 @@ Key facts about `aglperiodic`:
 
 ---
 
-## Current State (as of May 2026)
+## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
@@ -610,18 +646,24 @@ Key facts about `aglperiodic`:
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
 - Cross-house uniqueness checks for suppliers (VAT, company reg, IBAN, bank account+sort code, name)
 
-**GL tab — iterative build in progress:**
+**GL tab — iterative build in progress (21 checks total):**
 - Chart of Accounts (`aglaccounts`) loaded — 11 checks live (GL_ACC_*)
 - Opening Balances (`aglyearend` / `aglperiodic`) loaded — 3 checks live (GL_BAL_*): AMT_MISSING, ORPHAN_ACC, PL_NONZERO
-- Dimension values, transaction dimensions, journals: SQL extracted but not yet loaded — schema confirmation required before checks are written
-- GL tab displays CoA + opening balance checks; other datasets added one at a time as schema is confirmed
+- Dimension Configuration (`gl_dimconfig`) loaded — 2 checks live (GL_DIM_ATTR_*) + treemap visualisation
+- Dimension Values (`agldimvalue`) loaded — 5 checks live (GL_DIM_*): DESC_MISSING, PERIOD_MISSING, PERIOD_INV, ORPHAN_REL, DUP
+- GL tab layout: dimension scorecard → treemap (HoC/HoL side by side) → DQ checks section
 - Deferred: `GL_ACC_BFLAG_CON` — bflag reconciliation bit not yet confirmed from real data
-- Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate check, does not fit row-level model)
+- Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate, does not fit row-level model), `GL_DIM_WF_STUCK` (wf_state not used at Parliament)
+- Next: `agltransact` (transaction dimensions) or `gl_journals` — schema confirmation from real data required first
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 
-**Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match confirmed real data format: client codes CA/CM/LA, HOL letter-prefix accounts (A1000), bflag as powers of 2, period/date fields as Excel serial integers. Opening balances: signed amounts, dc_flag=0, trans_date=1, only dim_1 populated, periods spread across 202601–202612.
+**Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match all confirmed real formats:
+- Chart of accounts: Excel serial dates, CA/CM/LA clients, bflag powers of 2
+- Opening balances: signed amounts, dc_flag=0, trans_date=1, dim_1 only, YYYYPP periods
+- Dimension config: summary counts per (client, attribute_id), dim_position 0–7 / letter / X
+- Dimension values: YYYYMM period_from/period_to integers, Excel serial last_update, blank wf_state, rel_value references actual dim_value codes, all status='N'
 
 **If the Parliament laptop needs to pull a code update**, run `git pull` — the `data/` folder is ignored so real data files are never touched. If git complains about untracked files in `data/`, run `git rm --cached -r data/` first (this happened once during the initial `.gitignore` setup).
 
