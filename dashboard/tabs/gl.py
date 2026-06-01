@@ -122,16 +122,14 @@ def _build_treemap(df_config, house):
         hovertemplate='%{customdata[0]}<extra></extra>',
         textfont_size=12,
         insidetextfont_size=11,
+        pathbar=dict(
+            thickness=22,
+            textfont=dict(size=11, color='#4a3d6b'),
+        ),
     )
 
-    house_label = 'House of Commons' if house == 'HOC' else 'House of Lords'
     fig.update_layout(
-        title=dict(
-            text=f'<b>{house_label}</b>',
-            font=dict(size=13, color='#2a1f3d'),
-            x=0.02, xanchor='left',
-        ),
-        margin=dict(t=36, l=4, r=4, b=4),
+        margin=dict(t=8, l=4, r=4, b=32),
         height=440,
         coloraxis_colorbar=dict(
             title='% closed',
@@ -146,6 +144,10 @@ def _build_treemap(df_config, house):
     return fig
 
 
+_HOUSE_LABEL = {'HOC': 'HoC', 'HOL': 'HoL'}
+_HOUSE_COLOR = {'HOC': '#16a34a', 'HOL': '#dc2626'}
+
+
 def _render_dim_structure(frames):
     """Treemap section showing GL vs out-of-scope dimension attributes."""
     if 'gl_dimconfig' not in frames or frames['gl_dimconfig'].empty:
@@ -156,13 +158,31 @@ def _render_dim_structure(frames):
     for house in ['HOC', 'HOL']:
         fig = _build_treemap(df, house)
         if fig:
-            charts.append(
+            color = _HOUSE_COLOR[house]
+            charts.append(html.Div([
+                html.Div(
+                    _HOUSE_LABEL[house],
+                    style={
+                        'fontSize': '13px', 'fontWeight': '700',
+                        'color': color,
+                        'borderBottom': f'2px solid {color}',
+                        'paddingBottom': '5px', 'marginBottom': '2px',
+                    },
+                ),
                 dcc.Graph(
                     figure=fig,
-                    style={'flex': '1', 'minWidth': 0},
-                    config={'displayModeBar': False},
-                )
-            )
+                    style={'minWidth': 0, 'overflow': 'visible'},
+                    config={
+                        'displayModeBar': True,
+                        'modeBarButtonsToRemove': [
+                            'toImage', 'sendDataToCloud', 'zoom2d', 'pan2d',
+                            'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d',
+                            'autoScale2d',
+                        ],
+                        'displaylogo': False,
+                    },
+                ),
+            ], style={'flex': '1', 'minWidth': 0, 'display': 'flex', 'flexDirection': 'column'}))
 
     if not charts:
         return html.Div()
@@ -177,6 +197,7 @@ def _render_dim_structure(frames):
             children=charts,
         ),
         html.P(
+            'Click any rectangle to drill in and zoom. Use the home button (↺) to reset. '
             'Rectangle size = active dimension values (migration volume). '
             'Colour = % of all values that are closed (green = mostly active · red = high closed ratio). '
             'Out of Scope groups are aggregated — X-position and letter-coded attributes are not '
