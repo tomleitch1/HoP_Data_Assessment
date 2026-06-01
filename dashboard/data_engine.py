@@ -262,6 +262,17 @@ def run_dq_analysis(frames, tab=None):
                     h_df = df_table[df_table['house'] == house]
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+            elif table == 'gl_dimconfig':
+                # GL_DIM_ATTR_GL_EMPTY is scoped to GL-mapped positions so the denominator
+                # is GL attributes only — not inflated by the 650+ out-of-scope X attributes.
+                if check_id == 'GL_DIM_ATTR_GL_EMPTY':
+                    _gl = {'0','1','2','3','4','5','6','7'}
+                    h_df = df_table[
+                        (df_table['house'] == house) &
+                        df_table['dim_position'].astype(str).str.strip().isin(_gl)
+                    ]
+                else:
+                    h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -318,6 +329,10 @@ def run_dq_analysis(frames, tab=None):
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
+
+        # GL Dimension Attributes
+        'GL_DIM_ATTR_GL_EMPTY':      ['attribute_id', 'description', 'dim_position', 'active', 'closed', 'total_values'],
+        'GL_DIM_ATTR_DESC_MISSING':  ['attribute_id', 'description', 'dim_position'],
 
         # GL Opening Balances
         'GL_BAL_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
@@ -599,6 +614,15 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             h_df = df_table[df_table['house'] == house]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table == 'gl_dimconfig':
+        if check_id == 'GL_DIM_ATTR_GL_EMPTY':
+            _gl = {'0','1','2','3','4','5','6','7'}
+            h_df = df_table[
+                (df_table['house'] == house) &
+                df_table['dim_position'].astype(str).str.strip().isin(_gl)
+            ]
+        else:
+            h_df = df_table[df_table['house'] == house]
     elif table == 'agldimvalue':
         if check_id in ['GL_DIM_DUP']:
             h_df = df_table[df_table['house'] == house]

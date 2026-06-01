@@ -5,6 +5,38 @@ def get_gl_checks():
     return [
 
         # ---------------------------------------------------------------
+        # DIMENSION CONFIGURATION — gl_dimconfig (source: agldimension joined to agldimvalue counts)
+        # Population: GL_DIM_ATTR_GL_EMPTY → GL-mapped rows only (dim_position 0-7, filtered in engine)
+        #             GL_DIM_ATTR_DESC_MISSING → all rows for the house
+        # One row per (client, attribute_id) — counts of active/closed values per attribute type.
+        # No 'status' column — SQL already filters agldimension to status = 'N'.
+        # ---------------------------------------------------------------
+
+        ('GL_DIM_ATTR_GL_EMPTY',
+         21, 'Dimension Attributes', 'Completeness', 'High',
+         'GL-mapped dimension attribute has no active values',
+         'Every dimension attribute mapped to a GL journal line position (dim_1 through dim_7) must have at least one active value. '
+         'If a GL dimension has no active values, journal lines cannot reference it and postings will either fail or leave the dimension blank. '
+         'A dimension with no active values at cutover cannot be loaded into the new system and will block any transaction that references it.',
+         'Review the dimension attribute and either activate existing closed values, create new active values, '
+         'or remove the attribute from the GL journal line mapping if it is no longer required.',
+         'gl_dimconfig', None,
+         "WHERE dim_position IN ('0','1','2','3','4','5','6','7') AND active = 0",
+         lambda df: pd.to_numeric(df['active'], errors='coerce').fillna(0) == 0),
+
+        ('GL_DIM_ATTR_DESC_MISSING',
+         21, 'Dimension Attributes', 'Completeness', 'Low',
+         'Dimension attribute has no description',
+         'Every dimension attribute must have a description. '
+         'Finance staff rely on the description to identify the attribute when coding transactions and reviewing reports. '
+         'The new system displays descriptions in all dimension selection screens. '
+         'An attribute with no description will appear as a blank label and cannot be mapped during migration sign-off.',
+         'Add a meaningful description to each affected attribute in agldimension in the legacy system before migration.',
+         'gl_dimconfig', None,
+         "WHERE description IS NULL OR TRIM(description) = ''",
+         lambda df: df['description'].isna() | (df['description'].astype(str).str.strip() == '')),
+
+        # ---------------------------------------------------------------
         # OPENING BALANCES — aglyearend (source: aglperiodic)
         # Population: all rows for the house — no status filter
         # Confirmed schema: amount is signed (dc_flag always 0), currency always GBP,
