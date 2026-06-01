@@ -33,7 +33,7 @@ USE agresso_HoL;
 --   GL_BUD_NO_BUDGET      Active P&L account in CoA has no budget entry this year
 --
 -- FISCAL YEAR CUTOVER
---   Update to fiscal_year = 2029 when extracting for migration cutover (FY2028/29).
+--   Update lower bound to 202901 when extracting for migration cutover (FY2028/29).
 
 SELECT
     client,
@@ -54,7 +54,7 @@ SELECT
     description
 FROM aglperiodic
 WHERE client = 'LA'
-  AND fiscal_year = 2026
+  AND period BETWEEN 202601 AND 209912
   AND voucher_type IN ('BU', 'BV')
   AND (status IS NULL OR status = '')
 ORDER BY client, account, period;
