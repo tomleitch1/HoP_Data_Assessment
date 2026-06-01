@@ -5,6 +5,83 @@ def get_gl_checks():
     return [
 
         # ---------------------------------------------------------------
+        # DIMENSION VALUES — agldimvalue
+        # Population: all rows for the house (SQL already filters to status = 'N').
+        # period_from / period_to are YYYYMM integers (e.g. 201202), NOT Excel serial dates.
+        # Engine converts them to numeric; lambdas use pd.to_numeric() for safety.
+        # wf_state is not used in Parliament's Agresso — GL_DIM_WF_STUCK not implemented.
+        # rel_value is blank for root nodes; populated for hierarchy children.
+        # ---------------------------------------------------------------
+
+        ('GL_DIM_DESC_MISSING',
+         21, 'Dimension Values', 'Completeness', 'Medium',
+         'Active dimension value has no description',
+         'Every active dimension value must have a description. '
+         'Finance staff use the description to identify the value when coding transactions and reviewing reports. '
+         'The new system displays descriptions in all dimension selection screens — a blank label cannot be mapped during migration sign-off or identified by users after go-live.',
+         'Add a description to each affected dimension value in the legacy system before migration.',
+         'agldimvalue', None,
+         "WHERE status = 'N' AND (description IS NULL OR TRIM(description) = '')",
+         lambda df: df['description'].isna() | (df['description'].astype(str).str.strip() == '')),
+
+        ('GL_DIM_PERIOD_MISSING',
+         21, 'Dimension Values', 'Completeness', 'Low',
+         'Active dimension value has no valid-from period',
+         'Every active dimension value should have a period_from value recording when it became valid. '
+         'This supports audit trails and validity checking in the new system. '
+         'Values without a valid-from period cannot be validated against fiscal calendar periods during migration.',
+         'Populate the period_from field for each affected dimension value.',
+         'agldimvalue', None,
+         'WHERE status = \'N\' AND period_from IS NULL',
+         lambda df: pd.to_numeric(df['period_from'], errors='coerce').isna()),
+
+        ('GL_DIM_PERIOD_INV',
+         21, 'Dimension Values', 'Validity', 'Medium',
+         'Dimension value valid-from period is after its valid-to period',
+         'The period_from value must be less than or equal to period_to. '
+         'An inverted validity range means the value has no valid period and will be treated as permanently out of date in the new system. '
+         'Any transaction coded to a value with an inverted range may fail posting validation at cutover.',
+         'Correct the period_from and period_to values so the valid-from period is not later than the valid-to period.',
+         'agldimvalue', None,
+         'WHERE status = \'N\' AND period_from > period_to',
+         lambda df: (
+             pd.to_numeric(df['period_from'], errors='coerce').notna() &
+             pd.to_numeric(df['period_to'],   errors='coerce').notna() &
+             (pd.to_numeric(df['period_from'], errors='coerce') >
+              pd.to_numeric(df['period_to'],   errors='coerce'))
+         )),
+
+        ('GL_DIM_ORPHAN_REL',
+         21, 'Dimension Values', 'Consistency', 'High',
+         'Active dimension value references a parent that does not exist',
+         'Where a dimension value has a hierarchy parent (rel_value populated), that parent must exist as an active value within the same dimension attribute. '
+         'An orphaned reference means the value sits at a broken branch in the dimension tree. '
+         'Financial reports that aggregate by hierarchy will produce incorrect totals if parent codes are missing at cutover.',
+         'Reinstate the missing parent as an active dimension value, reassign the child to a valid parent, or clear rel_value if the value should be a root node.',
+         'agldimvalue', None,
+         "WHERE status = 'N' AND rel_value IS NOT NULL AND rel_value NOT IN (SELECT dim_value FROM agldimvalue d2 WHERE d2.attribute_id = d.attribute_id AND d2.client = d.client AND d2.status = 'N')",
+         lambda df: (
+             lambda valid: (
+                 df['rel_value'].notna() &
+                 ~(df['attribute_id'].astype(str) + '||' + df['client'].astype(str) + '||' + df['rel_value'].astype(str))
+                 .isin(valid)
+             )
+         )(set(
+             (df['attribute_id'].astype(str) + '||' + df['client'].astype(str) + '||' + df['dim_value'].astype(str)).tolist()
+         ))),
+
+        ('GL_DIM_DUP',
+         21, 'Dimension Values', 'Uniqueness', 'High',
+         'Duplicate dimension value code within the same attribute and client',
+         'Each dimension value code must be unique within a given attribute type and client. '
+         'Duplicate codes cannot both be loaded into the new system — only one can exist per (attribute, client, code) combination. '
+         'Duplicate dimension values will cause the data load to fail or create ambiguous references in transaction coding.',
+         'Investigate each duplicate pair. Merge or delete the redundant value after confirming no live transactions depend on it.',
+         'agldimvalue', None,
+         "WHERE (client, attribute_id, dim_value) appears more than once",
+         lambda df: df.duplicated(subset=['client', 'attribute_id', 'dim_value'], keep=False)),
+
+        # ---------------------------------------------------------------
         # DIMENSION CONFIGURATION — gl_dimconfig (source: agldimension joined to agldimvalue counts)
         # Population: GL_DIM_ATTR_GL_EMPTY → GL-mapped rows only (dim_position 0-7, filtered in engine)
         #             GL_DIM_ATTR_DESC_MISSING → all rows for the house

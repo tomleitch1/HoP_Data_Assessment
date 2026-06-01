@@ -21,7 +21,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config'],
+    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -124,6 +124,7 @@ def load_data(tab=None):
         'gl_chart_of_accounts',
         'gl_opening_balances',
         'gl_dimension_config',
+        'gl_dimension_values',
     }
 
     # Load split files
@@ -142,6 +143,7 @@ def load_data(tab=None):
         'gl_chart_of_accounts':  'aglaccounts',
         'gl_opening_balances':   'aglyearend',
         'gl_dimension_config':   'gl_dimconfig',
+        'gl_dimension_values':   'agldimvalue',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -187,7 +189,16 @@ def load_data(tab=None):
                 )
 
         date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
-        for col in date_cols:
+        # agldimvalue: period_from/period_to are YYYYMM integers (e.g. 201202 = period 2 of 2012),
+        # not Excel serial dates. Convert to numeric; parse last_update as normal.
+        if table == 'agldimvalue':
+            for col in ('period_from', 'period_to'):
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
+            _date_cols = [c for c in date_cols if c not in ('period_from', 'period_to')]
+        else:
+            _date_cols = date_cols
+        for col in _date_cols:
             if col in df.columns:
                 df[col] = _parse_dates(df[col])
         frames[table] = df
@@ -273,6 +284,10 @@ def run_dq_analysis(frames, tab=None):
                     ]
                 else:
                     h_df = df_table[df_table['house'] == house]
+            elif table == 'agldimvalue':
+                # SQL already filters to status = 'N'; GL_DIM_DUP checks full population
+                # for duplicates, all others use the same house-filtered active rows.
+                h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -330,7 +345,14 @@ def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
 
-        # GL Dimension Attributes
+        # GL Dimension Values (agldimvalue)
+        'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
+        'GL_DIM_PERIOD_MISSING': ['dim_value', 'description', 'period_from', 'period_to', 'attribute_id'],
+        'GL_DIM_PERIOD_INV':     ['dim_value', 'description', 'period_from', 'period_to', 'attribute_id'],
+        'GL_DIM_ORPHAN_REL':     ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
+        'GL_DIM_DUP':            ['client', 'attribute_id', 'dim_value', 'description'],
+
+        # GL Dimension Attributes (gl_dimconfig)
         'GL_DIM_ATTR_GL_EMPTY':      ['attribute_id', 'description', 'dim_position', 'active', 'closed', 'total_values'],
         'GL_DIM_ATTR_DESC_MISSING':  ['attribute_id', 'description', 'dim_position'],
 

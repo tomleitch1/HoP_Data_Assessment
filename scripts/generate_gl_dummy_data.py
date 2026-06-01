@@ -217,92 +217,123 @@ def generate_chart_of_accounts() -> pd.DataFrame:
 
 # ===========================================================================
 # DIMENSION VALUES — agldimvalue (joined with agldimension for dim_position)
-# Format not yet confirmed from real data — client codes updated, structure TBD
+# Confirmed schema from real Parliament data:
+#   period_from / period_to: YYYYMM integers (e.g. 201202 = period 2 of 2012)
+#                            NOT Excel serial dates
+#   last_update: Excel serial integer (e.g. 46090)
+#   wf_state:    not used in Parliament's Agresso — always blank
+#   rel_value:   hierarchy parent code within the same (attribute_id, client),
+#                or blank for root nodes
+#   dim_description: attribute type label from agldimension (e.g. 'Cost Centre')
+#   All rows active (status = 'N') — SQL extract filters to active only
 # ===========================================================================
 
-ATTR_COSTC = 'COSTC'
-ATTR_SUBJ  = 'SUBJ'
-ATTR_ANAL1 = 'ANL1'
-ATTR_ANAL2 = 'ANL2'
+# YYYYMM integer sentinels for agldimvalue period fields
+DIM_PERIOD_FROM = 200101   # Period 1 of 2001 — typical start
+DIM_PERIOD_TO   = 209912   # Period 12 of 2099 — open-ended sentinel
+DIM_PERIOD_INV  = 209901   # Used as period_from in inverted edge case (> DIM_PERIOD_TO)
 
-def generate_dimension_values(df_accounts: pd.DataFrame) -> pd.DataFrame:
+# HOC GL attributes: (attribute_id, dim_description, dim_position, n_root, n_child_per_root)
+_HOC_DIM_ATTRS = [
+    ('COSTC', 'Cost Centre',     '1', 8,  6),   # hierarchical — roots then children
+    ('SUBJ',  'Subjective Code', '2', 40, 0),   # flat
+    ('ACTV',  'Activity',        '3', 20, 0),   # flat
+    ('PROJ',  'Project Code',    '4', 10, 8),   # hierarchical
+    ('CTPT',  'Counterpart',     '5', 12, 0),   # flat
+    ('FUND',  'Fund',            '6', 6,  0),   # flat
+    ('PROG',  'Programme',       '7', 10, 0),   # flat
+]
+
+# HOL GL attributes (independent configuration, LA client)
+_HOL_DIM_ATTRS = [
+    ('LOSTC', 'Cost Centre',     '1', 6,  5),
+    ('LSUBJ', 'Subjective Code', '2', 30, 0),
+    ('LACTV', 'Activity',        '3', 15, 0),
+    ('LPROJ', 'Project Code',    '4', 8,  6),
+    ('LCTPT', 'Counterpart',     '5', 8,  0),
+    ('LFUND', 'Fund',            '6', 4,  0),
+    ('LPROG', 'Programme',       '7', 8,  0),
+]
+
+
+def _dim_rows(client, house, attr_id, dim_desc, dim_pos, n_root, n_child_per_root):
+    """Generate flat + hierarchical dimension value rows for one attribute/client."""
+    rows = []
+    pfx = attr_id[:2].upper()
+
+    root_codes = [f"{pfx}R{i:03d}" for i in range(1, n_root + 1)]
+    for code in root_codes:
+        rows.append({
+            '_house': house, 'client': client,
+            'attribute_id': attr_id, 'dim_position': dim_pos,
+            'dim_description': dim_desc,
+            'dim_value': code, 'description': f"{dim_desc} {code}",
+            'status': 'N',
+            'period_from': DIM_PERIOD_FROM, 'period_to': DIM_PERIOD_TO,
+            'rel_value': None,
+            'last_update': last_update_recent(), 'wf_state': '',
+        })
+
+    if n_child_per_root:
+        child_num = 1
+        for parent in root_codes:
+            for _ in range(n_child_per_root):
+                code = f"{pfx}C{child_num:04d}"
+                child_num += 1
+                rows.append({
+                    '_house': house, 'client': client,
+                    'attribute_id': attr_id, 'dim_position': dim_pos,
+                    'dim_description': dim_desc,
+                    'dim_value': code, 'description': f"{dim_desc} {code}",
+                    'status': 'N',
+                    'period_from': DIM_PERIOD_FROM, 'period_to': DIM_PERIOD_TO,
+                    'rel_value': parent,
+                    'last_update': last_update_recent(), 'wf_state': '',
+                })
+    return rows
+
+
+def generate_dimension_values() -> pd.DataFrame:
     rows = []
 
-    cc_codes    = [f"CC{i:03d}" for i in range(100, 130)]
-    cc_parents  = ['DEPT_A', 'DEPT_B', 'DEPT_C', 'DEPT_D']
-    subj_codes  = [f"S{i:03d}" for i in range(100, 125)]
-    anal1_codes = [f"A1{i:02d}" for i in range(10, 30)]
-    anal2_codes = [f"A2{i:02d}" for i in range(10, 25)]
+    for client in HOC_CLIENTS:
+        for (attr_id, dim_desc, dim_pos, n_root, n_child) in _HOC_DIM_ATTRS:
+            rows.extend(_dim_rows(client, 'HOC', attr_id, dim_desc, dim_pos, n_root, n_child))
 
-    dimension_configs = [
-        (ATTR_COSTC, cc_codes,    'Cost Centre', cc_parents, 1),
-        (ATTR_SUBJ,  subj_codes,  'Subjective',  None,       2),
-        (ATTR_ANAL1, anal1_codes, 'Programme',   None,       3),
-        (ATTR_ANAL2, anal2_codes, 'Project',     None,       4),
-    ]
+    for (attr_id, dim_desc, dim_pos, n_root, n_child) in _HOL_DIM_ATTRS:
+        rows.extend(_dim_rows(HOL_CLIENT, 'HOL', attr_id, dim_desc, dim_pos, n_root, n_child))
 
-    # Generate for both houses using confirmed client codes
-    all_clients = HOC_CLIENTS + [HOL_CLIENT]
-    for client in all_clients:
-        house = client_to_house(client)
-        for (attr_id, codes, desc_prefix, parents, dim_pos) in dimension_configs:
-            for code in codes:
-                rel_value = random.choice(parents) if parents else None
-                rows.append({
-                    '_house':       house,
-                    'client':       client,
-                    'attribute_id': attr_id,
-                    'dim_position': dim_pos,
-                    'dim_value':    code,
-                    'description':  f"{desc_prefix} {code}",
-                    'status':       random.choice(['N', 'N', 'N', 'C']),
-                    'period_from':  make_period_from(),
-                    'period_to':    PERIOD_TO_NORMAL,
-                    'rel_value':    rel_value,
-                    'last_update':  last_update_recent(),
-                    'wf_state':     random.choice(['T', 'T', 'T', 'W', '']),
-                })
+    # -----------------------------------------------------------------------
+    # Edge cases — each triggers one specific DQ check
+    # All use COSTC / HOC / CA so they appear in GL_DIM_* check results
+    # -----------------------------------------------------------------------
+    _ec = lambda code, desc, pf, pt, rel, house='HOC', client='CA', attr='COSTC': {
+        '_house': house, 'client': client,
+        'attribute_id': attr, 'dim_position': '1',
+        'dim_description': 'Cost Centre',
+        'dim_value': code, 'description': desc,
+        'status': 'N',
+        'period_from': pf, 'period_to': pt,
+        'rel_value': rel,
+        'last_update': last_update_recent(), 'wf_state': '',
+    }
 
     edge_cases = [
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D001', 'description': None, 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
+        # GL_DIM_DESC_MISSING: active value, no description
+        _ec('EC_D001', None, DIM_PERIOD_FROM, DIM_PERIOD_TO, None),
 
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D002', 'description': 'EC No Parent CC', 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': None, 'last_update': last_update_recent(), 'wf_state': 'T'},
+        # GL_DIM_PERIOD_MISSING: active value, no period_from
+        _ec('EC_D002', 'EC Missing Period From', None, DIM_PERIOD_TO, None),
 
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D003', 'description': 'EC Invalid Period', 'status': 'N',
-         'period_from': PERIOD_TO_NORMAL, 'period_to': PERIOD_FROM_NORMAL,
-         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
+        # GL_DIM_PERIOD_INV: period_from (209901) > period_to (209912) — inverted
+        _ec('EC_D003', 'EC Inverted Period', DIM_PERIOD_INV, DIM_PERIOD_FROM, None),
 
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D004', 'description': 'EC Expired Active', 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_EXPIRED,
-         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
+        # GL_DIM_ORPHAN_REL: rel_value points to a code that does not exist
+        _ec('EC_D004', 'EC Orphaned Parent', DIM_PERIOD_FROM, DIM_PERIOD_TO, 'GHOST_PARENT'),
 
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D005', 'description': 'EC Stuck Workflow', 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'W'},
-
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D006', 'description': 'EC Orphaned Parent', 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': 'DEPT_GHOST', 'last_update': last_update_recent(), 'wf_state': 'T'},
-
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D009', 'description': 'EC Stale Dimension', 'status': 'N',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': 'DEPT_A', 'last_update': LAST_UPDATE_STALE, 'wf_state': 'T'},
-
-        {'_house': 'HOC', 'client': 'CA', 'attribute_id': ATTR_COSTC, 'dim_position': 1,
-         'dim_value': 'EC_D010', 'description': 'EC Inactive With Balances', 'status': 'C',
-         'period_from': PERIOD_FROM_NORMAL, 'period_to': PERIOD_TO_NORMAL,
-         'rel_value': 'DEPT_A', 'last_update': last_update_recent(), 'wf_state': 'T'},
+        # GL_DIM_DUP: same dim_value as EC_D005b — both will be flagged
+        _ec('EC_D005', 'EC Duplicate A', DIM_PERIOD_FROM, DIM_PERIOD_TO, None),
+        _ec('EC_D005', 'EC Duplicate B', DIM_PERIOD_FROM, DIM_PERIOD_TO, None),
     ]
 
     return pd.DataFrame(rows + edge_cases)
@@ -486,7 +517,7 @@ import os
 os.makedirs('data/gl', exist_ok=True)
 
 df_coa    = generate_chart_of_accounts()
-df_dims   = generate_dimension_values(df_coa)
+df_dims   = generate_dimension_values()
 df_bal    = generate_opening_balances(df_coa)
 df_dimcfg = generate_dimension_config()
 
