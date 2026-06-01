@@ -530,30 +530,9 @@ for house in ['HOC', 'HOL']:
     dims_out.to_csv(f'data/gl/gl_dimension_values_{house}.csv',   index=False)
     bal_out .to_csv(f'data/gl/gl_opening_balances_{house}.csv',   index=False)
 
-    # gl_transact_dimensions: distinct (client, dim_position, dim_value) used on postings.
-    # Format matches the real SQL extract (unpivoted). Include mostly leaf nodes plus a few
-    # parent/summary nodes (nodes that appear as rel_value of another) to exercise the
-    # Posted to Parent column in the hierarchy section.
-    dims_house = df_dims[df_dims['_house'] == house].copy()
-    # Identify parent nodes in this house: dim_value that appears as someone's rel_value
-    parent_vals = set(dims_house.loc[
-        dims_house['rel_value'].notna() & (dims_house['rel_value'].astype(str).str.strip() != ''),
-        'rel_value'
-    ].astype(str))
-    dims_house['_is_parent'] = dims_house['dim_value'].astype(str).isin(parent_vals)
-    # Build unpivoted transact_dim rows: sample leaf nodes + deliberately include 2 parent nodes
-    td_rows = []
-    for client_val in dims_house['client'].unique():
-        sub = dims_house[dims_house['client'] == client_val]
-        leaves  = sub[~sub['_is_parent']].head(30)
-        parents = sub[sub['_is_parent']].head(2)   # edge case: posting to a parent node
-        for _, row in pd.concat([leaves, parents]).iterrows():
-            td_rows.append({
-                'client':       row['client'],
-                'dim_position': str(row['dim_position']),
-                'dim_value':    str(row['dim_value']),
-            })
-    pd.DataFrame(td_rows).drop_duplicates().to_csv(
+    # gl_transact_dimensions: distinct dim combinations from opening balances
+    dim_cols = ['client', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7']
+    bal_out[dim_cols].drop_duplicates().to_csv(
         f'data/gl/gl_transact_dimensions_{house}.csv', index=False
     )
 
