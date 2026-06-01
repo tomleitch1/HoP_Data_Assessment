@@ -357,6 +357,7 @@ def get_check_columns():
         'GL_DIM_ORPHAN_REL':     ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_SELF_REF':       ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_DUP':            ['client', 'attribute_id', 'dim_value', 'description'],
+        'GL_DIM_DEEP_HIERARCHY': ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_POST_SUMMARY':   ['client', 'dim_position', 'dim_value'],
 
         # GL Dimension Attributes (gl_dimconfig)

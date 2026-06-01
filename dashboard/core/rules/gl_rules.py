@@ -1,6 +1,31 @@
 import pandas as pd
 
 
+def _compute_dim_depths(df):
+    """Assign hierarchy depth to each row. Root nodes (blank rel_value) = 1."""
+    keys = list(zip(df['client'].astype(str), df['attribute_id'].astype(str), df['dim_value'].astype(str)))
+    parents = df['rel_value'].fillna('').astype(str).str.strip().tolist()
+
+    depths = {}
+    for key, parent in zip(keys, parents):
+        if not parent or parent == 'nan':
+            depths[key] = 1
+
+    for _ in range(15):
+        changed = False
+        for key, parent in zip(keys, parents):
+            if key in depths:
+                continue
+            parent_key = (key[0], key[1], parent)
+            if parent_key in depths:
+                depths[key] = depths[parent_key] + 1
+                changed = True
+        if not changed:
+            break
+
+    return pd.Series([depths.get(k, 1) for k in keys], index=df.index)
+
+
 def get_gl_checks():
     return [
 
@@ -95,6 +120,17 @@ def get_gl_checks():
          'agldimvalue', None,
          "WHERE (client, attribute_id, dim_value) appears more than once",
          lambda df: df.duplicated(subset=['client', 'attribute_id', 'dim_value'], keep=False)),
+
+        ('GL_DIM_DEEP_HIERARCHY',
+         21, 'Dimension Values', 'Consistency', 'Low',
+         'Dimension value is at hierarchy depth 3 or deeper',
+         'Dimension hierarchies deeper than two levels add complexity to migration mapping and reporting configuration in the new system. '
+         'Each additional level must be explicitly modelled and validated. '
+         'Knowing which attributes have deep hierarchies allows the migration team to prioritise hierarchy review and confirm the structure is intentional before cutover.',
+         'Review each affected attribute. Confirm the hierarchy depth is intentional and document the expected structure for migration mapping.',
+         'agldimvalue', None,
+         'WHERE depth of node in hierarchy tree >= 3',
+         lambda df: _compute_dim_depths(df) >= 3),
 
         # ---------------------------------------------------------------
         # GL TRANSACTION DIMENSIONS — gl_transact_dim
