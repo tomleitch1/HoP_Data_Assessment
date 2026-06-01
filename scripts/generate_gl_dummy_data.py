@@ -451,23 +451,33 @@ def random_amount(min_val=100, max_val=500_000):
 
 _BALANCE_STATUSES = [''] * 10 + ['D', 'N', 'T', 'X']   # mostly blank
 
-def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
+def generate_opening_balances(df_accounts: pd.DataFrame, df_dims: pd.DataFrame = None) -> pd.DataFrame:
     active = df_accounts[
         (df_accounts['status'] == 'N') &
         (~df_accounts['account'].astype(str).str.startswith('8'))  # exclude edge cases
     ][['_house', 'client', 'account', 'res_bal', 'account_type']].values.tolist()
 
-    cc_codes = [f"CC{i:03d}" for i in range(100, 130)]
+    # Use actual leaf dim codes from agldimvalue position 1 so GL_BAL_ORPHAN_DIM has valid references.
+    # Fall back to placeholder codes only when df_dims is not provided.
+    if df_dims is not None:
+        pos1 = df_dims[df_dims['dim_position'] == '1'][['_house', 'client', 'dim_value']].drop_duplicates()
+    else:
+        pos1 = None
 
     rows = []
     for i in range(200):
         house, client, account, res_bal, acc_type = random.choice(active)
+        if pos1 is not None:
+            valid_codes = pos1[pos1['client'] == client]['dim_value'].tolist()
+            dim_1_val = random.choice(valid_codes) if valid_codes else None
+        else:
+            dim_1_val = f"CC{random.randint(100, 129):03d}"
         rows.append({
             '_house':       house,
             'client':       client,
             'account':      account,
             'period':       random.choice(FISCAL_PERIODS),
-            'dim_1':        random.choice(cc_codes),
+            'dim_1':        dim_1_val,
             'dim_2': None, 'dim_3': None, 'dim_4': None,
             'dim_5': None, 'dim_6': None, 'dim_7': None,
             'amount':       random_amount(),
@@ -566,7 +576,7 @@ def generate_transact_dimensions(df_dims: pd.DataFrame) -> pd.DataFrame:
 
 df_coa    = generate_chart_of_accounts()
 df_dims   = generate_dimension_values()
-df_bal    = generate_opening_balances(df_coa)
+df_bal    = generate_opening_balances(df_coa, df_dims)
 df_dimcfg = generate_dimension_config()
 df_tdim   = generate_transact_dimensions(df_dims)
 

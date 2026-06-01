@@ -165,6 +165,30 @@ def get_gl_checks():
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
         ),
 
+        ('GL_DIM_INVALID_CODE',
+         21, 'Dimension Values', 'Consistency', 'High',
+         'GL posting references a dimension code that does not exist in the dimension master',
+         'Every dimension code used on a GL posting must exist as a valid active value in agldimvalue for the same position and client. '
+         'A code present in transactions but absent from the master cannot be validated or migrated — the new system has no record of what it represents. '
+         'This typically indicates a value was deleted from the master after postings were already made against it.',
+         'Reinstate the missing dimension value in agldimvalue, or investigate whether the posting was made in error and requires a correcting journal before migration.',
+         'gl_transact_dim', 'agldimvalue',
+         "WHERE (client, dim_position, dim_value) NOT IN (SELECT client, dim_position, dim_value FROM agldimvalue)",
+         lambda df, frames: (
+             lambda valid: ~(
+                 (df['client'].astype(str) + '||' + df['dim_position'].astype(str) + '||' + df['dim_value'].astype(str))
+                 .isin(valid)
+             )
+         )(
+             set(
+                 (frames['agldimvalue']['client'].astype(str) + '||' +
+                  frames['agldimvalue']['dim_position'].astype(str) + '||' +
+                  frames['agldimvalue']['dim_value'].astype(str))
+                 .tolist()
+             )
+         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
+        ),
+
         # ---------------------------------------------------------------
         # DIMENSION CONFIGURATION — gl_dimconfig (source: agldimension joined to agldimvalue counts)
         # Population: GL_DIM_ATTR_GL_EMPTY → GL-mapped rows only (dim_position 0-7, filtered in engine)
@@ -230,6 +254,30 @@ def get_gl_checks():
          lambda df, frames: ~df['account'].isin(
              frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]['account']
          )),
+
+        ('GL_BAL_ORPHAN_DIM',
+         22, 'GL Opening Balances', 'Consistency', 'High',
+         'Balance record references a dim_1 code not in the dimension master',
+         'Every opening balance row that carries a dimension code must reference a value that exists in agldimvalue for the same client and position. '
+         'A dimension code present in balances but absent from the master cannot be validated during migration — the new system cannot resolve what the code represents. '
+         'Orphaned dimension references will either block the balance load or silently produce mis-coded entries in the new system.',
+         'Reinstate the missing dimension value in agldimvalue for the relevant attribute and client, or investigate whether the balance was posted against an incorrect code.',
+         'aglyearend', 'agldimvalue',
+         "WHERE dim_1 IS NOT NULL AND dim_1 NOT IN (SELECT dim_value FROM agldimvalue WHERE dim_position = '1' AND client = p.client)",
+         lambda df, frames: (
+             lambda valid: (
+                 df['dim_1'].notna() &
+                 (df['dim_1'].astype(str).str.strip().isin(['', 'nan']) == False) &
+                 ~(df['client'].astype(str) + '||' + df['dim_1'].astype(str).str.strip()).isin(valid)
+             )
+         )(
+             set(
+                 (frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['client'].astype(str) + '||' +
+                  frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['dim_value'].astype(str))
+                 .tolist()
+             )
+         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
+        ),
 
         ('GL_BAL_PL_NONZERO',
          22, 'GL Opening Balances', 'Validity', 'Medium',

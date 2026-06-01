@@ -359,6 +359,7 @@ def get_check_columns():
         'GL_DIM_DUP':            ['client', 'attribute_id', 'dim_value', 'description'],
         'GL_DIM_DEEP_HIERARCHY': ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_POST_SUMMARY':   ['client', 'dim_position', 'dim_value'],
+        'GL_DIM_INVALID_CODE':   ['client', 'dim_position', 'dim_value'],
 
         # GL Dimension Attributes (gl_dimconfig)
         'GL_DIM_ATTR_GL_EMPTY':      ['attribute_id', 'description', 'dim_position', 'active', 'closed', 'total_values'],
@@ -367,6 +368,7 @@ def get_check_columns():
         # GL Opening Balances
         'GL_BAL_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
         'GL_BAL_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
+        'GL_BAL_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_PL_NONZERO':      ['client', 'account', 'period', 'dim_1', 'amount', 'voucher_type'],
 
         # GL Chart of Accounts
