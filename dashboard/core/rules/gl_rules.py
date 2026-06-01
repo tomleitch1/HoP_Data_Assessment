@@ -70,6 +70,21 @@ def get_gl_checks():
              (df['attribute_id'].astype(str) + '||' + df['client'].astype(str) + '||' + df['dim_value'].astype(str)).tolist()
          ))),
 
+        ('GL_DIM_SELF_REF',
+         21, 'Dimension Values', 'Consistency', 'High',
+         'Dimension value is its own parent',
+         'A dimension value must not reference itself as its hierarchy parent. '
+         'Self-referential nodes create an infinite loop in any hierarchy traversal and cannot be imported into the new system. '
+         'Reporting tools that walk the dimension tree will hang or error if a node points back to itself.',
+         'Clear the rel_value field for the affected dimension value, or reassign it to a valid parent.',
+         'agldimvalue', None,
+         "WHERE status = 'N' AND rel_value = dim_value",
+         lambda df: (
+             df['rel_value'].notna() &
+             (df['rel_value'].astype(str).str.strip() != '') &
+             (df['rel_value'].astype(str) == df['dim_value'].astype(str))
+         )),
+
         ('GL_DIM_DUP',
          21, 'Dimension Values', 'Uniqueness', 'High',
          'Duplicate dimension value code within the same attribute and client',
