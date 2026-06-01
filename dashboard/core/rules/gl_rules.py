@@ -97,6 +97,39 @@ def get_gl_checks():
          lambda df: df.duplicated(subset=['client', 'attribute_id', 'dim_value'], keep=False)),
 
         # ---------------------------------------------------------------
+        # GL TRANSACTION DIMENSIONS — gl_transact_dim
+        # Population: all rows for the house (one row per distinct client/dim_position/dim_value posted to).
+        # Lambda receives frames so it can cross-reference agldimvalue for hierarchy data.
+        # ---------------------------------------------------------------
+
+        ('GL_DIM_POST_SUMMARY',
+         21, 'Dimension Values', 'Consistency', 'Medium',
+         'GL posting made to a summary (non-leaf) dimension node',
+         'Postings should only land on leaf nodes — values that have no children in the dimension hierarchy. '
+         'A summary node exists to group its children for reporting; posting directly to it is ambiguous because the amount cannot be attributed to any specific sub-category. '
+         'The new ERP enforces leaf-only posting at entry, so any codes used as summary nodes in Unit4 will need to be re-coded before migration.',
+         'Review each affected dimension code. Either reclassify it as a leaf node (remove child values beneath it) or re-code historical postings to the appropriate leaf-level value.',
+         'gl_transact_dim', 'agldimvalue',
+         "WHERE dim_value IN (SELECT DISTINCT rel_value FROM agldimvalue WHERE rel_value IS NOT NULL AND rel_value != '') -- posted code has children",
+         lambda df, frames: (
+             lambda summary_keys: (
+                 (df['client'].astype(str) + '||' + df['dim_position'].astype(str) + '||' + df['dim_value'].astype(str))
+                 .isin(summary_keys)
+             )
+         )(
+             set(
+                 (frames['agldimvalue']['client'].astype(str) + '||' +
+                  frames['agldimvalue']['dim_position'].astype(str) + '||' +
+                  frames['agldimvalue']['rel_value'].astype(str))
+                 [frames['agldimvalue']['rel_value'].notna() &
+                  (frames['agldimvalue']['rel_value'].astype(str).str.strip() != '') &
+                  (frames['agldimvalue']['rel_value'].astype(str).str.strip() != 'nan')]
+                 .tolist()
+             )
+         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
+        ),
+
+        # ---------------------------------------------------------------
         # DIMENSION CONFIGURATION — gl_dimconfig (source: agldimension joined to agldimvalue counts)
         # Population: GL_DIM_ATTR_GL_EMPTY → GL-mapped rows only (dim_position 0-7, filtered in engine)
         #             GL_DIM_ATTR_DESC_MISSING → all rows for the house

@@ -516,25 +516,70 @@ def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
 import os
 os.makedirs('data/gl', exist_ok=True)
 
+def generate_transact_dimensions(df_dims: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generates gl_transact_dimensions — distinct (client, dim_position, dim_value)
+    combinations posted to in the current fiscal year.
+
+    Format matches the gl_transact_dimensions_HOC/HOL_run.sql output: unpivoted,
+    one row per distinct (client, dim_position, dim_value) used on a GL posting.
+
+    Mostly samples leaf nodes (should pass GL_DIM_POST_SUMMARY) with a handful of
+    summary/root nodes as edge cases (should trigger GL_DIM_POST_SUMMARY).
+    """
+    rows = []
+    # Build parent set: (client, dim_position, dim_value) that appear as rel_value
+    # of another node — these are summary/parent nodes.
+    has_rel = df_dims[df_dims['rel_value'].notna() & (df_dims['rel_value'].astype(str).str.strip() != '')]
+    summary_keys = set(
+        zip(has_rel['client'], has_rel['dim_position'], has_rel['rel_value'].astype(str))
+    )
+
+    for house in ['HOC', 'HOL']:
+        h_dims = df_dims[df_dims['_house'] == house]
+        for (client, dim_pos), grp in h_dims.groupby(['client', 'dim_position']):
+            # Leaf nodes: not in the parent/summary set
+            leaf = grp[~grp.apply(
+                lambda r: (r['client'], r['dim_position'], str(r['dim_value'])) in summary_keys,
+                axis=1
+            )]
+            # Sample up to 12 leaf nodes as "posted to" (normal passing records)
+            for _, r in leaf.sample(min(12, len(leaf)), random_state=42).iterrows():
+                rows.append({'_house': house, 'client': client,
+                             'dim_position': dim_pos, 'dim_value': r['dim_value']})
+
+            # Edge case: pick one summary/root node and include it as a posting
+            # to trigger GL_DIM_POST_SUMMARY for dim_position '1' (COSTC/LOSTC only)
+            if dim_pos == '1':
+                summary = grp[grp.apply(
+                    lambda r: (r['client'], r['dim_position'], str(r['dim_value'])) in summary_keys,
+                    axis=1
+                )]
+                if not summary.empty:
+                    ec_row = summary.iloc[0]
+                    rows.append({'_house': house, 'client': client,
+                                 'dim_position': dim_pos, 'dim_value': ec_row['dim_value']})
+
+    df = pd.DataFrame(rows).drop_duplicates(subset=['_house', 'client', 'dim_position', 'dim_value'])
+    return df
+
+
 df_coa    = generate_chart_of_accounts()
 df_dims   = generate_dimension_values()
 df_bal    = generate_opening_balances(df_coa)
 df_dimcfg = generate_dimension_config()
+df_tdim   = generate_transact_dimensions(df_dims)
 
 for house in ['HOC', 'HOL']:
     coa_out  = df_coa [df_coa ['_house'] == house].drop(columns=['_house'])
     dims_out = df_dims[df_dims['_house'] == house].drop(columns=['_house'])
     bal_out  = df_bal [df_bal ['_house'] == house].drop(columns=['_house'])
+    tdim_out = df_tdim[df_tdim['_house'] == house].drop(columns=['_house'])
 
     coa_out .to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv',  index=False)
     dims_out.to_csv(f'data/gl/gl_dimension_values_{house}.csv',   index=False)
     bal_out .to_csv(f'data/gl/gl_opening_balances_{house}.csv',   index=False)
-
-    # gl_transact_dimensions: distinct dim combinations from opening balances
-    dim_cols = ['client', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7']
-    bal_out[dim_cols].drop_duplicates().to_csv(
-        f'data/gl/gl_transact_dimensions_{house}.csv', index=False
-    )
+    tdim_out.to_csv(f'data/gl/gl_transact_dimensions_{house}.csv', index=False)
 
     # Dimension config: summary matching gl_dimension_config_*_run.sql output
     clients = ['CA', 'CM'] if house == 'HOC' else ['LA']

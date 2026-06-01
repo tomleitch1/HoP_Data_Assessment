@@ -21,7 +21,8 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values'],
+    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values',
+                  'gl_transact_dimensions'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -125,6 +126,7 @@ def load_data(tab=None):
         'gl_opening_balances',
         'gl_dimension_config',
         'gl_dimension_values',
+        'gl_transact_dimensions',
     }
 
     # Load split files
@@ -144,6 +146,7 @@ def load_data(tab=None):
         'gl_opening_balances':   'aglyearend',
         'gl_dimension_config':   'gl_dimconfig',
         'gl_dimension_values':   'agldimvalue',
+        'gl_transact_dimensions': 'gl_transact_dim',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -288,6 +291,8 @@ def run_dq_analysis(frames, tab=None):
                 # SQL already filters to status = 'N'; GL_DIM_DUP checks full population
                 # for duplicates, all others use the same house-filtered active rows.
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'gl_transact_dim':
+                h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -352,6 +357,7 @@ def get_check_columns():
         'GL_DIM_ORPHAN_REL':     ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_SELF_REF':       ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
         'GL_DIM_DUP':            ['client', 'attribute_id', 'dim_value', 'description'],
+        'GL_DIM_POST_SUMMARY':   ['client', 'dim_position', 'dim_value'],
 
         # GL Dimension Attributes (gl_dimconfig)
         'GL_DIM_ATTR_GL_EMPTY':      ['attribute_id', 'description', 'dim_position', 'active', 'closed', 'total_values'],
