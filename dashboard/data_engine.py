@@ -383,6 +383,7 @@ def get_check_columns():
         'GL_ACC_STALE_N':         ['account', 'period_from', 'period_to', 'status'],
         'GL_ACC_DUP_CODE':        ['client', 'account', 'description', 'status'],
         'GL_ACC_STALE_MOD':       ['account', 'last_update', 'status'],
+        'GL_ACC_NO_ACTIVITY':     ['account', 'description', 'account_grp', 'res_bal', 'account_type'],
 
         # Suppliers
         'SUP_VAT_MISSING': ['vat_reg_no', 'apar_gr_id', 'status'],

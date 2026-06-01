@@ -440,6 +440,20 @@ def get_gl_checks():
          'WHERE status = \'N\' AND last_update < DATEADD(year, -3, GETDATE())',
          lambda df: df['last_update'].notna() & (df['last_update'] < pd.Timestamp.now() - pd.Timedelta(days=3 * 365))),
 
+        ('GL_ACC_NO_ACTIVITY',
+         20, 'Chart of Accounts', 'Timeliness', 'Low',
+         'Active account with no postings in the current year balance data',
+         'Active accounts with no postings in the current fiscal year may no longer be required. '
+         'Migrating unused accounts adds unnecessary complexity to the new chart of accounts and may confuse users during go-live. '
+         'These accounts should be reviewed before cutover to confirm whether they are genuinely needed or should be closed.',
+         'Review each inactive account. Close accounts that are no longer required before migration. '
+         'Retain accounts that are used seasonally or expected to receive postings before cutover.',
+         'aglaccounts', 'aglyearend',
+         'WHERE status = \'N\' AND account NOT IN (SELECT DISTINCT account FROM aglperiodic WHERE client = a.client)',
+         lambda df, frames: ~df['account'].isin(
+             frames['aglyearend'][frames['aglyearend']['house'] == df['house'].iloc[0]]['account']
+         ) if 'aglyearend' in frames and not frames['aglyearend'].empty else pd.Series(False, index=df.index)),
+
     ]
 
 
