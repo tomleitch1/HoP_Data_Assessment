@@ -484,7 +484,6 @@ def generate_opening_balances(df_accounts: pd.DataFrame) -> pd.DataFrame:
 
 import os
 os.makedirs('data/gl', exist_ok=True)
-os.makedirs('data/gl/reference', exist_ok=True)
 
 df_coa    = generate_chart_of_accounts()
 df_dims   = generate_dimension_values(df_coa)
@@ -506,12 +505,12 @@ for house in ['HOC', 'HOL']:
         f'data/gl/gl_transact_dimensions_{house}.csv', index=False
     )
 
-    # Dimension config: reference summary matching gl_dimension_config_*_run.sql output
+    # Dimension config: summary matching gl_dimension_config_*_run.sql output
     clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
     cfg_out = df_dimcfg[df_dimcfg['client'].isin(clients)]
-    cfg_out.to_csv(f'data/gl/reference/gl_dimension_config_{house}.csv', index=False)
+    cfg_out.to_csv(f'data/gl/gl_dimension_config_{house}.csv', index=False)
 
-print(f"Dimension config:   {len(df_dimcfg)} rows  (reference summary — data/gl/reference/)")
+print(f"Dimension config:   {len(df_dimcfg)} rows  (data/gl/gl_dimension_config_HOC/HOL.csv)")
 print(f"  HOC (CA+CM): {len(df_dimcfg[df_dimcfg['client'].isin(['CA','CM'])])} rows  "
       f"| dim 1-7: {len(df_dimcfg[(df_dimcfg['client']=='CA') & df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7'])])} attributes  "
       f"| letter: {len(df_dimcfg[(df_dimcfg['client']=='CA') & ~df_dimcfg['dim_position'].isin(['1','2','3','4','5','6','7','X'])])}  "

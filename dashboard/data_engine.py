@@ -21,7 +21,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
-    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances'],
+    'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -123,6 +123,7 @@ def load_data(tab=None):
         'asset_trans_flags', 'asset_groups',
         'gl_chart_of_accounts',
         'gl_opening_balances',
+        'gl_dimension_config',
     }
 
     # Load split files
@@ -140,6 +141,7 @@ def load_data(tab=None):
         'asset_groups':        'asset_groups',
         'gl_chart_of_accounts':  'aglaccounts',
         'gl_opening_balances':   'aglyearend',
+        'gl_dimension_config':   'gl_dimconfig',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
