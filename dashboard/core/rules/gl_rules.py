@@ -312,6 +312,63 @@ def get_gl_checks():
          )),
 
         # ---------------------------------------------------------------
+        # GL BUDGETS — gl_budgets (source: aglperiodic WHERE voucher_type IN ('GI','SI'))
+        # Parliament does not use standard Agresso BU/BV codes. GI and SI are the
+        # confirmed budget voucher types, identified by future-dated periods:
+        #   GI → operational budgets (max period 202707)
+        #   SI → capital/long-term budgets (max period 203407)
+        # Population: all rows for the house — no status filter.
+        # Scope: Seq 23 — GL Budgets & Forecasts.
+        # ---------------------------------------------------------------
+
+        ('GL_BUD_AMT_MISSING',
+         23, 'GL Budgets', 'Completeness', 'High',
+         'Budget entry has no amount',
+         'Every budget entry must have an amount populated. '
+         'A record with no amount cannot contribute to any budget vs actuals comparison or be loaded into the new system. '
+         'Blank budget amounts at cutover will produce incomplete budget positions in the new system.',
+         'Investigate each affected entry and populate the amount or delete the record if it was created in error.',
+         'gl_budgets', None,
+         'WHERE amount IS NULL',
+         lambda df: df['amount'].isna()),
+
+        ('GL_BUD_ORPHAN_ACC',
+         23, 'GL Budgets', 'Consistency', 'High',
+         'Budget entry references an account not in the Chart of Accounts',
+         'Every budget entry must reference an account code that exists in aglaccounts. '
+         'An orphaned budget entry cannot be loaded into the new system — the account must exist before budgets can be posted against it. '
+         'Orphaned budget entries will cause the budget load to fail at cutover.',
+         'Either add the missing account to the Chart of Accounts, or delete the budget entry if it was posted in error.',
+         'gl_budgets', 'aglaccounts',
+         "WHERE account NOT IN (SELECT account FROM aglaccounts WHERE client = b.client)",
+         lambda df, frames: ~df['account'].isin(
+             frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]['account']
+         ) if 'aglaccounts' in frames else pd.Series(False, index=df.index)),
+
+        ('GL_BUD_ORPHAN_DIM',
+         23, 'GL Budgets', 'Consistency', 'High',
+         'Budget entry references a dim_1 code not in the dimension master',
+         'Every budget entry that carries a dimension code must reference a value that exists in agldimvalue for the same client and position. '
+         'A dimension code present in budget entries but absent from the master cannot be validated or migrated. '
+         'Orphaned dimension references will either block the budget load or produce mis-coded entries in the new system.',
+         'Reinstate the missing dimension value in agldimvalue, or investigate whether the budget entry was posted against an incorrect code.',
+         'gl_budgets', 'agldimvalue',
+         "WHERE dim_1 IS NOT NULL AND dim_1 NOT IN (SELECT dim_value FROM agldimvalue WHERE dim_position = '1' AND client = b.client)",
+         lambda df, frames: (
+             lambda valid: (
+                 df['dim_1'].notna() &
+                 (df['dim_1'].astype(str).str.strip().isin(['', 'nan']) == False) &
+                 ~(df['client'].astype(str) + '||' + df['dim_1'].astype(str).str.strip()).isin(valid)
+             )
+         )(
+             set(
+                 (frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['client'].astype(str) + '||' +
+                  frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['dim_value'].astype(str))
+                 .tolist()
+             )
+         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)),
+
+        # ---------------------------------------------------------------
         # CHART OF ACCOUNTS — aglaccounts
         # Population: active accounts (status == 'N'), except GL_ACC_DUP_CODE (full)
         # period_from, period_to, last_update arrive as datetime64 after _parse_dates()

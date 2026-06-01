@@ -22,7 +22,7 @@ SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
     'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values',
-                  'gl_transact_dimensions'],
+                  'gl_transact_dimensions', 'gl_budgets'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -127,6 +127,7 @@ def load_data(tab=None):
         'gl_dimension_config',
         'gl_dimension_values',
         'gl_transact_dimensions',
+        'gl_budgets',
     }
 
     # Load split files
@@ -147,6 +148,7 @@ def load_data(tab=None):
         'gl_dimension_config':   'gl_dimconfig',
         'gl_dimension_values':   'agldimvalue',
         'gl_transact_dimensions': 'gl_transact_dim',
+        'gl_budgets':             'gl_budgets',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -293,6 +295,8 @@ def run_dq_analysis(frames, tab=None):
                 h_df = df_table[df_table['house'] == house]
             elif table == 'gl_transact_dim':
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'gl_budgets':
+                h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -370,6 +374,9 @@ def get_check_columns():
         'GL_BAL_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_PL_NONZERO':      ['client', 'account', 'period', 'dim_1', 'amount', 'voucher_type'],
+        'GL_BUD_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
+        'GL_BUD_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
+        'GL_BUD_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
 
         # GL Chart of Accounts
         'GL_ACC_DESC_MISSING':    ['account', 'description', 'account_type', 'status'],

@@ -526,6 +526,69 @@ def generate_opening_balances(df_accounts: pd.DataFrame, df_dims: pd.DataFrame =
 import os
 os.makedirs('data/gl', exist_ok=True)
 
+def generate_budgets(df_accounts: pd.DataFrame, df_dims: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generates gl_budgets — budget entries from aglperiodic WHERE voucher_type IN ('GI','SI').
+    Parliament uses GI (operational) and SI (capital/long-term) — not standard BU/BV codes.
+    Future-dated periods are intentional: GI up to ~202707, SI up to ~203407.
+    """
+    rows = []
+    # Budget periods: mix of current FY and future (matching real data pattern)
+    gi_periods = [202601, 202604, 202607, 202610, 202612, 202701, 202704]
+    si_periods = [202601, 203001, 203407]
+
+    for house in ['HOC', 'HOL']:
+        clients = HOC_CLIENTS if house == 'HOC' else [HOL_CLIENT]
+        active_accs = df_accounts[
+            (df_accounts['_house'] == house) &
+            (df_accounts['status'] == 'N') &
+            (~df_accounts['account'].astype(str).str.startswith('8'))
+        ]
+        pos1_codes = df_dims[
+            (df_dims['_house'] == house) & (df_dims['dim_position'] == '1')
+        ][['client', 'dim_value']].drop_duplicates()
+
+        for client in clients:
+            client_accs = active_accs[active_accs['client'] == client]['account'].tolist()
+            client_dims = pos1_codes[pos1_codes['client'] == client]['dim_value'].tolist()
+            if not client_accs or not client_dims:
+                continue
+
+            for i in range(40):
+                account = random.choice(client_accs)
+                dim_1 = random.choice(client_dims)
+                vtype = random.choice(['GI', 'GI', 'GI', 'SI'])
+                period = random.choice(gi_periods if vtype == 'GI' else si_periods)
+                rows.append({
+                    '_house': house, 'client': client,
+                    'account': account, 'period': period,
+                    'dim_1': dim_1, 'dim_2': None, 'dim_3': None,
+                    'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None,
+                    'amount': round(random.uniform(10000, 500000), 2),
+                    'cur_amount': None, 'currency': 'GBP', 'dc_flag': 0,
+                    'voucher_type': vtype, 'voucher_no': f"BUD{i:04d}",
+                    'trans_date': 1, 'tax_code': None,
+                    'apar_id': None, 'apar_type': None, 'status': '', 'description': f"Budget entry {i+1}",
+                })
+
+    # Edge cases (HOC CA only) — computed outside the house loop using HOC data directly
+    hoc_acc = df_accounts[(df_accounts['_house'] == 'HOC') & (df_accounts['status'] == 'N') &
+                          (df_accounts['client'] == 'CA') & (~df_accounts['account'].astype(str).str.startswith('8'))
+                          ]['account'].iloc[0]
+    hoc_dim = df_dims[(df_dims['_house'] == 'HOC') & (df_dims['dim_position'] == '1') &
+                      (df_dims['client'] == 'CA')]['dim_value'].iloc[0]
+    _ec_base = {'_house': 'HOC', 'client': 'CA', 'period': 202604, 'dim_2': None, 'dim_3': None,
+                'dim_4': None, 'dim_5': None, 'dim_6': None, 'dim_7': None, 'cur_amount': None,
+                'currency': 'GBP', 'dc_flag': 0, 'voucher_type': 'GI', 'trans_date': 1,
+                'tax_code': None, 'apar_id': None, 'apar_type': None, 'status': ''}
+
+    rows.append({**_ec_base, 'account': hoc_acc,  'dim_1': hoc_dim,    'amount': None,     'voucher_no': 'BUD9001', 'description': 'EC Missing Amount'})
+    rows.append({**_ec_base, 'account': '9999',    'dim_1': hoc_dim,    'amount': 50000.00, 'voucher_no': 'BUD9002', 'description': 'EC Ghost Account'})
+    rows.append({**_ec_base, 'account': hoc_acc,   'dim_1': 'GHOST_DIM','amount': 75000.00, 'voucher_no': 'BUD9003', 'description': 'EC Ghost Dim'})
+
+    return pd.DataFrame(rows)
+
+
 def generate_transact_dimensions(df_dims: pd.DataFrame) -> pd.DataFrame:
     """
     Generates gl_transact_dimensions — distinct (client, dim_position, dim_value)
@@ -579,17 +642,20 @@ df_dims   = generate_dimension_values()
 df_bal    = generate_opening_balances(df_coa, df_dims)
 df_dimcfg = generate_dimension_config()
 df_tdim   = generate_transact_dimensions(df_dims)
+df_bud    = generate_budgets(df_coa, df_dims)
 
 for house in ['HOC', 'HOL']:
     coa_out  = df_coa [df_coa ['_house'] == house].drop(columns=['_house'])
     dims_out = df_dims[df_dims['_house'] == house].drop(columns=['_house'])
     bal_out  = df_bal [df_bal ['_house'] == house].drop(columns=['_house'])
     tdim_out = df_tdim[df_tdim['_house'] == house].drop(columns=['_house'])
+    bud_out  = df_bud [df_bud ['_house'] == house].drop(columns=['_house'])
 
-    coa_out .to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv',  index=False)
-    dims_out.to_csv(f'data/gl/gl_dimension_values_{house}.csv',   index=False)
-    bal_out .to_csv(f'data/gl/gl_opening_balances_{house}.csv',   index=False)
+    coa_out .to_csv(f'data/gl/gl_chart_of_accounts_{house}.csv',   index=False)
+    dims_out.to_csv(f'data/gl/gl_dimension_values_{house}.csv',    index=False)
+    bal_out .to_csv(f'data/gl/gl_opening_balances_{house}.csv',    index=False)
     tdim_out.to_csv(f'data/gl/gl_transact_dimensions_{house}.csv', index=False)
+    bud_out .to_csv(f'data/gl/gl_budgets_{house}.csv',             index=False)
 
     # Dimension config: summary matching gl_dimension_config_*_run.sql output
     clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
