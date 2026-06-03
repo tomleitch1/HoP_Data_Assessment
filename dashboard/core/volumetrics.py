@@ -765,6 +765,7 @@ def get_gl_volumetrics(frames: dict) -> dict:
         jnl_accounts = int(h_jnl['account'].nunique())    if not h_jnl.empty and 'account'    in h_jnl.columns else 0
         jnl_users    = int(h_jnl['user_id'].nunique())    if not h_jnl.empty and 'user_id'    in h_jnl.columns else 0
         jnl_by_type  = h_jnl['voucher_type'].value_counts().to_dict() if not h_jnl.empty and 'voucher_type' in h_jnl.columns else {}
+        jnl_net = float(pd.to_numeric(h_jnl['amount'], errors='coerce').sum()) if not h_jnl.empty and 'amount' in h_jnl.columns else 0.0
         jnl_pmin = jnl_pmax = None
         if not h_jnl.empty and 'period' in h_jnl.columns:
             pp = pd.to_numeric(h_jnl['period'], errors='coerce').dropna()
@@ -819,6 +820,7 @@ def get_gl_volumetrics(frames: dict) -> dict:
                 'accounts':   jnl_accounts,
                 'users':      jnl_users,
                 'by_type':    jnl_by_type,
+                'net_amount': jnl_net,
                 'period_min': jnl_pmin,
                 'period_max': jnl_pmax,
             },
