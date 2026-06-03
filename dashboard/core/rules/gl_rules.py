@@ -407,6 +407,152 @@ def get_gl_checks():
          lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
 
         # ---------------------------------------------------------------
+        # GL JOURNALS — gl_journals (source: agltransact, current FY actual postings)
+        # Population: all rows for the house (SQL already filters to status IS NULL OR status = '').
+        # period and fiscal_year are numeric integers (not date-parsed).
+        # trans_date is a real posting date for actual transactions; period 00 b/f rows may be NaT.
+        # Voucher balance check is NOT implemented — the status filter means sub-ledger credits
+        # sit in separate tables (asutrans, acutrans), so vouchers will not net to zero here.
+        # Scope 23 = GL_TRANSACTIONS (same scope as GL budgets).
+        # ---------------------------------------------------------------
+
+        ('GL_JNL_VOUCHER_MISSING',
+         23, 'GL Journals', 'Completeness', 'Critical',
+         'Journal line has no voucher number',
+         'Every journal line must carry a voucher_no so all lines of the same entry can be grouped together. '
+         'A line with no voucher number cannot be associated with its counterpart lines. '
+         'The new system requires a voucher reference on every line — orphaned lines without one cannot be loaded at migration.',
+         'Identify the source posting that created the line and populate voucher_no, or exclude the row if it was created in error.',
+         'gl_journals', None,
+         'WHERE voucher_no IS NULL',
+         lambda df: df['voucher_no'].isna()),
+
+        ('GL_JNL_ACCT_MISSING',
+         23, 'GL Journals', 'Completeness', 'Critical',
+         'Journal line has no account code',
+         'Every journal line must post to a GL account. '
+         'A line with no account code cannot be loaded into the new system and has no financial meaning. '
+         'Missing account codes indicate a data integrity failure in the source posting.',
+         'Identify the source posting and assign the correct account code, or exclude the line if it was created in error.',
+         'gl_journals', None,
+         "WHERE account IS NULL OR TRIM(account) = ''",
+         lambda df: df['account'].isna()),
+
+        ('GL_JNL_AMT_MISSING',
+         23, 'GL Journals', 'Completeness', 'Critical',
+         'Journal line has no amount',
+         'Every journal line must carry a monetary value. '
+         'A line with no amount contributes nothing to any balance or report and cannot be validated. '
+         'Null amounts at migration will produce an incomplete current-year position in the new system.',
+         'Investigate the source posting and populate the amount, or exclude the row if it was created in error.',
+         'gl_journals', None,
+         'WHERE amount IS NULL',
+         lambda df: df['amount'].isna()),
+
+        ('GL_JNL_USER_MISSING',
+         23, 'GL Journals', 'Completeness', 'Medium',
+         'Journal line has no posting user',
+         'Every journal line should carry the ID of the user who posted it. '
+         'The user_id field is required for access rights migration planning — the new system must be configured with the equivalent permissions for each posting user. '
+         'Lines with no user_id cannot be included in the posting-user analysis that informs the user migration workstream.',
+         'Investigate why user_id was not captured on these lines and populate it where possible before migration.',
+         'gl_journals', None,
+         'WHERE user_id IS NULL OR TRIM(user_id) = \'\'',
+         lambda df: df['user_id'].isna() | (df['user_id'].astype(str).str.strip().isin(['', 'nan']))),
+
+        ('GL_JNL_DATE_FUTURE',
+         23, 'GL Journals', 'Validity', 'Medium',
+         'Journal trans_date is in the future',
+         'Posted actual transactions must have a trans_date on or before today. '
+         'A future trans_date on a posted line indicates the date was entered incorrectly. '
+         'Future-dated actuals will appear in the wrong fiscal period in the new system and distort current-year Budget vs Actual reporting from Day 1.',
+         'Correct the trans_date on each affected line via an adjusting journal before migration.',
+         'gl_journals', None,
+         'WHERE trans_date > GETDATE()',
+         lambda df: df['trans_date'].notna() & (df['trans_date'] > pd.Timestamp.now())),
+
+        ('GL_JNL_APAR_MISMATCH',
+         23, 'GL Journals', 'Consistency', 'Medium',
+         'Journal line has apar_id or apar_type without its counterpart',
+         'The sub-ledger reference fields apar_id and apar_type must be both populated or both blank. '
+         'apar_id identifies the supplier or customer; apar_type identifies whether it is AP (P) or AR (R). '
+         'A line with one field but not the other cannot be reconciled to the correct sub-ledger in the new system.',
+         'Populate the missing field on each affected line, or clear both fields if the line should carry no sub-ledger reference.',
+         'gl_journals', None,
+         'WHERE (apar_id IS NOT NULL AND apar_type IS NULL) OR (apar_type IS NOT NULL AND apar_id IS NULL)',
+         lambda df: (
+             df['apar_id'].notna() &
+             (df['apar_type'].isna() | df['apar_type'].astype(str).str.strip().isin(['', 'nan']))
+         ) | (
+             df['apar_id'].isna() &
+             df['apar_type'].notna() &
+             ~df['apar_type'].astype(str).str.strip().isin(['', 'nan'])
+         )),
+
+        ('GL_JNL_DUP_KEY',
+         23, 'GL Journals', 'Uniqueness', 'Critical',
+         'Duplicate composite primary key (client, voucher_no, sequence_no)',
+         'Each journal line must be uniquely identified by its client, voucher number, and sequence number. '
+         'A duplicate primary key means the same line was extracted or processed more than once. '
+         'Duplicate keys will cause the data load to fail or double-count postings in the new system.',
+         'Investigate the source of each duplicate pair and remove the redundant row before migration.',
+         'gl_journals', None,
+         'WHERE (client, voucher_no, sequence_no) appears more than once',
+         lambda df: df.duplicated(subset=['client', 'voucher_no', 'sequence_no'], keep=False)),
+
+        ('GL_JNL_ACCT_ORPHAN',
+         23, 'GL Journals', 'Consistency', 'Critical',
+         'Journal line references an account not in the Chart of Accounts',
+         'Every journal line must post to an account that exists in aglaccounts for the same house. '
+         'An account code present in journals but absent from the master has no definition in the new system. '
+         'Orphaned account references will block the current-year journal load at migration.',
+         'Either add the missing account to the Chart of Accounts, or investigate whether the line was posted in error and requires a correcting journal.',
+         'gl_journals', 'aglaccounts',
+         "WHERE account NOT IN (SELECT account FROM aglaccounts WHERE house = j.house)",
+         lambda df, frames: ~df['account'].isin(
+             frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]['account']
+         ) if 'aglaccounts' in frames else pd.Series(False, index=df.index)),
+
+        ('GL_JNL_ACCT_CLOSED',
+         23, 'GL Journals', 'Consistency', 'High',
+         'Journal line posts to a closed or inactive account',
+         'Journal lines must not post to accounts with status other than N (active). '
+         'Posting to a closed account indicates either the account was closed after the journal was posted, or the journal was made in error. '
+         'Closed accounts cannot be posted to in the new system — these lines must be reviewed before migration.',
+         'Confirm whether the account should be reopened or whether the journal requires a correcting entry to move the posting to an active account.',
+         'gl_journals', 'aglaccounts',
+         "WHERE account IN (SELECT account FROM aglaccounts WHERE house = j.house AND status != 'N')",
+         lambda df, frames: (
+             lambda coa: (
+                 df['account'].isin(coa['account']) &
+                 ~df['account'].isin(coa[coa['status'] == 'N']['account'])
+             )
+         )(frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]])
+         if 'aglaccounts' in frames else pd.Series(False, index=df.index)),
+
+        ('GL_JNL_DIM1_ORPHAN',
+         23, 'GL Journals', 'Consistency', 'High',
+         'Journal line dim_1 code does not exist in the dimension master',
+         'Where a journal line carries a dim_1 analytical dimension code, that code must exist as an active value in agldimvalue for the same client. '
+         'A dimension code present in journals but absent from the master cannot be validated during migration. '
+         'The new system cannot resolve what the code represents and will reject the line or leave it uncoded.',
+         'Reinstate the missing dimension value in agldimvalue, or investigate whether the journal was coded incorrectly and requires a correcting entry.',
+         'gl_journals', 'agldimvalue',
+         "WHERE dim_1 IS NOT NULL AND dim_1 NOT IN (SELECT dim_value FROM agldimvalue WHERE dim_position = '1' AND client = j.client)",
+         lambda df, frames: (
+             lambda valid: (
+                 df['dim_1'].notna() &
+                 ~(df['client'].astype(str) + '||' + df['dim_1'].astype(str).str.strip()).isin(valid)
+             )
+         )(
+             set(
+                 (frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['client'].astype(str) + '||' +
+                  frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['dim_value'].astype(str))
+                 .tolist()
+             )
+         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)),
+
+        # ---------------------------------------------------------------
         # CHART OF ACCOUNTS — aglaccounts
         # Population: active accounts (status == 'N'), except GL_ACC_DUP_CODE (full)
         # period_from, period_to, last_update arrive as datetime64 after _parse_dates()

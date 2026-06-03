@@ -305,6 +305,9 @@ def run_dq_analysis(frames, tab=None):
                 h_df = df_table[df_table['house'] == house]
             elif table == 'gl_budgets':
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'gl_journals':
+                # SQL already filters to status IS NULL OR status = '' (actual postings only)
+                h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             else:
@@ -376,6 +379,18 @@ def get_check_columns():
         # GL Dimension Attributes (gl_dimconfig)
         'GL_DIM_ATTR_GL_EMPTY':      ['attribute_id', 'description', 'dim_position', 'active', 'closed', 'total_values'],
         'GL_DIM_ATTR_DESC_MISSING':  ['attribute_id', 'description', 'dim_position'],
+
+        # GL Journals (gl_journals / agltransact)
+        'GL_JNL_VOUCHER_MISSING': ['client', 'sequence_no', 'account', 'period', 'voucher_type', 'amount'],
+        'GL_JNL_ACCT_MISSING':   ['client', 'voucher_no', 'sequence_no', 'period', 'voucher_type', 'amount'],
+        'GL_JNL_AMT_MISSING':    ['client', 'voucher_no', 'sequence_no', 'account', 'period', 'voucher_type'],
+        'GL_JNL_USER_MISSING':   ['user_id', 'voucher_no', 'account', 'period', 'voucher_type'],
+        'GL_JNL_DATE_FUTURE':    ['trans_date', 'voucher_no', 'account', 'period', 'voucher_type', 'amount'],
+        'GL_JNL_APAR_MISMATCH':  ['apar_id', 'apar_type', 'voucher_no', 'account', 'period', 'voucher_type'],
+        'GL_JNL_DUP_KEY':        ['client', 'voucher_no', 'sequence_no', 'account', 'period', 'amount'],
+        'GL_JNL_ACCT_ORPHAN':    ['account', 'voucher_no', 'sequence_no', 'period', 'voucher_type', 'amount'],
+        'GL_JNL_ACCT_CLOSED':    ['account', 'voucher_no', 'sequence_no', 'period', 'voucher_type', 'amount'],
+        'GL_JNL_DIM1_ORPHAN':    ['dim_1', 'account', 'voucher_no', 'sequence_no', 'period', 'voucher_type'],
 
         # GL Opening Balances
         'GL_BAL_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
@@ -707,6 +722,8 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             h_df = df_table[df_table['house'] == house]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+    elif table == 'gl_journals':
+        h_df = df_table[df_table['house'] == house]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
     else:
