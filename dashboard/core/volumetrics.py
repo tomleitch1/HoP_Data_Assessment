@@ -766,6 +766,13 @@ def get_gl_volumetrics(frames: dict) -> dict:
         jnl_users    = int(h_jnl['user_id'].nunique())    if not h_jnl.empty and 'user_id'    in h_jnl.columns else 0
         jnl_by_type  = h_jnl['voucher_type'].value_counts().to_dict() if not h_jnl.empty and 'voucher_type' in h_jnl.columns else {}
         jnl_net = float(pd.to_numeric(h_jnl['amount'], errors='coerce').sum()) if not h_jnl.empty and 'amount' in h_jnl.columns else 0.0
+        jnl_unbalanced = 0
+        if not h_jnl.empty and 'voucher_no' in h_jnl.columns and 'amount' in h_jnl.columns:
+            voucher_nets = (
+                h_jnl.assign(amt=pd.to_numeric(h_jnl['amount'], errors='coerce'))
+                .groupby('voucher_no')['amt'].sum()
+            )
+            jnl_unbalanced = int((voucher_nets.abs() > 0.01).sum())
         jnl_pmin = jnl_pmax = None
         if not h_jnl.empty and 'period' in h_jnl.columns:
             pp = pd.to_numeric(h_jnl['period'], errors='coerce').dropna()
@@ -820,7 +827,8 @@ def get_gl_volumetrics(frames: dict) -> dict:
                 'accounts':   jnl_accounts,
                 'users':      jnl_users,
                 'by_type':    jnl_by_type,
-                'net_amount': jnl_net,
+                'net_amount':    jnl_net,
+                'unbalanced':   jnl_unbalanced,
                 'period_min': jnl_pmin,
                 'period_max': jnl_pmax,
             },

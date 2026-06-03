@@ -308,17 +308,16 @@ def _jnl_col(house, jnl):
     accounts = jnl.get('accounts', 0)
     users    = jnl.get('users', 0)
     by_type  = jnl.get('by_type', {})
-    net      = jnl.get('net_amount', 0.0)
-    pmin     = jnl.get('period_min')
-    pmax     = jnl.get('period_max')
+    pmin        = jnl.get('period_min')
+    pmax        = jnl.get('period_max')
+    unbalanced  = jnl.get('unbalanced', 0)
 
-    abs_net = abs(net)
-    if abs_net < 100:
-        net_color, net_label = '#1a7a4a', 'balanced'
-    elif abs_net < 100_000:
-        net_color, net_label = '#d97706', 'slight variance'
+    if unbalanced == 0:
+        bal_color, bal_label = '#1a7a4a', 'all vouchers balance'
+    elif unbalanced <= 10:
+        bal_color, bal_label = '#d97706', f'{unbalanced} voucher{"s" if unbalanced != 1 else ""} unbalanced'
     else:
-        net_color, net_label = '#c0392b', 'imbalance detected'
+        bal_color, bal_label = '#c0392b', f'{unbalanced:,} vouchers unbalanced'
 
     sorted_types = sorted(by_type.items(), key=lambda x: -x[1])
     top_n        = sorted_types[:8]
@@ -380,16 +379,16 @@ def _jnl_col(house, jnl):
                 'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
             }),
         ]),
-        _section_label('Net balance  (should equal zero)'),
+        _section_label('Voucher balance integrity'),
         html.Div(style={
             'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '20px',
         }, children=[
-            html.Span(_fmt_net(net), style={
+            html.Span(f'{unbalanced:,}' if unbalanced else '✓', style={
                 'fontSize': '22px', 'fontWeight': '900',
-                'color': net_color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+                'color': bal_color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
             }),
-            html.Span(net_label, style={
-                'fontSize': '11px', 'color': net_color, 'fontWeight': '600',
+            html.Span(bal_label, style={
+                'fontSize': '11px', 'color': bal_color, 'fontWeight': '600',
             }),
         ]),
         _section_label('By voucher type'),
