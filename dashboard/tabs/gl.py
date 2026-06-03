@@ -34,6 +34,31 @@ _SECTION_BADGE = {
 
 _GL_POSITIONS = {'0', '1', '2', '3', '4', '5', '6', '7'}
 
+# Voucher type labels and colours for the journals breakdown bars
+_VTYPE_LABEL = {
+    'AC': 'Accrual journals',     'BF': 'Bank funding',
+    'BI': 'Batch input',          'DJ': 'Drawn down',
+    'EI': 'EPOS interface',       'FZ': 'Fixed assets',
+    'JL': 'Adjustment journals',  'JO': 'Opening balances',
+    'MI': 'Micros interface',     'MM': 'Manual matching',
+    'PA': 'Absence entry',        'PC': 'Payroll manual cheque',
+    'PE': 'Posting expenses',     'PJ': 'Prepayment journals',
+    'PP': 'Posting payroll',      'PY': 'Payments',
+    'PV': 'Variable payroll',     'RE': 'Registering expenses',
+    'RJ': 'Recurring journals',   'RP': 'Reshared staff posting',
+    'RS': 'Staff expenses',       'TC': 'Members travel card',
+    'TD': 'Expenses templates',   'YE': 'Year end transfer',
+    'AB': 'Absence transfer',     'BA': 'Batch input adj',
+}
+_VTYPE_COLOR = {
+    'PY': '#7c3aed', 'PP': '#6d28d9', 'PA': '#8b5cf6',
+    'JL': '#2563eb', 'RJ': '#3b82f6', 'AC': '#0891b2',
+    'PE': '#059669', 'RE': '#65a30d', 'RS': '#16a34a',
+    'FZ': '#d97706', 'YE': '#b45309', 'BF': '#0e7490',
+    'MM': '#9333ea', 'PJ': '#7e22ce', 'EI': '#0f766e',
+    'MI': '#0f766e', 'JO': '#475569',
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Intro section — GL Foundation Data
@@ -274,6 +299,85 @@ def _bal_col(house, bal):
     ])
 
 
+# ── GL Journals column ───────────────────────────────────────────────────────
+
+def _jnl_col(house, jnl):
+    colour   = HOUSE_HEX[house]
+    lines    = jnl.get('lines', 0)
+    vouchers = jnl.get('vouchers', 0)
+    accounts = jnl.get('accounts', 0)
+    users    = jnl.get('users', 0)
+    by_type  = jnl.get('by_type', {})
+    pmin     = jnl.get('period_min')
+    pmax     = jnl.get('period_max')
+
+    sorted_types = sorted(by_type.items(), key=lambda x: -x[1])
+    top_n        = sorted_types[:8]
+    other_count  = sum(v for _, v in sorted_types[8:])
+    total        = sum(by_type.values()) or 1
+
+    type_rows = [
+        _gl_bar_row(code, _VTYPE_LABEL.get(code, code),
+                    _VTYPE_COLOR.get(code, '#94a3b8'), count, total)
+        for code, count in top_n
+    ]
+    if other_count:
+        other_n = len(sorted_types) - 8
+        type_rows.append(_gl_bar_row(
+            '…', f'{other_n} other type{"s" if other_n != 1 else ""}',
+            '#94a3b8', other_count, total,
+        ))
+
+    return html.Div(style={
+        'flex': '1', 'padding': '24px 32px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
+    }, children=[
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '6px',
+        }),
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '12px', 'marginBottom': '4px',
+        }, children=[
+            html.Span(f'{lines:,}', style={
+                'fontSize': '48px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.03em',
+            }),
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                html.Span('transaction lines', style={
+                    'fontSize': '12px', 'fontWeight': '600', 'color': UI['text_primary'],
+                }),
+                html.Span(
+                    f'{vouchers:,} vouchers  ·  {accounts:,} accounts  ·  {users:,} users',
+                    style={'fontSize': '11px', 'color': UI['text_secondary']},
+                ),
+            ]),
+        ]),
+        html.Div(style={
+            'height': '4px', 'background': UI['border'],
+            'borderRadius': '2px', 'marginBottom': '20px',
+        }),
+        _section_label('Period range'),
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'marginBottom': '20px',
+        }, children=[
+            html.Span(_fmt_period(pmin), style={
+                'fontSize': '13px', 'fontWeight': '700',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+            }),
+            html.Span('→', style={'color': UI['text_secondary'], 'fontSize': '14px'}),
+            html.Span(_fmt_period(pmax), style={
+                'fontSize': '13px', 'fontWeight': '700',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+            }),
+        ]),
+        _section_label('By voucher type'),
+        html.Div(children=type_rows or [
+            html.Div('No data', style={'fontSize': '11px', 'color': UI['text_secondary']}),
+        ]),
+    ])
+
+
 # ── GL Dimension Structure column ─────────────────────────────────────────────
 
 def _dim_col(house, dv, dc):
@@ -345,8 +449,8 @@ def _dim_col(house, dv, dc):
 def _render_gl_intro(gl_vol):
     hoc_acc = gl_vol.get('HOC', {}).get('accounts', {})
     hol_acc = gl_vol.get('HOL', {}).get('accounts', {})
-    hoc_bal = gl_vol.get('HOC', {}).get('balances', {})
-    hol_bal = gl_vol.get('HOL', {}).get('balances', {})
+    hoc_jnl = gl_vol.get('HOC', {}).get('journals', {})
+    hol_jnl = gl_vol.get('HOL', {}).get('journals', {})
     hoc_dv  = gl_vol.get('HOC', {}).get('dimvalue', {})
     hol_dv  = gl_vol.get('HOL', {}).get('dimvalue', {})
     hoc_dc  = gl_vol.get('HOC', {}).get('dimconfig', {})
@@ -368,11 +472,11 @@ def _render_gl_intro(gl_vol):
         ]),
     ])
 
-    bal_card = _card([
-        _gl_card_header('14', 'GL Opening Balances', 'aglperiodic', 'Actuals only — BU/BV excluded'),
+    jnl_card = _card([
+        _gl_card_header('21', 'Current Year Journals', 'agltransact', 'Actuals only — BU/BV excluded · status blank/null'),
         html.Div(style={'display': 'flex'}, children=[
-            _bal_col('HOC', hoc_bal),
-            _bal_col('HOL', hol_bal),
+            _jnl_col('HOC', hoc_jnl),
+            _jnl_col('HOL', hol_jnl),
         ]),
     ])
 
@@ -398,7 +502,7 @@ def _render_gl_intro(gl_vol):
         ]),
         html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '16px'}, children=[
             coa_card,
-            bal_card,
+            jnl_card,
             dim_card,
         ]),
     ])

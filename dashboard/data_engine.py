@@ -22,7 +22,7 @@ SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
     'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values',
-                  'gl_transact_dimensions', 'gl_budgets'],
+                  'gl_transact_dimensions', 'gl_budgets', 'gl_journals'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -128,6 +128,7 @@ def load_data(tab=None):
         'gl_dimension_values',
         'gl_transact_dimensions',
         'gl_budgets',
+        'gl_journals',
     }
 
     # Load split files
@@ -149,6 +150,7 @@ def load_data(tab=None):
         'gl_dimension_values':   'agldimvalue',
         'gl_transact_dimensions': 'gl_transact_dim',
         'gl_budgets':             'gl_budgets',
+        'gl_journals':            'gl_journals',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
@@ -185,7 +187,8 @@ def load_data(tab=None):
         # Numeric columns — strip commas from Excel-formatted numbers (e.g. "1,234.56")
         # before any downstream pd.to_numeric calls, otherwise values >= 1000 become NaN
         numeric_cols = ['amount', 'rest_amount', 'cur_amount', 'rest_curr', 'discount',
-                        'exch_rate', 'credit_limit', 'pay_delay', 'dc_flag', 'sequence_no']
+                        'exch_rate', 'credit_limit', 'pay_delay', 'dc_flag', 'sequence_no',
+                        'update_flag']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(
@@ -201,6 +204,11 @@ def load_data(tab=None):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
             _date_cols = [c for c in date_cols if c not in ('period_from', 'period_to')]
+        elif table == 'gl_journals':
+            for col in ('period', 'fiscal_year'):
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
+            _date_cols = date_cols
         else:
             _date_cols = date_cols
         for col in _date_cols:

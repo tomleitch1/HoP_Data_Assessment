@@ -714,6 +714,7 @@ def get_gl_volumetrics(frames: dict) -> dict:
     balances  = frames.get('aglyearend',   pd.DataFrame())
     dimvalue  = frames.get('agldimvalue',  pd.DataFrame())
     dimconfig = frames.get('gl_dimconfig', pd.DataFrame())
+    journals  = frames.get('gl_journals',  pd.DataFrame())
 
     result = {}
 
@@ -757,6 +758,20 @@ def get_gl_volumetrics(frames: dict) -> dict:
         dv_total = len(h_dv)
         dv_attrs = int(h_dv['attribute_id'].nunique()) if not h_dv.empty and 'attribute_id' in h_dv.columns else 0
 
+        # ── gl_journals (agltransact) ─────────────────────────────────────────
+        h_jnl = _filter_house(journals, house)
+        jnl_lines    = len(h_jnl)
+        jnl_vouchers = int(h_jnl['voucher_no'].nunique()) if not h_jnl.empty and 'voucher_no' in h_jnl.columns else 0
+        jnl_accounts = int(h_jnl['account'].nunique())    if not h_jnl.empty and 'account'    in h_jnl.columns else 0
+        jnl_users    = int(h_jnl['user_id'].nunique())    if not h_jnl.empty and 'user_id'    in h_jnl.columns else 0
+        jnl_by_type  = h_jnl['voucher_type'].value_counts().to_dict() if not h_jnl.empty and 'voucher_type' in h_jnl.columns else {}
+        jnl_pmin = jnl_pmax = None
+        if not h_jnl.empty and 'period' in h_jnl.columns:
+            pp = pd.to_numeric(h_jnl['period'], errors='coerce').dropna()
+            if len(pp):
+                jnl_pmin = int(pp.min())
+                jnl_pmax = int(pp.max())
+
         # ── gl_dimconfig — HOC aggregates CA+CM ───────────────────────────────
         dc_clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
         h_dc = dimconfig[dimconfig['client'].isin(dc_clients)].copy() if not dimconfig.empty and 'client' in dimconfig.columns else pd.DataFrame()
@@ -797,6 +812,15 @@ def get_gl_volumetrics(frames: dict) -> dict:
                 'gl_count':  dc_gl_count,
                 'oos_count': dc_oos_count,
                 'gl_active': dc_gl_active,
+            },
+            'journals': {
+                'lines':      jnl_lines,
+                'vouchers':   jnl_vouchers,
+                'accounts':   jnl_accounts,
+                'users':      jnl_users,
+                'by_type':    jnl_by_type,
+                'period_min': jnl_pmin,
+                'period_max': jnl_pmax,
             },
         }
 
