@@ -685,3 +685,103 @@ def get_asset_volumetrics(df_dict: dict) -> dict:
             }
         }
     return results
+
+
+def get_gl_volumetrics(frames: dict) -> dict:
+    """
+    GL tab volumetrics — per-house stats for all loaded GL datasets.
+    Returns stats for aglaccounts, aglyearend (aglperiodic), agldimvalue, gl_dimconfig.
+    """
+    _GL_POS = {'0', '1', '2', '3', '4', '5', '6', '7'}
+
+    accounts  = frames.get('aglaccounts',  pd.DataFrame())
+    balances  = frames.get('aglyearend',   pd.DataFrame())
+    dimvalue  = frames.get('agldimvalue',  pd.DataFrame())
+    dimconfig = frames.get('gl_dimconfig', pd.DataFrame())
+
+    result = {}
+
+    for house in CLIENTS:
+        h_acc = _filter_house(accounts, house)
+        h_bal = _filter_house(balances, house)
+        h_dv  = _filter_house(dimvalue, house)
+
+        # ── aglaccounts ───────────────────────────────────────────────────────
+        acc_total  = len(h_acc)
+        acc_active = int((h_acc['status'] == 'N').sum()) if not h_acc.empty and 'status' in h_acc.columns else 0
+        acc_closed = int((h_acc['status'] == 'C').sum()) if not h_acc.empty and 'status' in h_acc.columns else 0
+
+        acc_type_bd = {}
+        acc_res_bd  = {}
+        if not h_acc.empty:
+            active_h = h_acc[h_acc['status'] == 'N'] if 'status' in h_acc.columns else h_acc
+            if 'account_type' in h_acc.columns:
+                acc_type_bd = active_h['account_type'].value_counts().to_dict()
+            if 'res_bal' in h_acc.columns:
+                acc_res_bd = active_h['res_bal'].value_counts().to_dict()
+
+        # ── aglyearend (aglperiodic) ──────────────────────────────────────────
+        bal_total = len(h_bal)
+        bal_net   = 0.0
+        bal_pmin  = None
+        bal_pmax  = None
+        bal_accs  = 0
+        if not h_bal.empty:
+            if 'amount' in h_bal.columns:
+                bal_net = float(pd.to_numeric(h_bal['amount'], errors='coerce').sum())
+            if 'period' in h_bal.columns:
+                pp = pd.to_numeric(h_bal['period'], errors='coerce').dropna()
+                if len(pp):
+                    bal_pmin = int(pp.min())
+                    bal_pmax = int(pp.max())
+            if 'account' in h_bal.columns:
+                bal_accs = int(h_bal['account'].nunique())
+
+        # ── agldimvalue ───────────────────────────────────────────────────────
+        dv_total = len(h_dv)
+        dv_attrs = int(h_dv['attribute_id'].nunique()) if not h_dv.empty and 'attribute_id' in h_dv.columns else 0
+
+        # ── gl_dimconfig — HOC aggregates CA+CM ───────────────────────────────
+        dc_clients = ['CA', 'CM'] if house == 'HOC' else ['LA']
+        h_dc = dimconfig[dimconfig['client'].isin(dc_clients)].copy() if not dimconfig.empty and 'client' in dimconfig.columns else pd.DataFrame()
+
+        dc_gl_count = dc_oos_count = dc_gl_active = 0
+        if not h_dc.empty and 'dim_position' in h_dc.columns:
+            h_dc['dim_position'] = h_dc['dim_position'].astype(str).str.strip()
+            h_dc_agg = (
+                h_dc.groupby(['attribute_id', 'dim_position'], as_index=False)
+                .agg(active=('active', 'sum'), closed=('closed', 'sum'))
+            )
+            gl_rows  = h_dc_agg[h_dc_agg['dim_position'].isin(_GL_POS)]
+            oos_rows = h_dc_agg[~h_dc_agg['dim_position'].isin(_GL_POS)]
+            dc_gl_count  = len(gl_rows)
+            dc_oos_count = len(oos_rows)
+            dc_gl_active = int(pd.to_numeric(gl_rows['active'], errors='coerce').sum()) if not gl_rows.empty and 'active' in gl_rows.columns else 0
+
+        result[house] = {
+            'accounts': {
+                'total':      acc_total,
+                'active':     acc_active,
+                'closed':     acc_closed,
+                'by_type':    acc_type_bd,
+                'by_res_bal': acc_res_bd,
+            },
+            'balances': {
+                'total':         bal_total,
+                'net_amount':    bal_net,
+                'period_min':    bal_pmin,
+                'period_max':    bal_pmax,
+                'account_count': bal_accs,
+            },
+            'dimvalue': {
+                'total':      dv_total,
+                'attr_count': dv_attrs,
+            },
+            'dimconfig': {
+                'gl_count':  dc_gl_count,
+                'oos_count': dc_oos_count,
+                'gl_active': dc_gl_active,
+            },
+        }
+
+    return result

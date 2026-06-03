@@ -2,9 +2,22 @@ import pandas as pd
 import plotly.express as px
 from dash import html, dcc
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid, render_dimensions_table
+from dashboard.core.volumetrics import get_gl_volumetrics
+from dashboard.core.theme import UI, HOUSE_HEX, DISPLAY_FONT
 
-_GL_POSITIONS = {'0', '1', '2', '3', '4', '5', '6', '7'}
+# ── Design tokens (match suppliers.py) ───────────────────────────────────────
+_HDR     = '#2a1f3d'
+_SEQ_BG  = '#3d2f5c'
+_SEQ_TXT = '#d4c4f0'
+_BAR_BG  = '#ede9f8'
 
+# ── GL-specific type / classification colours ─────────────────────────────────
+_TYPE_COLOR = {'GL': '#4f46e5', 'AP': '#d97706', 'AR': '#059669'}
+_TYPE_LABEL = {'GL': 'General Ledger', 'AP': 'Accounts Payable', 'AR': 'Accounts Receivable'}
+_RES_COLOR  = {'B': '#3b82f6', 'R': '#7c5cbf'}
+_RES_LABEL  = {'B': 'Balance Sheet', 'R': 'Profit & Loss'}
+
+# ── DQ section chrome ─────────────────────────────────────────────────────────
 _SECTION_HEADER = {
     'borderTop': '1px solid #e2d9f3',
     'margin': '8px 0 20px',
@@ -13,13 +26,387 @@ _SECTION_HEADER = {
     'alignItems': 'center',
     'gap': '12px',
 }
-
 _SECTION_TITLE = {'fontSize': '15px', 'fontWeight': '700', 'color': '#2a1f3d'}
 _SECTION_BADGE = {
     'fontSize': '11px', 'color': '#9080b0',
     'background': '#f0ebfa', 'padding': '2px 8px', 'borderRadius': '4px',
 }
 
+_GL_POSITIONS = {'0', '1', '2', '3', '4', '5', '6', '7'}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Intro section — GL Foundation Data
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _badge(text, bg, color='#f4f0fc'):
+    return html.Span(text, style={
+        'background': bg, 'color': color,
+        'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+        'padding': '3px 9px', 'borderRadius': '4px',
+        'textTransform': 'uppercase', 'display': 'inline-block', 'lineHeight': '1.6',
+    })
+
+
+def _section_label(text):
+    return html.Div(text, style={
+        'fontSize': '10px', 'fontWeight': '700', 'color': UI['text_secondary'],
+        'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginBottom': '8px',
+    })
+
+
+def _fmt_period(p):
+    """Convert YYYYPP integer to 'P01 / 2025' display string."""
+    if p is None:
+        return '—'
+    year = p // 100
+    per  = p % 100
+    return f'P{per:02d} / {year}'
+
+
+def _fmt_net(v):
+    sign = '−' if v < 0 else '+'
+    a = abs(v)
+    if a >= 1_000_000:
+        return f'{sign}£{a / 1_000_000:.2f}m'
+    if a >= 1_000:
+        return f'{sign}£{a / 1_000:.1f}k'
+    return f'{sign}£{a:,.0f}'
+
+
+def _gl_bar_row(code, label, color, count, total):
+    """Proportional bar for a named GL category (account type, classification)."""
+    pct = (count / total * 100) if total > 0 else 0
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'padding': '4px 0',
+    }, children=[
+        html.Span(code, style={
+            'background': color + '1a', 'color': color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
+            'padding': '2px 7px', 'borderRadius': '3px',
+            'minWidth': '26px', 'textAlign': 'center',
+        }),
+        html.Span(label, style={
+            'fontSize': '11px', 'color': UI['text_secondary'], 'minWidth': '130px',
+        }),
+        html.Div(style={
+            'flex': '1', 'height': '6px', 'background': _BAR_BG,
+            'borderRadius': '3px', 'overflow': 'hidden',
+        }, children=[
+            html.Div(style={
+                'height': '100%', 'width': f'{min(pct, 100):.1f}%',
+                'background': color, 'borderRadius': '3px',
+                'minWidth': '3px' if count > 0 else '0',
+            })
+        ]),
+        html.Span(f'{count:,}', style={
+            'fontSize': '12px', 'fontWeight': '700',
+            'minWidth': '52px', 'textAlign': 'right', 'color': UI['text_primary'],
+        }),
+        html.Span(f'{pct:.0f}%', style={
+            'fontSize': '10px', 'color': UI['text_secondary'], 'minWidth': '32px',
+        }),
+    ])
+
+
+def _gl_card_header(seq, name, source, filter_desc):
+    return html.Div(style={
+        'background': _HDR, 'padding': '16px 28px',
+    }, children=[
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '10px',
+        }, children=[
+            _badge(f'SEQ {seq}', _SEQ_BG, _SEQ_TXT) if seq else None,
+            _badge('Migration Object', _SEQ_BG, _SEQ_TXT),
+        ]),
+        html.Div(name, style={
+            'fontSize': '15px', 'fontWeight': '700', 'color': '#f4f0fc', 'marginBottom': '8px',
+        }),
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+            html.Span(source, style={
+                'fontSize': '11px', 'color': '#9080b8',
+                'fontFamily': "'Courier New', monospace",
+                'background': '#1a1030', 'padding': '2px 7px', 'borderRadius': '3px',
+            }),
+            html.Span('·', style={'color': '#5a4a78', 'fontSize': '12px'}),
+            html.Span(filter_desc, style={'fontSize': '11px', 'color': '#7a6a9a'}),
+        ]),
+    ])
+
+
+# ── Chart of Accounts column ──────────────────────────────────────────────────
+
+def _acc_col(house, acc):
+    colour     = HOUSE_HEX[house]
+    total      = acc.get('total', 0)
+    active     = acc.get('active', 0)
+    closed     = acc.get('closed', 0)
+    by_type    = acc.get('by_type', {})
+    by_res     = acc.get('by_res_bal', {})
+    active_pct = int(active / total * 100) if total else 0
+
+    type_rows = [
+        _gl_bar_row(code, _TYPE_LABEL.get(code, code), _TYPE_COLOR.get(code, '#94a3b8'),
+                    by_type.get(code, 0), active)
+        for code in ['GL', 'AP', 'AR']
+        if by_type.get(code, 0) > 0
+    ]
+    res_rows = [
+        _gl_bar_row(code, _RES_LABEL.get(code, code), _RES_COLOR.get(code, '#94a3b8'),
+                    by_res.get(code, 0), active)
+        for code in ['B', 'R']
+        if by_res.get(code, 0) > 0
+    ]
+
+    return html.Div(style={
+        'flex': '1', 'padding': '24px 32px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
+    }, children=[
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '6px',
+        }),
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '12px', 'marginBottom': '4px',
+        }, children=[
+            html.Span(f'{active:,}', style={
+                'fontSize': '48px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.03em',
+            }),
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                html.Span('active accounts', style={
+                    'fontSize': '12px', 'fontWeight': '600', 'color': UI['text_primary'],
+                }),
+                html.Span(f'{closed:,} closed  ·  {total:,} total  ({active_pct}% active)', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'],
+                }),
+            ]),
+        ]),
+        html.Div(style={
+            'height': '4px', 'background': UI['border'],
+            'borderRadius': '2px', 'marginBottom': '20px',
+        }, children=[
+            html.Div(style={
+                'height': '100%', 'width': f'{active_pct}%',
+                'background': colour, 'borderRadius': '2px',
+            })
+        ]),
+        _section_label('Account type'),
+        html.Div(style={'marginBottom': '16px'}, children=type_rows or [
+            html.Div('No type data', style={'fontSize': '11px', 'color': UI['text_secondary']}),
+        ]),
+        _section_label('Classification'),
+        html.Div(children=res_rows or [
+            html.Div('No classification data', style={'fontSize': '11px', 'color': UI['text_secondary']}),
+        ]),
+    ])
+
+
+# ── GL Opening Balances column ────────────────────────────────────────────────
+
+def _bal_col(house, bal):
+    colour  = HOUSE_HEX[house]
+    total   = bal.get('total', 0)
+    net     = bal.get('net_amount', 0.0)
+    pmin    = bal.get('period_min')
+    pmax    = bal.get('period_max')
+    accs    = bal.get('account_count', 0)
+
+    abs_net = abs(net)
+    if abs_net < 100:
+        net_color = '#1a7a4a'
+        net_label = 'balanced'
+    elif abs_net < 100_000:
+        net_color = '#d97706'
+        net_label = 'slight variance'
+    else:
+        net_color = '#c0392b'
+        net_label = 'imbalance detected'
+
+    return html.Div(style={
+        'flex': '1', 'padding': '24px 32px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
+    }, children=[
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '6px',
+        }),
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '12px', 'marginBottom': '20px',
+        }, children=[
+            html.Span(f'{total:,}', style={
+                'fontSize': '48px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.03em',
+            }),
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                html.Span('posting lines', style={
+                    'fontSize': '12px', 'fontWeight': '600', 'color': UI['text_primary'],
+                }),
+                html.Span(f'across {accs:,} distinct accounts', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'],
+                }),
+            ]),
+        ]),
+        _section_label('Period range'),
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'marginBottom': '20px',
+        }, children=[
+            html.Span(_fmt_period(pmin), style={
+                'fontSize': '13px', 'fontWeight': '700',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+            }),
+            html.Span('→', style={'color': UI['text_secondary'], 'fontSize': '14px'}),
+            html.Span(_fmt_period(pmax), style={
+                'fontSize': '13px', 'fontWeight': '700',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+            }),
+        ]),
+        _section_label('Net balance  (should equal zero)'),
+        html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '10px'}, children=[
+            html.Span(_fmt_net(net), style={
+                'fontSize': '22px', 'fontWeight': '900',
+                'color': net_color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+            }),
+            html.Span(net_label, style={
+                'fontSize': '11px', 'color': net_color, 'fontWeight': '600',
+            }),
+        ]),
+    ])
+
+
+# ── GL Dimension Structure column ─────────────────────────────────────────────
+
+def _dim_col(house, dv, dc):
+    colour   = HOUSE_HEX[house]
+    dv_total = dv.get('total', 0)
+    dv_attrs = dv.get('attr_count', 0)
+    dc_gl    = dc.get('gl_count', 0)
+    dc_oos   = dc.get('oos_count', 0)
+    dc_act   = dc.get('gl_active', 0)
+
+    return html.Div(style={
+        'flex': '1', 'padding': '24px 32px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
+    }, children=[
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '12px',
+        }),
+        html.Div(style={'display': 'flex', 'gap': '14px', 'marginBottom': '20px'}, children=[
+            html.Div(style={
+                'flex': '1', 'padding': '14px 18px',
+                'background': colour + '0d', 'borderRadius': '10px',
+                'border': f'1px solid {colour}30',
+            }, children=[
+                html.Div(f'{dc_gl}', style={
+                    'fontSize': '38px', 'fontWeight': '900', 'lineHeight': '1',
+                    'color': colour, 'fontFamily': DISPLAY_FONT,
+                }),
+                html.Div('GL-mapped attributes', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '4px',
+                }),
+                html.Div(f'{dc_act:,} active values', style={
+                    'fontSize': '10px', 'color': colour, 'fontWeight': '700', 'marginTop': '6px',
+                }),
+            ]),
+            html.Div(style={
+                'flex': '1', 'padding': '14px 18px',
+                'background': UI['purple_light'], 'borderRadius': '10px',
+                'border': f'1px solid {UI["border"]}',
+            }, children=[
+                html.Div(f'{dc_oos}', style={
+                    'fontSize': '38px', 'fontWeight': '900', 'lineHeight': '1',
+                    'color': UI['text_secondary'], 'fontFamily': DISPLAY_FONT,
+                }),
+                html.Div('out-of-scope attributes', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '4px',
+                }),
+                html.Div('X-position + other', style={
+                    'fontSize': '10px', 'color': UI['text_secondary'],
+                    'fontWeight': '600', 'marginTop': '6px',
+                }),
+            ]),
+        ]),
+        _section_label('Total active values  (GL attributes)'),
+        html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '8px'}, children=[
+            html.Span(f'{dv_total:,}', style={
+                'fontSize': '34px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.02em',
+            }),
+            html.Span(f'values across {dv_attrs} attributes', style={
+                'fontSize': '11px', 'color': UI['text_secondary'],
+            }),
+        ]),
+    ])
+
+
+# ── Intro assembly ────────────────────────────────────────────────────────────
+
+def _render_gl_intro(gl_vol):
+    hoc_acc = gl_vol.get('HOC', {}).get('accounts', {})
+    hol_acc = gl_vol.get('HOL', {}).get('accounts', {})
+    hoc_bal = gl_vol.get('HOC', {}).get('balances', {})
+    hol_bal = gl_vol.get('HOL', {}).get('balances', {})
+    hoc_dv  = gl_vol.get('HOC', {}).get('dimvalue', {})
+    hol_dv  = gl_vol.get('HOL', {}).get('dimvalue', {})
+    hoc_dc  = gl_vol.get('HOC', {}).get('dimconfig', {})
+    hol_dc  = gl_vol.get('HOL', {}).get('dimconfig', {})
+
+    def _card(children):
+        return html.Div(style={
+            'borderRadius': '10px', 'overflow': 'hidden',
+            'border': f'1px solid {UI["border"]}',
+            'boxShadow': '0 2px 12px rgba(42,31,61,0.10)',
+            'background': '#ffffff',
+        }, children=children)
+
+    coa_card = _card([
+        _gl_card_header('1', 'Chart of Accounts', 'aglaccounts', 'Full population — all statuses'),
+        html.Div(style={'display': 'flex'}, children=[
+            _acc_col('HOC', hoc_acc),
+            _acc_col('HOL', hol_acc),
+        ]),
+    ])
+
+    bal_card = _card([
+        _gl_card_header('14', 'GL Opening Balances', 'aglperiodic', 'Actuals only — BU/BV excluded'),
+        html.Div(style={'display': 'flex'}, children=[
+            _bal_col('HOC', hoc_bal),
+            _bal_col('HOL', hol_bal),
+        ]),
+    ])
+
+    dim_card = _card([
+        _gl_card_header(None, 'GL Dimension Structure', 'agldimvalue  ·  agldimension', 'GL-mapped positions only  (0 – 7)'),
+        html.Div(style={'display': 'flex'}, children=[
+            _dim_col('HOC', hoc_dv, hoc_dc),
+            _dim_col('HOL', hol_dv, hol_dc),
+        ]),
+    ])
+
+    return html.Div(style={'marginBottom': '28px'}, children=[
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '14px',
+        }, children=[
+            html.Div('GL Foundation Data', style={
+                'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
+                'textTransform': 'uppercase', 'letterSpacing': '0.01em',
+            }),
+            html.Div('Extracts loaded and assessed', style={
+                'fontSize': '12px', 'color': UI['text_secondary'],
+            }),
+        ]),
+        html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '16px'}, children=[
+            coa_card,
+            bal_card,
+            dim_card,
+        ]),
+    ])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Treemap — dimension structure (at bottom of tab)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _build_treemap(df_config, house):
     """Return a px.treemap figure for one house, or None if no data."""
@@ -33,7 +420,6 @@ def _build_treemap(df_config, house):
     raw['active']       = pd.to_numeric(raw['active'],       errors='coerce').fillna(0).astype(int)
     raw['closed']       = pd.to_numeric(raw['closed'],       errors='coerce').fillna(0).astype(int)
 
-    # Combine CA + CM counts for HOC (same attributes, separate reporting entities)
     df = (
         raw.groupby(['attribute_id', 'description', 'dim_position'], as_index=False)
         [['total_values', 'active', 'closed']].sum()
@@ -41,7 +427,6 @@ def _build_treemap(df_config, house):
 
     rows = []
 
-    # GL posting dimensions — one leaf per attribute
     df_gl = df[df['dim_position'].isin(_GL_POSITIONS)].copy()
     for _, r in df_gl.iterrows():
         total = max(int(r['total_values']), 1)
@@ -55,7 +440,6 @@ def _build_treemap(df_config, house):
                     f"Active: {int(r['active']):,} &nbsp; Closed: {int(r['closed']):,}"),
         })
 
-    # X-position — aggregate into one block
     df_x = df[df['dim_position'] == 'X']
     if not df_x.empty:
         t = max(int(df_x['total_values'].sum()), 1)
@@ -69,7 +453,6 @@ def _build_treemap(df_config, house):
                     f"Active values: {int(df_x['active'].sum()):,}"),
         })
 
-    # Letter-coded (not 0-7 and not X) — aggregate
     df_letter = df[~df['dim_position'].isin(_GL_POSITIONS) & (df['dim_position'] != 'X')]
     if not df_letter.empty:
         t = max(int(df_letter['total_values'].sum()), 1)
@@ -86,15 +469,12 @@ def _build_treemap(df_config, house):
     if not rows:
         return None
 
-    # Normalise Out of Scope display size to a fixed fraction of GL total so
-    # both houses have equal-width OOS blocks regardless of absolute value counts.
-    # Real counts are preserved in tooltips; only the visual weight is adjusted.
     _OOS_FRACTION = 0.22
-    gl_total = sum(r['active'] for r in rows if 'GL Dimensions' in r['scope'])
+    gl_total  = sum(r['active'] for r in rows if 'GL Dimensions' in r['scope'])
     oos_total = sum(r['active'] for r in rows if r['scope'] == 'Out of Scope')
     if gl_total > 0 and oos_total > 0:
         target = gl_total * _OOS_FRACTION / (1 - _OOS_FRACTION)
-        scale = target / oos_total
+        scale  = target / oos_total
         for r in rows:
             if r['scope'] == 'Out of Scope':
                 r['active'] = max(1, round(r['active'] * scale))
@@ -228,8 +608,14 @@ def _render_dim_structure(frames):
     ])
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab renderer
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def render_tab(dq_results, frames):
+    gl_vol = get_gl_volumetrics(frames)
     return html.Div([
+        _render_gl_intro(gl_vol),
         render_dimension_scorecard(dq_results),
         html.Div(style=_SECTION_HEADER, children=[
             html.Span('Data Quality Checks', style=_SECTION_TITLE),
