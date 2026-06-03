@@ -765,11 +765,17 @@ def get_gl_volumetrics(frames: dict) -> dict:
         jnl_accounts = int(h_jnl['account'].nunique())    if not h_jnl.empty and 'account'    in h_jnl.columns else 0
         jnl_users    = int(h_jnl['user_id'].nunique())    if not h_jnl.empty and 'user_id'    in h_jnl.columns else 0
         jnl_by_type  = h_jnl['voucher_type'].value_counts().to_dict() if not h_jnl.empty and 'voucher_type' in h_jnl.columns else {}
-        jnl_net = float(pd.to_numeric(h_jnl['amount'], errors='coerce').sum()) if not h_jnl.empty and 'amount' in h_jnl.columns else 0.0
+        # Exclude period 00 (opening brought-forward entries) — one-sided by design
+        h_jnl_actual = h_jnl
+        if not h_jnl.empty and 'period' in h_jnl.columns:
+            periods = pd.to_numeric(h_jnl['period'], errors='coerce')
+            h_jnl_actual = h_jnl[periods % 100 != 0]
+
+        jnl_net = float(pd.to_numeric(h_jnl_actual['amount'], errors='coerce').sum()) if not h_jnl_actual.empty and 'amount' in h_jnl_actual.columns else 0.0
         jnl_unbalanced = 0
-        if not h_jnl.empty and 'voucher_no' in h_jnl.columns and 'amount' in h_jnl.columns:
+        if not h_jnl_actual.empty and 'voucher_no' in h_jnl_actual.columns and 'amount' in h_jnl_actual.columns:
             voucher_nets = (
-                h_jnl.assign(amt=pd.to_numeric(h_jnl['amount'], errors='coerce'))
+                h_jnl_actual.assign(amt=pd.to_numeric(h_jnl_actual['amount'], errors='coerce'))
                 .groupby('voucher_no')['amt'].sum()
             )
             jnl_unbalanced = int((voucher_nets.abs() > 0.01).sum())
