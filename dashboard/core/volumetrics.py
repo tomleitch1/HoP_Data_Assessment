@@ -539,87 +539,103 @@ def get_ap_volumetrics(df_dict: dict) -> dict:
 def get_ar_volumetrics(df_dict: dict) -> dict:
     """
     Returns calculated AR volumetrics for both Houses.
-    Calculates Active ('N'), Inactive ('C'), and Total counts for Customers.
-    Calculates Open Count, Balance, Overdue Count, and Avg Days Old for Transactions.
+    Mirrors get_ap_volumetrics() structure so the customers tab can use the same
+    intro layout as the suppliers tab.
     """
-    import pandas as pd
     today = pd.Timestamp.now().normalize()
     open_statuses = ['N', 'R', 'I', 'P']
-    CLIENTS = ['HOC', 'HOL']
-    
+
     header = df_dict.get('acuheader', pd.DataFrame())
-    trans  = df_dict.get('acutrans', pd.DataFrame())
-    hist   = df_dict.get('acuhistr', pd.DataFrame())
-    
-    # We need _safe_max_date
-    def _safe_max_date(df, col):
-        if df.empty or col not in df.columns:
-            return None
-        valid = pd.to_datetime(df[col], errors='coerce').dropna()
-        return valid.max() if not valid.empty else None
+    trans  = df_dict.get('acutrans',  pd.DataFrame())
+    hist   = df_dict.get('acuhistr',  pd.DataFrame())
 
     results = {}
-    
+
     for house in CLIENTS:
-        # 1. Customer Logic
+        # ── Customer master ───────────────────────────────────────────────────
         h_header = _filter_house(header, house)
-        active   = int((h_header['status'] == 'N').sum()) if not h_header.empty and 'status' in h_header.columns else 0
-        inactive = int((h_header['status'] == 'C').sum()) if not h_header.empty and 'status' in h_header.columns else 0
         total_m  = len(h_header)
         m_date   = _safe_max_date(h_header, 'last_update')
-
         m_status_breakdown = h_header['status'].value_counts().to_dict() if not h_header.empty and 'status' in h_header.columns else {}
 
-        # 2. Transaction Logic
+        # Active = any status that is not Closed (N, P, T all count — mirrors supplier logic)
+        active   = int((h_header['status'] != 'C').sum()) if not h_header.empty and 'status' in h_header.columns else 0
+        inactive = int((h_header['status'] == 'C').sum()) if not h_header.empty and 'status' in h_header.columns else 0
+
+        # ── History — identifies which closed customers had recent activity ───
+        h_hist     = _filter_house(hist, house)
+        hist_total = len(h_hist)
+        hist_ids   = set(h_hist['apar_id'].dropna().astype(str).unique()) if not h_hist.empty and 'apar_id' in h_hist.columns else set()
+
+        if not h_header.empty and 'status' in h_header.columns and 'apar_id' in h_header.columns:
+            closed          = h_header[h_header['status'] == 'C']['apar_id'].astype(str)
+            inactive_recent = int(closed.isin(hist_ids).sum())
+            archive         = int((~closed.isin(hist_ids)).sum())
+        else:
+            inactive_recent = 0
+            archive         = inactive
+
+        migration_scope = active + inactive_recent
+
+        # ── Open transactions ─────────────────────────────────────────────────
         h_trans = _filter_house(trans, house)
-        t_all_counts = h_trans['status'].value_counts().to_dict() if not h_trans.empty and 'status' in h_trans.columns else {}
+        t_open  = h_trans[h_trans['status'].isin(open_statuses)] if not h_trans.empty and 'status' in h_trans.columns else pd.DataFrame()
 
-        t_open = h_trans[h_trans['status'].isin(open_statuses)] if not h_trans.empty and 'status' in h_trans.columns else pd.DataFrame()
+        open_count    = len(t_open)
+        t_all_counts  = t_open['status'].value_counts().to_dict() if not t_open.empty and 'status' in t_open.columns else {}
 
-        open_count = len(t_open)
-        balance    = float(pd.to_numeric(t_open['rest_amount'], errors='coerce').sum()) if not t_open.empty and 'rest_amount' in t_open.columns else 0.0
+        balance = float(pd.to_numeric(t_open['rest_amount'], errors='coerce').sum()) if not t_open.empty and 'rest_amount' in t_open.columns else 0.0
 
         if not t_open.empty and 'due_date' in t_open.columns:
-            due = pd.to_datetime(t_open['due_date'], errors='coerce')
+            due     = pd.to_datetime(t_open['due_date'], errors='coerce')
             overdue = int((due < today).sum())
         else:
             overdue = 0
 
         if not t_open.empty and 'trans_date' in t_open.columns:
-            td = pd.to_datetime(t_open['trans_date'], errors='coerce')
-            ages = (today - td).dt.days.dropna()
+            td      = pd.to_datetime(t_open['trans_date'], errors='coerce')
+            ages    = (today - td).dt.days.dropna()
             avg_age = float(ages.mean()) if len(ages) else 0.0
         else:
             avg_age = 0.0
 
         t_date = _safe_max_date(h_trans, 'trans_date')
 
-        # 3. History Logic
-        h_hist = _filter_house(hist, house)
-        hist_total = len(h_hist)
-        
+        # Balance broken down by status (mirrors AP pattern)
+        balance_by_status = {}
+        if not t_open.empty and 'status' in t_open.columns and 'rest_amount' in t_open.columns:
+            for s in ['N', 'R', 'I', 'P']:
+                s_rows = t_open[t_open['status'] == s]
+                balance_by_status[s] = float(
+                    pd.to_numeric(s_rows['rest_amount'], errors='coerce').sum()
+                ) if not s_rows.empty else 0.0
+
         results[house] = {
             'house': house,
             'master': {
-                'total': total_m,
-                'active': active,
-                'inactive': inactive,
+                'total':            total_m,
+                'active':           active,
+                'inactive':         inactive,
+                'inactive_recent':  inactive_recent,
+                'archive':          archive,
+                'migration_scope':  migration_scope,
                 'status_breakdown': m_status_breakdown,
-                'extract_date': m_date
+                'extract_date':     m_date,
             },
             'transactions': {
-                'open_count': open_count,
-                'balance': balance,
-                'overdue_count': overdue,
-                'avg_days_old': avg_age,
-                'status_breakdown': t_all_counts,
-                'extract_date': t_date
+                'open_count':        open_count,
+                'balance':           balance,
+                'balance_by_status': balance_by_status,
+                'overdue_count':     overdue,
+                'avg_days_old':      avg_age,
+                'status_breakdown':  t_all_counts,
+                'extract_date':      t_date,
             },
             'history': {
-                'total': hist_total
-            }
+                'total': hist_total,
+            },
         }
-        
+
     return results
 
 

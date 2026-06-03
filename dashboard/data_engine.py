@@ -461,33 +461,57 @@ def get_check_columns():
         'HIS_ORPHANED': ['apar_id'],
 
         # Customers
-        'CUS_VAT_MISSING': ['vat_reg_no', 'status'],
-        'CUS_COMP_REG_MISSING': ['comp_reg_no', 'status'],
-        'CUS_TERMS_MISSING': ['terms_id'],
-        'CUS_PAY_METHOD_MISSING': ['pay_method'],
-        'CUS_CURRENCY_MISSING': ['currency'],
+        'CUS_VAT_MISSING':          ['vat_reg_no', 'status'],
+        'CUS_COMP_REG_MISSING':     ['comp_reg_no', 'status'],
+        'CUS_TERMS_MISSING':        ['terms_id'],
+        'CUS_PAY_METHOD_MISSING':   ['pay_method'],
+        'CUS_CURRENCY_MISSING':     ['currency'],
         'CUS_CREDIT_LIMIT_MISSING': ['credit_limit'],
-        'CUS_BANK_MISSING': ['pay_method', 'bank_account', 'iban'],
-        'CUS_VAT_FORMAT': ['vat_reg_no'],
-        'CUS_COMP_REG_FORMAT': ['comp_reg_no'],
-        'CUS_NAME_DUP': ['apar_name', 'client'],
-        'CUS_VAT_DUP': ['vat_reg_no', 'client'],
+        'CUS_SWIFT_MISSING':        ['iban', 'swift'],
+        'CUS_VAT_FORMAT':           ['vat_reg_no'],
+        'CUS_COMP_REG_FORMAT':      ['comp_reg_no'],
+        'CUS_SORT_FORMAT':          ['clearing_code'],
+        'CUS_BANK_FORMAT':          ['bank_account'],
+        'CUS_SWIFT_FORMAT':         ['swift'],
+        'CUS_BANK_MISSING':         ['pay_method', 'bank_account', 'clearing_code'],
+        'CUS_WF_STUCK':             ['wf_state'],
+        'CUS_EXPIRED_ACTIVE':       ['expired_date', 'status'],
+        'CUS_COLLECT_ACTIVE':       ['collect_flag'],
+        'CUS_NAME_DUP':             ['apar_name', 'client'],
+        'CUS_NAME_DUP_ANY':         ['apar_name', 'client'],
+        'CUS_VAT_DUP':              ['vat_reg_no', 'client'],
+        'CUS_BANK_SORT_DUP':        ['bank_account', 'clearing_code', 'client'],
+        'CUS_CLIENT_APAR_DUP':      ['client', 'apar_id'],
+        'CUS_XHOUSE_VAT_DUP':       ['vat_reg_no'],
+        'CUS_XHOUSE_COMP_REG_DUP':  ['comp_reg_no'],
+        'CUS_XHOUSE_NAME_DUP':      ['apar_name'],
+        'CUS_DORMANT':              ['last_update', 'status'],
+        'CUS_SUNDRY':               ['apar_once'],
 
         # AR Invoices
-        'AR_DUE_DATE_MISSING': ['due_date'],
-        'AR_EXT_REF_MISSING': ['ext_inv_ref'],
-        'AR_AMOUNT_MISSING': ['amount'],
-        'AR_NEG_INV': ['amount', 'voucher_type'],
-        'AR_REST_ZERO': ['rest_amount'],
-        'AR_REST_OVER_AMT': ['rest_amount', 'amount'],
-        'AR_OVERDUE': ['due_date'],
-        'AR_WF_STUCK': ['wf_state'],
-        'AR_ORPHANED_TRANS': ['apar_id'],
-        'AR_TRANS_CUS_CLOSED': ['apar_id', 'status'],
+        'AR_DUE_DATE_MISSING':          ['due_date'],
+        'AR_EXT_REF_MISSING':           ['ext_inv_ref'],
+        'AR_AMOUNT_MISSING':            ['amount'],
+        'AR_ORDER_CONTRACT_MISSING':    ['order_id', 'contract_id'],
+        'AR_FX_NO_RATE':                ['currency', 'exch_rate'],
+        'AR_CN_NO_REF':                 ['voucher_type', 'orig_reference'],
+        'AR_FX_NO_CUR_AMT':             ['currency', 'cur_amount'],
+        'AR_NEG_INV':                   ['amount', 'voucher_type'],
+        'AR_REST_ZERO':                 ['rest_amount', 'status'],
+        'AR_REST_OVER_AMT':             ['rest_amount', 'amount'],
+        'AR_OVERDUE':                   ['due_date'],
+        'AR_WF_STUCK':                  ['wf_state'],
+        'AR_TRANS_KEY_DUP':             ['client', 'apar_id', 'voucher_no', 'sequence_no'],
+        'AR_EXT_REF_DUP':               ['ext_inv_ref', 'apar_id'],
+        'AR_ORPHANED_TRANS':            ['apar_id'],
+        'AR_TRANS_CUS_CLOSED':          ['apar_id', 'status'],
 
         # AR History
         'AR_HIS_REST_NOT_ZERO': ['rest_amount'],
-        'AR_HIS_DATE_MISSING': ['trans_date'],
+        'AR_HIS_DATE_MISSING':  ['trans_date'],
+        'AR_HIS_CN_NO_REF':     ['voucher_type', 'orig_reference'],
+        'AR_HIS_DUP':           ['voucher_no', 'sequence_no', 'client'],
+        'AR_HIS_ORPHANED':      ['apar_id'],
 
         # Asset Register - Master
         'DQ-AM-C01': ['asset_id'],
@@ -607,6 +631,9 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         'SUP_XHOUSE_IBAN_DUP':     ['iban'],
         'SUP_XHOUSE_BANK_DUP':     ['bank_account', 'clearing_code'],
         'SUP_XHOUSE_NAME_DUP':     ['apar_name'],
+        'CUS_XHOUSE_VAT_DUP':      ['vat_reg_no'],
+        'CUS_XHOUSE_COMP_REG_DUP': ['comp_reg_no'],
+        'CUS_XHOUSE_NAME_DUP':     ['apar_name'],
     }
     if check_id in _XHOUSE_ID_COLS:
         id_cols = _XHOUSE_ID_COLS[check_id]
@@ -1483,6 +1510,22 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 right_on=['house', 'SUPPLIER_MASTER.apar_id'],
                 how='left')
         cols = ['AP_HISTORY.voucher_no', 'AP_HISTORY.apar_id', 'SUPPLIER_MASTER.apar_id']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if table == 'acuhistr' and check_id == 'AR_HIS_ORPHANED':
+        failing = failing.rename(columns={
+            'voucher_no': 'AR_HISTORY.voucher_no',
+            'apar_id':    'AR_HISTORY.apar_id',
+        })
+        if 'acuheader' in frames:
+            cus_link = frames['acuheader'][['house', 'apar_id']].copy()
+            cus_link = cus_link.drop_duplicates(subset=['house', 'apar_id'])
+            cus_link = cus_link.rename(columns={'apar_id': 'CUSTOMER_MASTER.apar_id'})
+            failing = failing.merge(cus_link,
+                left_on=['house', 'AR_HISTORY.apar_id'],
+                right_on=['house', 'CUSTOMER_MASTER.apar_id'],
+                how='left')
+        cols = ['AR_HISTORY.voucher_no', 'AR_HISTORY.apar_id', 'CUSTOMER_MASTER.apar_id']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
