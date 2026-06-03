@@ -310,23 +310,6 @@ def _jnl_col(house, jnl):
     by_type  = jnl.get('by_type', {})
     pmin        = jnl.get('period_min')
     pmax        = jnl.get('period_max')
-    unbalanced  = jnl.get('unbalanced', 0)
-    net         = jnl.get('net_amount', 0.0)
-
-    if unbalanced == 0:
-        bal_color, bal_label = '#1a7a4a', 'all vouchers balance'
-    elif unbalanced <= 10:
-        bal_color, bal_label = '#d97706', f'{unbalanced} voucher{"s" if unbalanced != 1 else ""} unbalanced'
-    else:
-        bal_color, bal_label = '#c0392b', f'{unbalanced:,} vouchers unbalanced'
-
-    abs_net = abs(net)
-    if abs_net < 100:
-        net_color, net_label = '#1a7a4a', 'balanced'
-    elif abs_net < 100_000:
-        net_color, net_label = '#d97706', 'slight variance'
-    else:
-        net_color, net_label = '#c0392b', 'imbalance'
 
     sorted_types = sorted(by_type.items(), key=lambda x: -x[1])
     top_n        = sorted_types[:8]
@@ -387,30 +370,6 @@ def _jnl_col(house, jnl):
                 'fontSize': '13px', 'fontWeight': '700',
                 'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
             }),
-        ]),
-        _section_label('Voucher balance integrity  (periods 01–13, excl. opening b/f)'),
-        html.Div(style={
-            'display': 'flex', 'alignItems': 'center', 'gap': '24px', 'marginBottom': '20px',
-        }, children=[
-            html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '8px'}, children=[
-                html.Span(f'{unbalanced:,}' if unbalanced else '✓', style={
-                    'fontSize': '22px', 'fontWeight': '900',
-                    'color': bal_color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-                }),
-                html.Span(bal_label, style={
-                    'fontSize': '11px', 'color': bal_color, 'fontWeight': '600',
-                }),
-            ]),
-            html.Div(style={'width': '1px', 'background': UI['border'], 'alignSelf': 'stretch'}),
-            html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '8px'}, children=[
-                html.Span(_fmt_net(net), style={
-                    'fontSize': '22px', 'fontWeight': '900',
-                    'color': net_color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-                }),
-                html.Span(f'net  ({net_label})', style={
-                    'fontSize': '11px', 'color': net_color, 'fontWeight': '600',
-                }),
-            ]),
         ]),
         _section_label('By voucher type'),
         html.Div(children=type_rows or [
