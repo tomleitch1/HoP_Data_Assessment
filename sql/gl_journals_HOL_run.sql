@@ -4,8 +4,8 @@ USE agresso_HoL;
 -- Database : agresso_HoL (server mdata837)
 -- Output   : gl_journals_HOL.csv  →  data/gl/
 -- Scope    : Current fiscal year actual journals only (Seq 21).
---            HOL uses the END-YEAR fiscal year convention:
---              fiscal_year = 2026 covers FY2025/26 (periods 202601–202612).
+--            HOL uses the SAME START-YEAR fiscal year convention as HOC:
+--              fiscal_year = 2025 covers FY2025/26 (periods 202501–202512).
 --            HOL does not use periods 13 or 14 — period 12 is always final.
 --            Update fiscal_year value when the current FY rolls over.
 --            Excludes budget/virement entries (BU, BV) — those are Seq 23.
@@ -25,7 +25,7 @@ USE agresso_HoL;
 --   HOL has one in-scope client code (LA).
 --   Expect roughly 10,000–40,000 rows for a full fiscal year.
 --   If row count is unexpectedly low, check that fiscal_year matches the
---   HOL end-year convention (fiscal_year = 2026 for FY2025/26).
+--   HOL start-year convention (fiscal_year = 2025 for FY2025/26).
 --   If unexpectedly high, verify BU/BV exclusion is filtering correctly.
 --
 -- COLUMNS
@@ -56,9 +56,9 @@ USE agresso_HoL;
 --
 -- FISCAL YEAR CUTOVER NOTE
 --   When FY2025/26 closes and FY2026/27 becomes current, update:
---     fiscal_year = 2027   (HOL end-year: FY2026/27 = 2027)
+--     fiscal_year = 2026   (HOL start-year: FY2026/27 = 2026, same as HOC)
 --   For the migration cutover year (FY2027/28):
---     fiscal_year = 2028   (HOL end-year: FY2027/28 = 2028)
+--     fiscal_year = 2027   (HOL start-year: FY2027/28 = 2027, same as HOC)
 --
 -- DQ CHECKS THIS EXTRACT ENABLES (see gl_journals.sql for full specification)
 --   GL_JNL_VOUCHER_MISSING   voucher_no is null (Critical)
@@ -105,7 +105,7 @@ SELECT
     user_id
 FROM agltransact
 WHERE client = 'LA'
-  AND fiscal_year = 2026
+  AND fiscal_year = 2025
   AND (status IS NULL OR status = '')
   AND voucher_type NOT IN ('BU', 'BV')
 ORDER BY

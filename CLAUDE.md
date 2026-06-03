@@ -622,16 +622,17 @@ Key facts about `aglperiodic`:
 - The table is **transactional** (one row per posting), not a cumulative balance snapshot.
 - Budget and virement entries (`voucher_type IN ('BU', 'BV')`) can appear with future-dated periods (e.g. 203407) — excluded in the SQL extract.
 - `BA` (Batch Input adj) is a real financial posting and is **not** excluded.
-- **HOC and HOL use different fiscal year naming conventions** — confirmed from real data (May 2026):
-  - **HOC** (`Agresso_HoC`): **start-year** — `fiscal_year = 2025` and `period BETWEEN 202501 AND 202515` is FY2025/26
-  - **HOL** (`agresso_HoL`): **end-year** — `fiscal_year = 2026` and `period BETWEEN 202601 AND 202612` is FY2025/26
+- **Both HOC and HOL use start-year fiscal year convention** — confirmed from agltransact data (June 2026):
+  - **HOC** (`Agresso_HoC`): `fiscal_year = 2025` and `period BETWEEN 202501 AND 202515` is FY2025/26
+  - **HOL** (`agresso_HoL`): `fiscal_year = 2025` and `period BETWEEN 202501 AND 202512` is FY2025/26
   - HOL historically never uses period 13 or 14 — period 12 is always the final period
   - HOC typically posts year-end journals in period 13; occasionally period 14
-- SQL run files updated to use the correct period ranges per house. Update at cutover to FY2028/29 (HOC: 202801–202815, HOL: 202901–202912).
+  - Previous documentation stated HOL used end-year convention — **this was wrong**. Confirmed by inspecting period 202601 in the HOL agltransact extract: trans_dates were predominantly April 2026, proving fiscal_year=2026 = FY2026/27 for HOL.
+- SQL run files corrected: HOL opening balances now uses `period BETWEEN 202501 AND 202512`; HOL journals uses `fiscal_year = 2025`. Update at cutover to FY2028/29 (both houses: fiscal_year=2028).
 - Frame key in the engine is `aglyearend` (for backwards compatibility) — CSV filename unchanged.
 
-### GL journals fiscal year convention — not yet loaded
-`agltransact` (journals) uses an **end-year** convention: `fiscal_year = 2026` means FY2025/26. Filter confirmed as `AND fiscal_year = 2026` in the HOC/HOL run files. The journals extract has ~50k rows — confirm column names and value formats before adding any checks.
+### GL journals fiscal year convention — confirmed June 2026
+`agltransact` uses **start-year** convention for both houses. `fiscal_year = 2025` covers FY2025/26 for both HOC and HOL. HOC SQL already correct; HOL SQL corrected from `fiscal_year = 2026` to `fiscal_year = 2025`.
 
 ---
 
