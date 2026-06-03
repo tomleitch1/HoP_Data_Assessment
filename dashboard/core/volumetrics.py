@@ -774,9 +774,10 @@ def get_gl_volumetrics(frames: dict) -> dict:
         jnl_net = float(pd.to_numeric(h_jnl_actual['amount'], errors='coerce').sum()) if not h_jnl_actual.empty and 'amount' in h_jnl_actual.columns else 0.0
         jnl_unbalanced = 0
         if not h_jnl_actual.empty and 'voucher_no' in h_jnl_actual.columns and 'amount' in h_jnl_actual.columns:
+            group_cols = [c for c in ['client', 'voucher_no'] if c in h_jnl_actual.columns]
             voucher_nets = (
                 h_jnl_actual.assign(amt=pd.to_numeric(h_jnl_actual['amount'], errors='coerce'))
-                .groupby('voucher_no')['amt'].sum()
+                .groupby(group_cols)['amt'].sum()
             )
             jnl_unbalanced = int((voucher_nets.abs() > 0.01).sum())
         jnl_pmin = jnl_pmax = None
