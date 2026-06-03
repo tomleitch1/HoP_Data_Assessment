@@ -631,8 +631,27 @@ Key facts about `aglperiodic`:
 - SQL run files corrected: HOL opening balances now uses `period BETWEEN 202501 AND 202512`; HOL journals uses `fiscal_year = 2025`. Update at cutover to FY2028/29 (both houses: fiscal_year=2028).
 - Frame key in the engine is `aglyearend` (for backwards compatibility) — CSV filename unchanged.
 
-### GL journals fiscal year convention — confirmed June 2026
-`agltransact` uses **start-year** convention for both houses. `fiscal_year = 2025` covers FY2025/26 for both HOC and HOL. HOC SQL already correct; HOL SQL corrected from `fiscal_year = 2026` to `fiscal_year = 2025`.
+### GL Journals / Current Year Transactions (`agltransact`) — confirmed schema and loaded
+
+Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, period, trans_date, voucher_date, voucher_type, amount, cur_amount, currency, dc_flag, update_flag, status, apar_id, apar_type, tax_code, tax_system, description, ext_inv_ref, dim_1..dim_7, last_update, user_id`
+
+**Confirmed from real Parliament data (June 2026):**
+- Both HOC and HOL use **start-year** convention: `fiscal_year = 2025` covers FY2025/26 for both houses
+- HOC extract: ~650k rows, periods 202500–202513 (period 00 = opening b/f, 01–13 = full year + year-end)
+- HOL extract: ~18k rows, periods 202501–202512 (HOL never uses period 13; HOL must be re-run with `fiscal_year = 2025` after the end-year convention correction)
+- `amount` is **signed** — positive = debit, negative = credit. `dc_flag` mirrors the sign (+1 or -1). Both agree.
+- `period` is a YYYYPP integer — parsed as numeric in the engine (same as agldimvalue, not parsed as a date)
+- `fiscal_year` is a plain integer — parsed as numeric in the engine
+
+**Period 00 (e.g. 202500):** opening brought-forward entries — one-sided by design. The counterpart lived in the prior year close. Do not include period 00 in any balance or net calculations.
+
+**Voucher balance integrity:** `agltransact` with the status filter does NOT contain all sides of every journal. Sub-ledger credits (AP control, payroll creditor) may be in separate tables (asutrans, acutrans) or have a different status code excluded by the filter. Single-line vouchers (e.g. a PE expense posting) are completely normal. Do NOT write a cross-voucher balance check on this extract — it will produce thousands of false positives.
+
+**Frame key:** `gl_journals` — loaded from `gl_journals_HOC.csv` + `gl_journals_HOL.csv`
+
+**Fiscal year convention correction (June 2026):** HOL SQL was originally written assuming end-year convention (`fiscal_year = 2026` for FY2025/26). Confirmed wrong by inspecting period 202601 — trans_dates were predominantly April 2026, proving `fiscal_year = 2026` = FY2026/27. Both SQL run files now use `fiscal_year = 2025`.
+
+**Volumetrics card (GL tab intro):** shows per-house transaction lines, unique vouchers, accounts used, posting users, period range, and proportional voucher type bars. Replaces the old Opening Balances card. The `aglyearend` frame is still loaded for its 3 DQ checks but has no dedicated intro card.
 
 ---
 
@@ -652,10 +671,11 @@ Key facts about `aglperiodic`:
 - Opening Balances (`aglyearend` / `aglperiodic`) loaded — 3 checks live (GL_BAL_*): AMT_MISSING, ORPHAN_ACC, PL_NONZERO
 - Dimension Configuration (`gl_dimconfig`) loaded — 2 checks live (GL_DIM_ATTR_*) + treemap visualisation
 - Dimension Values (`agldimvalue`) loaded — 5 checks live (GL_DIM_*): DESC_MISSING, PERIOD_MISSING, PERIOD_INV, ORPHAN_REL, DUP
-- GL tab layout: dimension scorecard → treemap (HoC/HoL side by side) → DQ checks section
+- **GL Journals (`gl_journals` / `agltransact`) loaded — volumetrics only, no DQ checks yet.** HOC: ~650k rows FY2025/26. HOL: re-extract required with `fiscal_year = 2025` (was incorrectly using 2026). Intro card shows lines, vouchers, accounts, users, period range, voucher type bars.
+- GL tab layout: intro cards (CoA · Journals · Dimension Structure) → dimension scorecard → DQ checks section → treemap
 - Deferred: `GL_ACC_BFLAG_CON` — bflag reconciliation bit not yet confirmed from real data
-- Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate, does not fit row-level model), `GL_DIM_WF_STUCK` (wf_state not used at Parliament)
-- Next: `agltransact` (transaction dimensions) or `gl_journals` — schema confirmation from real data required first
+- Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate, does not fit row-level model), `GL_DIM_WF_STUCK` (wf_state not used at Parliament), voucher balance integrity check (status filter makes it unreliable — see GL Journals section above)
+- Next: DQ checks on `gl_journals` — completeness (missing account, description, dim_1), validity (future trans_date), orphan account cross-reference
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
