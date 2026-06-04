@@ -397,7 +397,6 @@ def get_check_columns():
         'GL_BAL_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BAL_DUP':             ['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount', 'voucher_type'],
-        'GL_BAL_PL_NONZERO':      ['client', 'account', 'period', 'dim_1', 'amount', 'voucher_type'],
         'GL_BUD_AMT_MISSING':     ['client', 'account', 'period', 'dim_1', 'voucher_type', 'voucher_no'],
         'GL_BUD_ORPHAN_ACC':      ['client', 'account', 'period', 'dim_1', 'amount'],
         'GL_BUD_ORPHAN_DIM':      ['client', 'account', 'period', 'dim_1', 'amount'],
@@ -408,15 +407,13 @@ def get_check_columns():
         'GL_ACC_GRP_MISSING':     ['account', 'account_grp', 'account_type', 'status'],
         'GL_ACC_RESBAL_MISSING':  ['account', 'res_bal', 'account_type', 'status'],
         'GL_ACC_RULE_MISSING':    ['account', 'account_rule', 'account_type', 'status'],
-        'GL_ACC_PERIOD_MISSING':  ['account', 'period_from', 'period_to', 'status'],
         'GL_ACC_RESBAL_INVALID':  ['account', 'res_bal', 'account_type'],
         'GL_ACC_TYPE_INVALID':    ['account', 'account_type', 'res_bal'],
         'GL_ACC_PERIOD_INV':      ['account', 'period_from', 'period_to'],
         'GL_ACC_STALE_N':         ['account', 'period_from', 'period_to', 'status'],
         'GL_ACC_DUP_CODE':        ['client', 'account', 'description', 'status'],
-        'GL_ACC_DUP_DESC':        ['client', 'account', 'description', 'account_type', 'status'],
-        'GL_DIM_DUP_DESC':        ['client', 'attribute_id', 'dim_value', 'description'],
-        'GL_ACC_STALE_MOD':       ['account', 'last_update', 'status'],
+        'GL_ACC_DUP_DESC':        ['client', 'account', 'account_grp', 'description', 'account_type', 'status'],
+        'GL_DIM_DUP_DESC':        ['client', 'attribute_id', 'dim_value', 'description', 'account_grp'],
         'GL_ACC_NO_ACTIVITY':     ['account', 'description', 'account_grp', 'res_bal', 'account_type'],
 
         # Suppliers
@@ -1553,38 +1550,6 @@ def get_failing_records(check_id, house, frames, base_cols=None):
                 how='left')
         cols = ['AR_HISTORY.voucher_no', 'AR_HISTORY.apar_id', 'CUSTOMER_MASTER.apar_id']
         return failing[[c for c in cols if c in failing.columns]]
-
-    if table == 'aglyearend' and check_id == 'GL_BAL_PL_NONZERO':
-        # failing has one row per failing account; compute the true net from h_df
-        # (all postings for the house) so we sum across all periods and clients
-        failing_accounts = failing['account'].unique()
-        net = (
-            h_df[h_df['account'].isin(failing_accounts)]
-            .groupby('account', as_index=False)['amount']
-            .sum()
-        )
-        net['amount'] = net['amount'].round(2)
-        net = net.rename(columns={'amount': 'GL_BALANCES.net_amount'})
-        if 'aglaccounts' in frames:
-            # Filter to res_bal='R' so no B accounts can appear in the display
-            coa = frames['aglaccounts'][
-                (frames['aglaccounts']['house'] == house) &
-                (frames['aglaccounts']['res_bal'] == 'R')
-            ][['account', 'res_bal', 'description']].copy()
-            coa = coa.drop_duplicates(subset=['account'])
-            coa = coa.rename(columns={
-                'res_bal':     'AGLACCOUNTS.res_bal',
-                'description': 'AGLACCOUNTS.description',
-            })
-            net = net.merge(coa, on='account', how='left')
-        net = net.rename(columns={'account': 'GL_BALANCES.account'})
-        cols = ['GL_BALANCES.account', 'AGLACCOUNTS.res_bal', 'AGLACCOUNTS.description',
-                'GL_BALANCES.net_amount']
-        return (
-            net[[c for c in cols if c in net.columns]]
-            .sort_values('GL_BALANCES.net_amount', key=abs, ascending=False)
-            .reset_index(drop=True)
-        )
 
     if table in ['asutrans', 'asuhistr'] and 'asuheader' in frames:
         # asuheader unique key is (client, apar_id) — one row per supplier per

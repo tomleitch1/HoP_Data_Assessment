@@ -123,18 +123,34 @@ def get_gl_checks():
 
         ('GL_DIM_DUP_DESC',
          21, 'Dimension Values', 'Uniqueness', 'Low',
-         'Two active dimension values share the same description within the same attribute and client',
-         'Each dimension value description should be unique within a given attribute type and client. '
+         'Two active dimension values share the same description within the same attribute, client, and account group',
+         'Each dimension value description should be unique within a given attribute type, client, and account group. '
+         'Values are joined to the Chart of Accounts (dim_value = account) to derive account_grp. '
          'Duplicate descriptions make it impossible to distinguish values in selection screens and reports, '
          'leading to incorrect transaction coding. '
-         'The new ERP displays descriptions in all dimension selectors — ambiguous labels are a go-live risk.',
+         'The new ERP displays descriptions in all dimension selectors — ambiguous labels are a go-live risk. '
+         'Values with the same description but different account groups are not flagged.',
          'Review each duplicate pair and clarify the description of at least one value to make it distinct.',
-         'agldimvalue', None,
-         "WHERE status = 'N' AND description appears more than once within the same (attribute_id, client)",
-         lambda df: (
-             df['description'].notna() &
-             (df['description'].astype(str).str.strip() != '') &
-             df.duplicated(subset=['client', 'attribute_id', 'description'], keep=False)
+         'agldimvalue', 'aglaccounts',
+         "WHERE status = 'N' AND description appears more than once within the same (attribute_id, client, account_grp)",
+         lambda df, frames: pd.Series(False, index=df.index) if df.empty else (
+             lambda coa_map: (
+                 df.assign(
+                     account_grp=(df['client'].astype(str) + '||' + df['dim_value'].astype(str)).map(coa_map)
+                 ).pipe(lambda d:
+                     d['description'].notna() &
+                     (d['description'].astype(str).str.strip() != '') &
+                     (d['status'] == 'N') &
+                     d.duplicated(subset=['client', 'attribute_id', 'account_grp', 'description'], keep=False)
+                 )
+             )(
+                 frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]
+                 .drop_duplicates(subset=['client', 'account'])
+                 .assign(_k=lambda c: c['client'].astype(str) + '||' + c['account'].astype(str))
+                 .set_index('_k')['account_grp']
+                 if 'aglaccounts' in frames and not frames.get('aglaccounts', pd.DataFrame()).empty
+                 else pd.Series(dtype=str)
+             )
          )),
 
         ('GL_DIM_DEEP_HIERARCHY',
@@ -305,38 +321,6 @@ def get_gl_checks():
          'aglyearend', None,
          'WHERE (client, account, period, dim_1, voucher_no, amount) appears more than once',
          lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
-
-        ('GL_BAL_PL_NONZERO',
-         22, 'GL Opening Balances', 'Validity', 'Medium',
-         'P&L account carries a non-zero net balance after year-end close',
-         'P&L accounts (res_bal = R) must carry a zero net balance after year-end close journals have been posted in periods 13, 14, or 15. '
-         'A non-zero net balance at that point means the year-end close did not fully zero the account, '
-         'or a post-close adjustment was made without a corresponding reversal. '
-         'P&L balances carried into migration will create incorrect opening positions in the new system. '
-         'This check is suppressed automatically until period 12 data is present in the extract. '
-         'HOL closes within period 12; HOC posts additional adjustment journals in periods 13 and sometimes 14. '
-         'For HOC the check may fire before period 13 is posted — those results should be treated as indicative until the full close is complete.',
-         'Confirm that year-end close is complete for all periods (13, 14, and 15 as applicable). '
-         'Investigate any P&L account with a residual balance and post a correcting journal or reclassify before cutover.',
-         'aglyearend', 'aglaccounts',
-         "WHERE res_bal = 'R' (joined from aglaccounts) AND period 13/14/15 exists AND SUM(amount) <> 0 GROUP BY account",
-         lambda df, frames: (
-             pd.Series(False, index=df.index)
-             if not (pd.to_numeric(df['period'], errors='coerce') % 100 >= 12).any()
-             else (
-                 lambda full_mask: full_mask & ~df.loc[full_mask, 'account'].duplicated(keep='first').reindex(df.index, fill_value=False)
-             )(
-                 df['account'].isin(
-                     frames['aglaccounts'][
-                         (frames['aglaccounts']['house'] == df['house'].iloc[0]) &
-                         (frames['aglaccounts']['res_bal'] == 'R')
-                     ]['account']
-                 ) &
-                 df['account'].map(
-                     df.groupby('account')['amount'].sum().round(2)
-                 ).ne(0)
-             )
-         )),
 
         # ---------------------------------------------------------------
         # GL BUDGETS — gl_budgets (source: aglperiodic WHERE voucher_type IN ('GI','SI'))
@@ -603,16 +587,6 @@ def get_gl_checks():
          "WHERE status = 'N' AND (account_rule IS NULL OR account_rule = '')",
          lambda df: df['account_rule'].isna() | (df['account_rule'].astype(str).str.strip().isin(['', 'nan']))),
 
-        ('GL_ACC_PERIOD_MISSING',
-         20, 'Chart of Accounts', 'Completeness', 'Low',
-         'Active account missing valid-from date',
-         'Every active account should have a period_from date recording when it became valid. '
-         'This field supports audit trails and validity checking in the new system.',
-         'Populate the valid-from date for the account.',
-         'aglaccounts', None,
-         "WHERE status = 'N' AND period_from IS NULL",
-         lambda df: df['period_from'].isna()),
-
         # VALIDITY
         ('GL_ACC_RESBAL_INVALID',
          20, 'Chart of Accounts', 'Validity', 'High',
@@ -672,44 +646,34 @@ def get_gl_checks():
 
         ('GL_ACC_DUP_DESC',
          20, 'Chart of Accounts', 'Uniqueness', 'Low',
-         'Two active accounts share the same description within the same client',
-         'Each active account description should be unique within a client. '
-         'Duplicate descriptions make it difficult to distinguish accounts in selection screens and reports. '
+         'Two active accounts share the same description within the same client and account group',
+         'Each active account description should be unique within a client and account group. '
+         'Accounts with the same description but belonging to different account groups are not flagged. '
+         'Duplicate descriptions within the same group make it difficult to distinguish accounts in selection screens and reports. '
          'Staff may code transactions to the wrong account when two accounts appear identical by name, '
          'and the descriptions cannot both be used unambiguously in the new system.',
          'Review each duplicate pair and clarify the description of at least one account to make it distinct.',
          'aglaccounts', None,
-         "WHERE status = 'N' AND description appears more than once within the same client",
+         "WHERE status = 'N' AND description appears more than once within the same (client, account_grp)",
          lambda df: (
              df['description'].notna() &
              (df['description'].astype(str).str.strip() != '') &
-             df.duplicated(subset=['client', 'description'], keep=False)
+             df.duplicated(subset=['client', 'account_grp', 'description'], keep=False)
          )),
-
-        # TIMELINESS
-        ('GL_ACC_STALE_MOD',
-         20, 'Chart of Accounts', 'Timeliness', 'Low',
-         'Account not modified in over 3 years',
-         'Accounts that have not been updated in more than 3 years may be obsolete or no longer required. '
-         'These should be reviewed before migration to determine whether they should be carried forward into the new system or closed.',
-         'Review each stale account. Close accounts that are no longer required and confirm that active accounts are still needed.',
-         'aglaccounts', None,
-         'WHERE status = \'N\' AND last_update < DATEADD(year, -3, GETDATE())',
-         lambda df: df['last_update'].notna() & (df['last_update'] < pd.Timestamp.now() - pd.Timedelta(days=3 * 365))),
 
         ('GL_ACC_NO_ACTIVITY',
          20, 'Chart of Accounts', 'Timeliness', 'Low',
-         'Active account with no postings in the current year balance data',
+         'Active account with no postings in the current year transaction data',
          'Active accounts with no postings in the current fiscal year may no longer be required. '
          'Migrating unused accounts adds unnecessary complexity to the new chart of accounts and may confuse users during go-live. '
          'These accounts should be reviewed before cutover to confirm whether they are genuinely needed or should be closed.',
          'Review each inactive account. Close accounts that are no longer required before migration. '
          'Retain accounts that are used seasonally or expected to receive postings before cutover.',
-         'aglaccounts', 'aglyearend',
-         'WHERE status = \'N\' AND account NOT IN (SELECT DISTINCT account FROM aglperiodic WHERE client = a.client)',
+         'aglaccounts', 'gl_journals',
+         'WHERE status = \'N\' AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE client = a.client)',
          lambda df, frames: ~df['account'].isin(
-             frames['aglyearend'][frames['aglyearend']['house'] == df['house'].iloc[0]]['account']
-         ) if 'aglyearend' in frames and not frames['aglyearend'].empty else pd.Series(False, index=df.index)),
+             frames['gl_journals'][frames['gl_journals']['house'] == df['house'].iloc[0]]['account']
+         ) if 'gl_journals' in frames and not frames['gl_journals'].empty else pd.Series(False, index=df.index)),
 
     ]
 
