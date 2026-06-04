@@ -146,14 +146,15 @@ def get_gl_checks():
                      df['description'].astype(str).str.strip()
                  ).duplicated(keep=False)
              )(
-                 frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]
-                 .drop_duplicates(subset=['client', 'account'])
-                 .pipe(lambda c: pd.Series(
-                     c['account_grp'].astype(str).values,
-                     index=c['client'].astype(str) + '\x00' + c['account'].astype(str),
-                 ))
+                 (lambda c: dict(zip(
+                     c['client'].astype(str) + '\x00' + c['account'].astype(str),
+                     c['account_grp'].astype(str),
+                 )))(
+                     frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]
+                     .drop_duplicates(subset=['client', 'account'])
+                 )
                  if 'aglaccounts' in frames and not frames.get('aglaccounts', pd.DataFrame()).empty
-                 else pd.Series(dtype=str)
+                 else {}
              )
          )),
 
