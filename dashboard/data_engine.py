@@ -120,6 +120,7 @@ def load_data(tab=None):
     # codes that are NOT 'HOC'/'HOL'.
     house_from_filename = {
         'supplier_master', 'supplier_open_trans', 'supplier_history',
+        'customer_master', 'customer_open_trans', 'customer_history',
         'asset_master', 'asset_depreciation', 'asset_balances',
         'asset_trans_flags', 'asset_groups',
         'gl_chart_of_accounts',
