@@ -71,7 +71,7 @@ def _get_vtype_color(code):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Intro section — GL Foundation Data
+# Intro section — GL Data
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _badge(text, bg, color='#f4f0fc'):
@@ -544,7 +544,7 @@ def _render_gl_intro(gl_vol, frames):
     ])
 
     jnl_card = _card([
-        _gl_card_header('21', 'Current Year Journals', 'agltransact', 'Actuals only — BU/BV excluded · status blank/null'),
+        _gl_card_header('21', 'Current Year Journals', 'agltransact', 'Actuals only · status blank/null'),
         html.Div(style={'display': 'flex'}, children=[
             _jnl_col('HOC', hoc_jnl),
             _jnl_col('HOL', hol_jnl),
@@ -634,7 +634,7 @@ def _render_gl_intro(gl_vol, frames):
         html.Div(style={
             'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '14px',
         }, children=[
-            html.Div('GL Foundation Data', style={
+            html.Div('GL Data', style={
                 'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
                 'textTransform': 'uppercase', 'letterSpacing': '0.01em',
             }),
@@ -865,7 +865,6 @@ def render_tab(dq_results, frames):
         render_dimension_scorecard(dq_results),
         html.Div(style=_SECTION_HEADER, children=[
             html.Span('Data Quality Checks', style=_SECTION_TITLE),
-            html.Span('Being configured against live data', style=_SECTION_BADGE),
         ]),
         render_dimension_grid(dq_results),
     ])
