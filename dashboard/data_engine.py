@@ -740,6 +740,10 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return failing
 
     # Enrich with context for better inspection
+    if check_id == 'GL_DIM_DUP_DESC' and 'aglaccounts' in frames:
+        coa = frames['aglaccounts'][frames['aglaccounts']['house'] == house][['client', 'account', 'account_grp']].drop_duplicates(subset=['client', 'account'])
+        failing = failing.merge(coa.rename(columns={'account': 'dim_value'}), on=['client', 'dim_value'], how='left')
+
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
         # 1. Join to Master to get the Bridging Group (Deduplicated)
         if 'asset_master' in frames:
