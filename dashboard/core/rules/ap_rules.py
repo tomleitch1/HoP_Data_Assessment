@@ -22,33 +22,47 @@ def get_ap_checks():
         
         ('SUP_VAT_MISSING', 10, 'Suppliers', 'Completeness', 'Medium',
          'Active supplier missing VAT registration number',
-         'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live.',
+         'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live. Specialist Adviser (SA) suppliers are excluded and assessed separately.',
          'Verify asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no IS NULL WHERE status = "N"',
          lambda df: df['vat_reg_no'].isna() & ~(df['pay_method'] == 'FC') & ~(
              (df['house'] == 'HOC') & (
                  df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
-                 df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC'])
+                 df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC', 'SA'])
              )
          ) & ~(
              (df['house'] == 'HOL') &
              df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
          )),
-         
+
+        ('SUP_SA_VAT_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Specialist Adviser supplier missing VAT registration number',
+         'Specialist Adviser (SA) suppliers include both individual consultants and limited companies. Individuals may not be VAT-registered, but companies providing services above the VAT threshold must be. Each record in this group should be reviewed to confirm whether a VAT number is expected and populated where appropriate.',
+         'Review each SA supplier and populate asuheader.vat_reg_no where the supplier is VAT-registered.', 'asuheader', None,
+         'apar_gr_id = "SA" AND vat_reg_no IS NULL',
+         lambda df: (df['apar_gr_id'] == 'SA') & df['vat_reg_no'].isna()),
+
         ('SUP_COMP_REG_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier missing company registration number',
-         'Active suppliers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the supplier before migrating the record.',
+         'Active suppliers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the supplier before migrating the record. Specialist Adviser (SA) suppliers are excluded and assessed separately.',
          'Verify asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no IS NULL WHERE status = "N"',
          lambda df: df['comp_reg_no'].isna() & ~(
              (df['house'] == 'HOC') & (
-                 df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC']) |
+                 df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC', 'SA']) |
                  df['apar_id'].astype(str).str[:2].isin(['71', '74', '89'])
              )
          ) & ~(
              (df['house'] == 'HOL') &
              df['apar_id'].astype(str).str[:1].isin(['1', '2', '3'])
          )),
+
+        ('SUP_SA_COMP_REG_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
+         'Specialist Adviser supplier missing company registration number',
+         'Specialist Adviser (SA) suppliers include both individual consultants and limited companies. Individuals do not require a Companies House number, but limited companies must have one on record. Each record in this group should be reviewed to confirm whether it represents an individual or a company, and registration numbers populated where appropriate.',
+         'Review each SA supplier and populate asuheader.comp_reg_no where the supplier is a limited company.', 'asuheader', None,
+         'apar_gr_id = "SA" AND comp_reg_no IS NULL',
+         lambda df: (df['apar_gr_id'] == 'SA') & df['comp_reg_no'].isna()),
 
         ('SUP_TERMS_MISSING', 10, 'Suppliers', 'Completeness', 'High',
          'Active supplier missing payment terms',
@@ -80,10 +94,10 @@ def get_ap_checks():
 
         ('SUP_SORT_IBAN_MISSING', 10, 'Suppliers', 'Completeness', 'Critical',
          'Active supplier missing both Sort Code AND IBAN',
-         'Every active supplier must have either a sort code or an IBAN populated as a payment routing identifier. Without at least one of these fields, the system has no destination to send electronic payments.',
+         'Every active supplier set to an electronic payment method must have either a sort code or an IBAN populated as a payment routing identifier. Without at least one of these fields, the system has no destination to send electronic payments. Cheque suppliers (pay method CH) are excluded as they do not require electronic routing details.',
          'Required routing in asuheader.clearing_code or iban.', 'asuheader', None,
-         'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL',
-         lambda df: df['clearing_code'].isna() & df['iban'].isna() & ~(
+         'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL AND pay_method != "CH"',
+         lambda df: df['clearing_code'].isna() & df['iban'].isna() & ~(df['pay_method'] == 'CH') & ~(
              (df['house'] == 'HOC') &
              df['apar_id'].astype(str).str[:4].isin(['1000'])
          )),
@@ -119,15 +133,6 @@ def get_ap_checks():
          'Populate agladdress.zip_code for this supplier.', 'asuheader', None,
          'agladdress.zip_code IS NULL OR empty',
          lambda df: (df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
-         )),
-
-        ('SUP_PROVINCE_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
-         'Active supplier has no county or province populated',
-         'Every supplier should have a county or province recorded to complete the address.',
-         'Populate agladdress.province for this supplier.', 'asuheader', None,
-         'agladdress.province IS NULL OR empty',
-         lambda df: (df['province'].isna() | (df['province'].str.strip().str.len() == 0)) & ~(
              (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
          )),
 
