@@ -34,30 +34,40 @@ _SECTION_BADGE = {
 
 _GL_POSITIONS = {'0', '1', '2', '3', '4', '5', '6', '7'}
 
-# Voucher type labels and colours for the journals breakdown bars
-_VTYPE_LABEL = {
-    'AC': 'Accrual journals',     'BF': 'Bank funding',
-    'BI': 'Batch input',          'DJ': 'Drawn down',
-    'EI': 'EPOS interface',       'FZ': 'Fixed assets',
-    'JL': 'Adjustment journals',  'JO': 'Opening balances',
-    'MI': 'Micros interface',     'MM': 'Manual matching',
-    'PA': 'Absence entry',        'PC': 'Payroll manual cheque',
-    'PE': 'Posting expenses',     'PJ': 'Prepayment journals',
-    'PP': 'Posting payroll',      'PY': 'Payments',
-    'PV': 'Variable payroll',     'RE': 'Registering expenses',
-    'RJ': 'Recurring journals',   'RP': 'Reshared staff posting',
-    'RS': 'Staff expenses',       'TC': 'Members travel card',
-    'TD': 'Expenses templates',   'YE': 'Year end transfer',
-    'AB': 'Absence transfer',     'BA': 'Batch input adj',
-}
+# Voucher type colours for the journals breakdown bars.
+# Types not listed fall back to _COLOR_PALETTE via _get_vtype_color().
 _VTYPE_COLOR = {
-    'PY': '#7c3aed', 'PP': '#6d28d9', 'PA': '#8b5cf6',
-    'JL': '#2563eb', 'RJ': '#3b82f6', 'AC': '#0891b2',
-    'PE': '#059669', 'RE': '#65a30d', 'RS': '#16a34a',
-    'FZ': '#d97706', 'YE': '#b45309', 'BF': '#0e7490',
-    'MM': '#9333ea', 'PJ': '#7e22ce', 'EI': '#0f766e',
-    'MI': '#0f766e', 'JO': '#475569',
+    'PY': '#7c3aed', 'PP': '#6d28d9', 'PA': '#8b5cf6', 'PV': '#a78bfa',
+    'JL': '#2563eb', 'RJ': '#3b82f6', 'AC': '#0891b2', 'DJ': '#0284c7',
+    'PE': '#059669', 'RE': '#65a30d', 'RS': '#16a34a', 'TC': '#15803d',
+    'FZ': '#d97706', 'YE': '#b45309', 'BF': '#0e7490', 'BI': '#0f6e6e',
+    'MM': '#9333ea', 'PJ': '#7e22ce', 'EI': '#0f766e', 'AB': '#6d28d9',
+    'MI': '#0f6060', 'JO': '#475569', 'PC': '#7c3060', 'BA': '#6b7280',
+    'TD': '#2d6a4f', 'RP': '#4a5568', 'RI': '#1d4ed8', 'PI': '#1e40af',
+    'OP': '#1e3a8a', 'II': '#2563eb', 'IU': '#3b6be0', 'ID': '#60a5fa',
+    'CN': '#be185d', 'IC': '#db2777', 'RC': '#ec4899', 'IN': '#f43f5e',
+    'IR': '#c2410c', 'PR': '#ea580c', 'RV': '#f97316',
+    'SR': '#059669', 'SI': '#10b981', 'CP': '#0d9488', 'IF': '#06b6d4',
+    'RD': '#065f46', 'PJ': '#7e22ce', 'RE': '#65a30d',
+    'BU': '#64748b', 'BV': '#94a3b8',
+    'DR': '#1d4ed8', 'DP': '#2563eb', 'DM': '#3b82f6', 'DB': '#60a5fa',
+    'WO': '#7f1d1d',
 }
+
+# Fallback palette for any code not in _VTYPE_COLOR (deterministic by code hash)
+_COLOR_PALETTE = [
+    '#be185d', '#c2410c', '#0369a1', '#166534', '#92400e',
+    '#1d4ed8', '#b91c1c', '#134e4a', '#6b21a8', '#854d0e',
+    '#0c4a6e', '#14532d', '#7f1d1d', '#1e3a5f', '#4a1942',
+    '#064e3b', '#1e1b4b', '#78350f', '#312e81', '#3f3f46',
+]
+
+
+def _get_vtype_color(code):
+    if code in _VTYPE_COLOR:
+        return _VTYPE_COLOR[code]
+    idx = sum(ord(c) for c in str(code)) % len(_COLOR_PALETTE)
+    return _COLOR_PALETTE[idx]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -132,6 +142,47 @@ def _gl_bar_row(code, label, color, count, total):
             'fontSize': '10px', 'color': UI['text_secondary'], 'minWidth': '32px',
         }),
     ])
+
+
+def _jnl_bar_row(code, color, count, total, note=None):
+    """Compact proportional bar for voucher types — code badge only, no label column."""
+    pct = (count / total * 100) if total > 0 else 0
+    children = [
+        html.Span(code, style={
+            'background': color + '1a', 'color': color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
+            'padding': '2px 7px', 'borderRadius': '3px',
+            'minWidth': '26px', 'textAlign': 'center', 'flexShrink': '0',
+        }),
+    ]
+    if note:
+        children.append(html.Span(note, style={
+            'fontSize': '11px', 'color': UI['text_secondary'], 'flexShrink': '0',
+        }))
+    children += [
+        html.Div(style={
+            'flex': '1', 'height': '6px', 'background': _BAR_BG,
+            'borderRadius': '3px', 'overflow': 'hidden',
+        }, children=[
+            html.Div(style={
+                'height': '100%', 'width': f'{min(pct, 100):.1f}%',
+                'background': color, 'borderRadius': '3px',
+                'minWidth': '3px' if count > 0 else '0',
+            })
+        ]),
+        html.Span(f'{count:,}', style={
+            'fontSize': '12px', 'fontWeight': '700',
+            'minWidth': '52px', 'textAlign': 'right',
+            'color': UI['text_primary'], 'flexShrink': '0',
+        }),
+        html.Span(f'{pct:.0f}%', style={
+            'fontSize': '10px', 'color': UI['text_secondary'],
+            'minWidth': '32px', 'flexShrink': '0',
+        }),
+    ]
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'padding': '4px 0',
+    }, children=children)
 
 
 def _gl_card_header(seq, name, source, filter_desc):
@@ -317,16 +368,36 @@ def _jnl_col(house, jnl):
     total        = sum(by_type.values()) or 1
 
     type_rows = [
-        _gl_bar_row(code, _VTYPE_LABEL.get(code, code),
-                    _VTYPE_COLOR.get(code, '#94a3b8'), count, total)
+        _jnl_bar_row(code, _get_vtype_color(code), count, total)
         for code, count in top_n
     ]
     if other_count:
         other_n = len(sorted_types) - 8
-        type_rows.append(_gl_bar_row(
-            '…', f'{other_n} other type{"s" if other_n != 1 else ""}',
-            '#94a3b8', other_count, total,
-        ))
+        type_rows.append(
+            html.Details(style={'marginTop': '2px'}, children=[
+                html.Summary(
+                    style={'listStyle': 'none', 'cursor': 'pointer', 'outline': 'none'},
+                    children=[
+                        _jnl_bar_row(
+                            '…', '#94a3b8', other_count, total,
+                            note=f'{other_n} other type{"s" if other_n != 1 else ""}',
+                        )
+                    ],
+                ),
+                html.Div(
+                    style={
+                        'maxHeight': '260px', 'overflowY': 'auto',
+                        'paddingTop': '4px',
+                        'borderTop': f'1px solid {_BAR_BG}',
+                        'marginTop': '4px',
+                    },
+                    children=[
+                        _jnl_bar_row(code, _get_vtype_color(code), count, total)
+                        for code, count in sorted_types[8:]
+                    ],
+                ),
+            ])
+        )
 
     return html.Div(style={
         'flex': '1', 'padding': '24px 32px',
