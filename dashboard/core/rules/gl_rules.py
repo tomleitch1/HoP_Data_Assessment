@@ -102,6 +102,20 @@ def get_gl_checks():
          "WHERE status = 'N' AND (description IS NULL OR TRIM(description) = '')",
          lambda df: df['description'].isna() | (df['description'].astype(str).str.strip() == '')),
 
+        ('GL_DIM_STALE_DESC',
+         21, 'Dimension Values', 'Validity', 'Medium',
+         'Active dimension value description suggests it is inactive or obsolete',
+         'An active dimension value whose description contains phrases such as "do not use", "closed", "to be deleted", or "on hold" is likely a stale record that was never formally closed. '
+         'Migrating these values into the new system would allow them to be coded on transactions even though they are operationally retired. '
+         'Each should be reviewed and either closed in the legacy system or have its description corrected before migration.',
+         'Close the dimension value in the legacy system if it is genuinely inactive, or correct the description if the value is still in use.',
+         'agldimvalue', None,
+         "WHERE status = 'N' AND description ILIKE ANY(ARRAY['%do not use%','%closed%','%to be deleted%','%delete%','%on hold%','%to be closed%','%obsolete%','%decommission%','%deprecated%','%inactive%'])",
+         lambda df: df['description'].str.contains(
+             r'do not use|closed|to be deleted|\bdelete\b|on hold|to be closed|obsolete|decommission|deprecated|\binactive\b',
+             case=False, na=False, regex=True
+         )),
+
         ('GL_DIM_PERIOD_MISSING',
          21, 'Dimension Values', 'Completeness', 'Low',
          'Active dimension value has no valid-from period',

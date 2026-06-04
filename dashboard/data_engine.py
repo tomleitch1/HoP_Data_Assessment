@@ -367,6 +367,7 @@ def get_check_columns():
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
+        'GL_DIM_STALE_DESC':     ['dim_value', 'description', 'attribute_id', 'dim_position'],
         'GL_DIM_PERIOD_MISSING': ['dim_value', 'description', 'period_from', 'period_to', 'attribute_id'],
         'GL_DIM_PERIOD_INV':     ['dim_value', 'description', 'period_from', 'period_to', 'attribute_id'],
         'GL_DIM_ORPHAN_REL':     ['dim_value', 'description', 'rel_value', 'attribute_id', 'dim_position'],
