@@ -517,7 +517,7 @@ def _dim_col(house, dv, dc):
 
 # ── Intro assembly ────────────────────────────────────────────────────────────
 
-def _render_gl_intro(gl_vol):
+def _render_gl_intro(gl_vol, frames):
     hoc_acc = gl_vol.get('HOC', {}).get('accounts', {})
     hol_acc = gl_vol.get('HOL', {}).get('accounts', {})
     hoc_jnl = gl_vol.get('HOC', {}).get('journals', {})
@@ -551,12 +551,83 @@ def _render_gl_intro(gl_vol):
         ]),
     ])
 
+    # Build treemaps inline for the dim card
+    treemap_section = []
+    df_config = frames.get('gl_dimconfig', None)
+    if df_config is not None and not df_config.empty:
+        house_charts = []
+        for house in ['HOC', 'HOL']:
+            fig = _build_treemap(df_config, house)
+            if fig:
+                fig.update_layout(height=300)
+                color = _HOUSE_COLOR[house]
+                house_charts.append(html.Div(style={
+                    'flex': '1', 'minWidth': 0, 'display': 'flex', 'flexDirection': 'column',
+                }, children=[
+                    html.Div(style={
+                        'display': 'flex', 'alignItems': 'center', 'gap': '7px', 'marginBottom': '8px',
+                    }, children=[
+                        html.Div(style={
+                            'width': '8px', 'height': '8px', 'borderRadius': '50%',
+                            'background': color, 'flexShrink': '0',
+                        }),
+                        html.Span(_HOUSE_LABEL[house], style={
+                            'fontSize': '13px', 'fontWeight': '700', 'color': color,
+                        }),
+                    ]),
+                    dcc.Graph(
+                        figure=fig,
+                        style={'minWidth': 0, 'flex': '1'},
+                        config={
+                            'displayModeBar': True,
+                            'modeBarButtonsToRemove': [
+                                'toImage', 'sendDataToCloud', 'zoom2d', 'pan2d',
+                                'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d',
+                            ],
+                            'displaylogo': False,
+                        },
+                    ),
+                ]))
+        if house_charts:
+            legend = html.Div(style={
+                'display': 'flex', 'alignItems': 'center', 'gap': '14px',
+                'marginTop': '10px',
+            }, children=[
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}, children=[
+                    html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px', 'background': '#059669', 'flexShrink': '0'}),
+                    html.Span('mostly active', style={'fontSize': '11px', 'color': '#9080b0'}),
+                ]),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}, children=[
+                    html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px', 'background': '#d97706', 'flexShrink': '0'}),
+                    html.Span('~35% closed', style={'fontSize': '11px', 'color': '#9080b0'}),
+                ]),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '5px'}, children=[
+                    html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px', 'background': '#dc2626', 'flexShrink': '0'}),
+                    html.Span('mostly closed', style={'fontSize': '11px', 'color': '#9080b0'}),
+                ]),
+                html.Div(style={'width': '1px', 'background': '#e2d9f3', 'alignSelf': 'stretch', 'margin': '0 6px'}),
+                html.Span('tile area ∝ active value count · click to drill in · ↺ to reset',
+                          style={'fontSize': '11px', 'color': '#9080b0'}),
+            ])
+            treemap_section = [
+                html.Div(style={
+                    'borderTop': f'1px solid {UI["border"]}',
+                    'margin': '0 28px',
+                }),
+                html.Div(style={'padding': '20px 28px 24px'}, children=[
+                    _section_label('Attribute map'),
+                    html.Div(style={'display': 'flex', 'gap': '20px'}, children=house_charts),
+                    legend,
+                ]),
+            ]
+
     dim_card = _card([
         _gl_card_header(None, 'GL Dimension Structure', 'agldimvalue  ·  agldimension', 'GL-mapped positions only  (0 – 7)'),
         html.Div(style={'display': 'flex'}, children=[
             _dim_col('HOC', hoc_dv, hoc_dc),
             _dim_col('HOL', hol_dv, hol_dc),
         ]),
+        *treemap_section,
     ])
 
     return html.Div(style={'marginBottom': '28px'}, children=[
@@ -790,12 +861,11 @@ def _render_dim_structure(frames):
 def render_tab(dq_results, frames):
     gl_vol = get_gl_volumetrics(frames)
     return html.Div([
-        _render_gl_intro(gl_vol),
+        _render_gl_intro(gl_vol, frames),
         render_dimension_scorecard(dq_results),
         html.Div(style=_SECTION_HEADER, children=[
             html.Span('Data Quality Checks', style=_SECTION_TITLE),
             html.Span('Being configured against live data', style=_SECTION_BADGE),
         ]),
         render_dimension_grid(dq_results),
-        _render_dim_structure(frames),
     ])
