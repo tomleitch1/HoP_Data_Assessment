@@ -1,6 +1,59 @@
 import pandas as pd
 
 
+def _safe_col(df, name):
+    """Return the first column matching *name* as a plain Series.
+    Guards against duplicate column names (which would make df[name] return a
+    DataFrame and cause downstream 2-D buffer errors on newer pandas)."""
+    idx = df.columns.tolist().index(name)
+    return df.iloc[:, idx]
+
+
+def _gl_dim_dup_desc(df, frames):
+    """Flag active dim values with duplicate (client, attribute_id, account_grp, description).
+    account_grp is derived by joining dim_value to aglaccounts.account for the same client.
+    Uses only .tolist() / plain Python lookups to avoid pandas ExtensionArray.map() issues."""
+    if df.empty:
+        return pd.Series(False, index=df.index)
+
+    # Build account_grp lookup: "client\x00account" -> account_grp string
+    coa_dict = {}
+    if 'aglaccounts' in frames:
+        coa = frames['aglaccounts']
+        if not coa.empty:
+            house = _safe_col(df, 'house').iloc[0]
+            coa = coa[_safe_col(coa, 'house') == house].drop_duplicates(subset=['client', 'account'])
+            if not coa.empty:
+                clients = _safe_col(coa, 'client').tolist()
+                accounts = _safe_col(coa, 'account').tolist()
+                grps    = _safe_col(coa, 'account_grp').fillna('').tolist()
+                coa_dict = {
+                    f'{c}\x00{a}': str(g)
+                    for c, a, g in zip(clients, accounts, grps)
+                }
+
+    # Build compound key per row (None for rows that should not be flagged)
+    clients  = _safe_col(df, 'client').tolist()
+    attrs    = _safe_col(df, 'attribute_id').tolist()
+    dvals    = _safe_col(df, 'dim_value').tolist()
+    descs    = _safe_col(df, 'description').tolist()
+    statuses = _safe_col(df, 'status').tolist()
+
+    compound = []
+    for c, a, v, d, s in zip(clients, attrs, dvals, descs, statuses):
+        if s != 'N' or d is None or d != d or str(d).strip() == '':
+            compound.append(None)
+        else:
+            grp = coa_dict.get(f'{c}\x00{v}', '')
+            compound.append(f'{c}\x00{a}\x00{grp}\x00{str(d).strip()}')
+
+    dup_keys = {k for k, n in pd.Series(compound).value_counts().items()
+                if k is not None and n > 1}
+
+    return pd.Series([k is not None and k in dup_keys for k in compound],
+                     index=df.index)
+
+
 def _compute_dim_depths(df):
     """Assign hierarchy depth to each row. Root nodes (blank rel_value) = 1."""
     keys = list(zip(df['client'].astype(str), df['attribute_id'].astype(str), df['dim_value'].astype(str)))
@@ -133,30 +186,7 @@ def get_gl_checks():
          'Review each duplicate pair and clarify the description of at least one value to make it distinct.',
          'agldimvalue', 'aglaccounts',
          "WHERE status = 'N' AND description appears more than once within the same (attribute_id, client, account_grp)",
-         lambda df, frames: pd.Series(False, index=df.index) if df.empty else (
-             lambda coa_map: (
-                 df['description'].notna() &
-                 (df['description'].astype(str).str.strip() != '') &
-                 (df['status'] == 'N') &
-                 (
-                     df['client'].astype(str) + '\x00' +
-                     df['attribute_id'].astype(str) + '\x00' +
-                     (df['client'].astype(str) + '\x00' + df['dim_value'].astype(str))
-                     .map(coa_map).fillna('').astype(str) + '\x00' +
-                     df['description'].astype(str).str.strip()
-                 ).duplicated(keep=False)
-             )(
-                 (lambda c: dict(zip(
-                     c['client'].astype(str) + '\x00' + c['account'].astype(str),
-                     c['account_grp'].astype(str),
-                 )))(
-                     frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]
-                     .drop_duplicates(subset=['client', 'account'])
-                 )
-                 if 'aglaccounts' in frames and not frames.get('aglaccounts', pd.DataFrame()).empty
-                 else {}
-             )
-         )),
+         lambda df, frames: _gl_dim_dup_desc(df, frames)),
 
         ('GL_DIM_DEEP_HIERARCHY',
          21, 'Dimension Values', 'Consistency', 'Low',
