@@ -135,19 +135,23 @@ def get_gl_checks():
          "WHERE status = 'N' AND description appears more than once within the same (attribute_id, client, account_grp)",
          lambda df, frames: pd.Series(False, index=df.index) if df.empty else (
              lambda coa_map: (
-                 df.assign(
-                     account_grp=(df['client'].astype(str) + '||' + df['dim_value'].astype(str)).map(coa_map)
-                 ).pipe(lambda d:
-                     d['description'].notna() &
-                     (d['description'].astype(str).str.strip() != '') &
-                     (d['status'] == 'N') &
-                     d.duplicated(subset=['client', 'attribute_id', 'account_grp', 'description'], keep=False)
-                 )
+                 df['description'].notna() &
+                 (df['description'].astype(str).str.strip() != '') &
+                 (df['status'] == 'N') &
+                 (
+                     df['client'].astype(str) + '\x00' +
+                     df['attribute_id'].astype(str) + '\x00' +
+                     (df['client'].astype(str) + '\x00' + df['dim_value'].astype(str))
+                     .map(coa_map).fillna('').astype(str) + '\x00' +
+                     df['description'].astype(str).str.strip()
+                 ).duplicated(keep=False)
              )(
                  frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]]
                  .drop_duplicates(subset=['client', 'account'])
-                 .assign(_k=lambda c: c['client'].astype(str) + '||' + c['account'].astype(str))
-                 .set_index('_k')['account_grp']
+                 .pipe(lambda c: pd.Series(
+                     c['account_grp'].astype(str).values,
+                     index=c['client'].astype(str) + '\x00' + c['account'].astype(str),
+                 ))
                  if 'aglaccounts' in frames and not frames.get('aglaccounts', pd.DataFrame()).empty
                  else pd.Series(dtype=str)
              )
