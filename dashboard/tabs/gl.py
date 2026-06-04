@@ -797,6 +797,5 @@ def render_tab(dq_results, frames):
             html.Span('Being configured against live data', style=_SECTION_BADGE),
         ]),
         render_dimension_grid(dq_results),
-        render_dimensions_table(dq_results),
         _render_dim_structure(frames),
     ])
