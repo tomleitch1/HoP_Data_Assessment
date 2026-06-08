@@ -492,6 +492,21 @@ def get_gl_checks():
              (df['voucher_type'].astype(str).str.strip() != 'ZR')
          )),
 
+        ('GL_JNL_ZR_NO_APAR',
+         23, 'GL Journals', 'Consistency', 'Medium',
+         'HOC ZR journal line is missing apar_id',
+         'ZR voucher type lines in HoC are sub-ledger control entries and must carry an apar_id to identify the supplier or customer being referenced. '
+         'A ZR line without apar_id cannot be matched to the correct AP or AR sub-ledger balance in the new system. '
+         'This check applies to HOC only.',
+         'Populate apar_id on each affected ZR line, or investigate whether the voucher type is correct.',
+         'gl_journals', None,
+         "WHERE client IN ('CA','CM') AND voucher_type = 'ZR' AND (apar_id IS NULL OR apar_id = '')",
+         lambda df: (
+             (_safe_col(df, 'house') == 'HOC') &
+             (df['voucher_type'].astype(str).str.strip() == 'ZR') &
+             (df['apar_id'].isna() | df['apar_id'].astype(str).str.strip().isin(['', 'nan']))
+         )),
+
         ('GL_JNL_DUP_KEY',
          23, 'GL Journals', 'Uniqueness', 'Critical',
          'Duplicate composite primary key (client, voucher_no, sequence_no)',
