@@ -10,7 +10,7 @@ def _safe_col(df, name):
 
 
 def _gl_dim_dup_desc(df, frames):
-    """Flag active dim values with duplicate (client, attribute_id, account_grp, description).
+    """Flag active dim values with duplicate (client, attribute_id, account_grp, dim_value, description).
     account_grp is derived by joining dim_value to aglaccounts.account for the same client.
     Uses only .tolist() / plain Python lookups to avoid pandas ExtensionArray.map() issues."""
     if df.empty:
@@ -45,13 +45,29 @@ def _gl_dim_dup_desc(df, frames):
             compound.append(None)
         else:
             grp = coa_dict.get(f'{c}\x00{v}', '')
-            compound.append(f'{c}\x00{a}\x00{grp}\x00{str(d).strip()}')
+            compound.append(f'{c}\x00{a}\x00{grp}\x00{v}\x00{str(d).strip()}')
 
     dup_keys = {k for k, n in pd.Series(compound).value_counts().items()
                 if k is not None and n > 1}
 
     return pd.Series([k is not None and k in dup_keys for k in compound],
                      index=df.index)
+
+
+def _gl_acc_no_activity(df, frames):
+    """Flag HOC accounts starting 55/56/57 with no posting in the current year journals."""
+    if df.empty:
+        return pd.Series(False, index=df.index)
+    if _safe_col(df, 'house').iloc[0] != 'HOC':
+        return pd.Series(False, index=df.index)
+    in_scope = _safe_col(df, 'account').astype(str).str[:2].isin(['55', '56', '57'])
+    if 'gl_journals' not in frames or frames['gl_journals'].empty:
+        return in_scope
+    posted = set(
+        frames['gl_journals'][frames['gl_journals']['house'] == 'HOC']['account']
+        .astype(str).tolist()
+    )
+    return in_scope & ~_safe_col(df, 'account').astype(str).isin(posted)
 
 
 def _compute_dim_depths(df):
@@ -246,30 +262,6 @@ def get_gl_checks():
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
         ),
 
-        ('GL_DIM_INVALID_CODE',
-         21, 'Dimension Values', 'Consistency', 'High',
-         'GL posting references a dimension code that does not exist in the dimension master',
-         'Every dimension code used on a GL posting must exist as a valid active value in agldimvalue for the same position and client. '
-         'A code present in transactions but absent from the master cannot be validated or migrated — the new system has no record of what it represents. '
-         'This typically indicates a value was deleted from the master after postings were already made against it.',
-         'Reinstate the missing dimension value in agldimvalue, or investigate whether the posting was made in error and requires a correcting journal before migration.',
-         'gl_transact_dim', 'agldimvalue',
-         "WHERE (client, dim_position, dim_value) NOT IN (SELECT client, dim_position, dim_value FROM agldimvalue)",
-         lambda df, frames: (
-             lambda valid: ~(
-                 (df['client'].astype(str) + '||' + df['dim_position'].astype(str) + '||' + df['dim_value'].astype(str))
-                 .isin(valid)
-             )
-         )(
-             set(
-                 (frames['agldimvalue']['client'].astype(str) + '||' +
-                  frames['agldimvalue']['dim_position'].astype(str) + '||' +
-                  frames['agldimvalue']['dim_value'].astype(str))
-                 .tolist()
-             )
-         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
-        ),
-
         # ---------------------------------------------------------------
         # DIMENSION CONFIGURATION — gl_dimconfig (source: agldimension joined to agldimvalue counts)
         # Population: GL_DIM_ATTR_GL_EMPTY → GL-mapped rows only (dim_position 0-7, filtered in engine)
@@ -360,17 +352,6 @@ def get_gl_checks():
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)
         ),
 
-        ('GL_BAL_DUP',
-         22, 'GL Opening Balances', 'Uniqueness', 'High',
-         'Exact duplicate row in the opening balance data',
-         'Each balance entry must be unique. '
-         'Two rows with identical client, account, period, dimension code, voucher, and amount indicate the same posting was extracted or processed twice. '
-         'Duplicate rows will double-count the balance for that account and cause the opening position in the new system to be incorrect.',
-         'Investigate the source of the duplicate and remove the extraneous row before migration.',
-         'aglyearend', None,
-         'WHERE (client, account, period, dim_1, voucher_no, amount) appears more than once',
-         lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
-
         # ---------------------------------------------------------------
         # GL BUDGETS — gl_budgets (source: aglperiodic WHERE voucher_type IN ('GI','SI'))
         # Parliament does not use standard Agresso BU/BV codes. GI and SI are the
@@ -427,17 +408,6 @@ def get_gl_checks():
                  .tolist()
              )
          ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)),
-
-        ('GL_BUD_DUP',
-         23, 'GL Budgets', 'Uniqueness', 'High',
-         'Exact duplicate row in the budget data',
-         'Each budget entry must be unique. '
-         'Two rows with identical client, account, period, dimension code, voucher, and amount indicate the same budget line was loaded or processed twice. '
-         'Duplicate budget rows will inflate the total budget for that account and produce incorrect budget vs actuals comparisons in the new system.',
-         'Investigate the source of the duplicate and remove the extraneous row before migration.',
-         'gl_budgets', None,
-         'WHERE (client, account, period, dim_1, voucher_no, amount) appears more than once',
-         lambda df: df.duplicated(subset=['client', 'account', 'period', 'dim_1', 'voucher_no', 'amount'], keep=False)),
 
         # ---------------------------------------------------------------
         # GL JOURNALS — gl_journals (source: agltransact, current FY actual postings)
@@ -506,20 +476,18 @@ def get_gl_checks():
 
         ('GL_JNL_APAR_MISMATCH',
          23, 'GL Journals', 'Consistency', 'Medium',
-         'Journal line has apar_id or apar_type without its counterpart',
-         'The sub-ledger reference fields apar_id and apar_type must be both populated or both blank. '
-         'apar_id identifies the supplier or customer; apar_type identifies whether it is AP (P) or AR (R). '
-         'A line with one field but not the other cannot be reconciled to the correct sub-ledger in the new system.',
-         'Populate the missing field on each affected line, or clear both fields if the line should carry no sub-ledger reference.',
+         'Journal line has apar_id populated on a non-ZR voucher type',
+         'Sub-ledger references (apar_id) are only expected on ZR voucher type lines. '
+         'An apar_id on any other voucher type indicates the line was mis-coded or carries an unexpected sub-ledger reference. '
+         'These lines cannot be reconciled correctly to the AP or AR sub-ledger in the new system.',
+         'Investigate each affected line. Clear apar_id if it was populated in error, '
+         'or confirm with the finance team whether the voucher type should be ZR.',
          'gl_journals', None,
-         'WHERE (apar_id IS NOT NULL AND apar_type IS NULL) OR (apar_type IS NOT NULL AND apar_id IS NULL)',
+         "WHERE apar_id IS NOT NULL AND apar_id != '' AND voucher_type != 'ZR'",
          lambda df: (
              df['apar_id'].notna() &
-             (df['apar_type'].isna() | df['apar_type'].astype(str).str.strip().isin(['', 'nan']))
-         ) | (
-             df['apar_id'].isna() &
-             df['apar_type'].notna() &
-             ~df['apar_type'].astype(str).str.strip().isin(['', 'nan'])
+             ~df['apar_id'].astype(str).str.strip().isin(['', 'nan']) &
+             (df['voucher_type'].astype(str).str.strip() != 'ZR')
          )),
 
         ('GL_JNL_DUP_KEY',
@@ -562,28 +530,6 @@ def get_gl_checks():
              )
          )(frames['aglaccounts'][frames['aglaccounts']['house'] == df['house'].iloc[0]])
          if 'aglaccounts' in frames else pd.Series(False, index=df.index)),
-
-        ('GL_JNL_DIM1_ORPHAN',
-         23, 'GL Journals', 'Consistency', 'High',
-         'Journal line dim_1 code does not exist in the dimension master',
-         'Where a journal line carries a dim_1 analytical dimension code, that code must exist as an active value in agldimvalue for the same client. '
-         'A dimension code present in journals but absent from the master cannot be validated during migration. '
-         'The new system cannot resolve what the code represents and will reject the line or leave it uncoded.',
-         'Reinstate the missing dimension value in agldimvalue, or investigate whether the journal was coded incorrectly and requires a correcting entry.',
-         'gl_journals', 'agldimvalue',
-         "WHERE dim_1 IS NOT NULL AND dim_1 NOT IN (SELECT dim_value FROM agldimvalue WHERE dim_position = '1' AND client = j.client)",
-         lambda df, frames: (
-             lambda valid: (
-                 df['dim_1'].notna() &
-                 ~(df['client'].astype(str) + '||' + df['dim_1'].astype(str).str.strip()).isin(valid)
-             )
-         )(
-             set(
-                 (frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['client'].astype(str) + '||' +
-                  frames['agldimvalue'][frames['agldimvalue']['dim_position'].astype(str) == '1']['dim_value'].astype(str))
-                 .tolist()
-             )
-         ) if 'agldimvalue' in frames else pd.Series(False, index=df.index)),
 
         # ---------------------------------------------------------------
         # CHART OF ACCOUNTS — aglaccounts
@@ -695,34 +641,34 @@ def get_gl_checks():
 
         ('GL_ACC_DUP_DESC',
          20, 'Chart of Accounts', 'Uniqueness', 'Low',
-         'Two active accounts share the same description within the same client and account group',
-         'Each active account description should be unique within a client and account group. '
-         'Accounts with the same description but belonging to different account groups are not flagged. '
-         'Duplicate descriptions within the same group make it difficult to distinguish accounts in selection screens and reports. '
-         'Staff may code transactions to the wrong account when two accounts appear identical by name, '
+         'Two active accounts share the same description, valid-from, and valid-to within the same client and account group',
+         'Each active account description should be unique within a client, account group, and validity period. '
+         'Accounts with the same description but different validity periods are not flagged — re-use of a description across periods is expected when an account is re-established. '
+         'Duplicate descriptions with identical validity ranges within the same group make it difficult to distinguish accounts in selection screens and reports. '
+         'Staff may code transactions to the wrong account when two accounts appear identical by name and period, '
          'and the descriptions cannot both be used unambiguously in the new system.',
          'Review each duplicate pair and clarify the description of at least one account to make it distinct.',
          'aglaccounts', None,
-         "WHERE status = 'N' AND description appears more than once within the same (client, account_grp)",
+         "WHERE status = 'N' AND (description, period_from, period_to) appears more than once within the same (client, account_grp)",
          lambda df: (
              df['description'].notna() &
              (df['description'].astype(str).str.strip() != '') &
-             df.duplicated(subset=['client', 'account_grp', 'description'], keep=False)
+             df.duplicated(subset=['client', 'account_grp', 'description', 'period_from', 'period_to'], keep=False)
          )),
 
         ('GL_ACC_NO_ACTIVITY',
          20, 'Chart of Accounts', 'Timeliness', 'Low',
-         'Active account with no postings in the current year transaction data',
-         'Active accounts with no postings in the current fiscal year may no longer be required. '
-         'Migrating unused accounts adds unnecessary complexity to the new chart of accounts and may confuse users during go-live. '
-         'These accounts should be reviewed before cutover to confirm whether they are genuinely needed or should be closed.',
-         'Review each inactive account. Close accounts that are no longer required before migration. '
-         'Retain accounts that are used seasonally or expected to receive postings before cutover.',
+         'Active 55/56/57 account (HOC) with no postings in the current year transaction data',
+         'Account series 55, 56, and 57 are the primary expenditure and balance sheet ranges in scope for HoC migration review. '
+         'Active accounts in these ranges with no current-year postings may no longer be required. '
+         'Migrating unused accounts adds unnecessary complexity to the new chart of accounts. '
+         'This check is HOC only — HOL account coding conventions differ and are not assessed here.',
+         'Review each affected account. Close accounts in the 55/56/57 range that have had no activity this year '
+         'if they are no longer required. Retain accounts expected to receive postings before cutover.',
          'aglaccounts', 'gl_journals',
-         'WHERE status = \'N\' AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE client = a.client)',
-         lambda df, frames: ~df['account'].isin(
-             frames['gl_journals'][frames['gl_journals']['house'] == df['house'].iloc[0]]['account']
-         ) if 'gl_journals' in frames and not frames['gl_journals'].empty else pd.Series(False, index=df.index)),
+         "WHERE status = 'N' AND client IN ('CA','CM') AND LEFT(account,2) IN ('55','56','57') "
+         "AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE house = 'HOC')",
+         lambda df, frames: _gl_acc_no_activity(df, frames)),
 
     ]
 
