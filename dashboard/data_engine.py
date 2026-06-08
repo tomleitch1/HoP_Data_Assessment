@@ -1635,6 +1635,16 @@ def get_failing_records(check_id, house, frames, base_cols=None):
             cols.append(c)
     failing.columns = cols
 
+    # Convert datetime64 columns to YYYY-MM-DD strings so the DataTable renders
+    # them correctly. Without this, NaT values (e.g. period_from = 0 in source
+    # data, below the Excel serial parse range) show as "—" even though the raw
+    # CSV has a value.
+    for col in failing.columns:
+        if pd.api.types.is_datetime64_any_dtype(failing[col]):
+            failing[col] = failing[col].dt.strftime('%Y-%m-%d').where(
+                failing[col].notna(), other=''
+            )
+
     return failing
 
 def build_aging_analysis(frames):

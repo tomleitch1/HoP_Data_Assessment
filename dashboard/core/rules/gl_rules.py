@@ -476,15 +476,17 @@ def get_gl_checks():
 
         ('GL_JNL_APAR_MISMATCH',
          23, 'GL Journals', 'Consistency', 'Medium',
-         'Journal line has apar_id populated on a non-ZR voucher type',
-         'Sub-ledger references (apar_id) are only expected on ZR voucher type lines. '
+         'HOC journal line has apar_id populated on a non-ZR voucher type',
+         'For HoC, sub-ledger references (apar_id) are only expected on ZR voucher type lines. '
          'An apar_id on any other voucher type indicates the line was mis-coded or carries an unexpected sub-ledger reference. '
-         'These lines cannot be reconciled correctly to the AP or AR sub-ledger in the new system.',
+         'These lines cannot be reconciled correctly to the AP or AR sub-ledger in the new system. '
+         'This check applies to HOC only.',
          'Investigate each affected line. Clear apar_id if it was populated in error, '
          'or confirm with the finance team whether the voucher type should be ZR.',
          'gl_journals', None,
-         "WHERE apar_id IS NOT NULL AND apar_id != '' AND voucher_type != 'ZR'",
+         "WHERE client IN ('CA','CM') AND apar_id IS NOT NULL AND apar_id != '' AND voucher_type != 'ZR'",
          lambda df: (
+             (_safe_col(df, 'house') == 'HOC') &
              df['apar_id'].notna() &
              ~df['apar_id'].astype(str).str.strip().isin(['', 'nan']) &
              (df['voucher_type'].astype(str).str.strip() != 'ZR')
