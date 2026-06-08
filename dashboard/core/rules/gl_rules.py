@@ -645,23 +645,6 @@ def get_gl_checks():
          "WHERE (client, account) appears more than once with status = 'N'",
          lambda df: df.duplicated(subset=['client', 'account', 'status'], keep=False) & (df['status'] == 'N')),
 
-        ('GL_ACC_DUP_DESC',
-         20, 'Chart of Accounts', 'Uniqueness', 'Low',
-         'Two active accounts share the same description, valid-from, and valid-to within the same client and account group',
-         'Each active account description should be unique within a client, account group, and validity period. '
-         'Accounts with the same description but different validity periods are not flagged — re-use of a description across periods is expected when an account is re-established. '
-         'Duplicate descriptions with identical validity ranges within the same group make it difficult to distinguish accounts in selection screens and reports. '
-         'Staff may code transactions to the wrong account when two accounts appear identical by name and period, '
-         'and the descriptions cannot both be used unambiguously in the new system.',
-         'Review each duplicate pair and clarify the description of at least one account to make it distinct.',
-         'aglaccounts', None,
-         "WHERE status = 'N' AND (description, period_from, period_to) appears more than once within the same (client, account_grp)",
-         lambda df: (
-             df['description'].notna() &
-             (df['description'].astype(str).str.strip() != '') &
-             df.duplicated(subset=['client', 'account_grp', 'description', 'period_from', 'period_to'], keep=False)
-         )),
-
         ('GL_ACC_NO_ACTIVITY',
          20, 'Chart of Accounts', 'Timeliness', 'Low',
          'Active 55/56/57 account (HOC) with no postings in the current year transaction data',
