@@ -493,17 +493,12 @@ def get_check_columns():
         'CUS_BANK_FORMAT':          ['bank_account'],
         'CUS_SWIFT_FORMAT':         ['swift'],
         'CUS_BANK_MISSING':         ['pay_method', 'bank_account', 'clearing_code'],
-        'CUS_WF_STUCK':             ['wf_state'],
         'CUS_EXPIRED_ACTIVE':       ['expired_date', 'status'],
         'CUS_COLLECT_ACTIVE':       ['collect_flag'],
         'CUS_NAME_DUP':             ['apar_name', 'client'],
         'CUS_NAME_DUP_ANY':         ['apar_name', 'client'],
-        'CUS_VAT_DUP':              ['vat_reg_no', 'client'],
         'CUS_BANK_SORT_DUP':        ['bank_account', 'clearing_code', 'client'],
         'CUS_CLIENT_APAR_DUP':      ['client', 'apar_id'],
-        'CUS_XHOUSE_VAT_DUP':       ['vat_reg_no'],
-        'CUS_XHOUSE_COMP_REG_DUP':  ['comp_reg_no'],
-        'CUS_XHOUSE_NAME_DUP':      ['apar_name'],
         'CUS_DORMANT':              ['last_update', 'status'],
         'CUS_SUNDRY':               ['apar_once'],
 
@@ -650,9 +645,6 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         'SUP_XHOUSE_IBAN_DUP':     ['iban'],
         'SUP_XHOUSE_BANK_DUP':     ['bank_account', 'clearing_code'],
         'SUP_XHOUSE_NAME_DUP':     ['apar_name'],
-        'CUS_XHOUSE_VAT_DUP':      ['vat_reg_no'],
-        'CUS_XHOUSE_COMP_REG_DUP': ['comp_reg_no'],
-        'CUS_XHOUSE_NAME_DUP':     ['apar_name'],
     }
     if check_id in _XHOUSE_ID_COLS:
         id_cols = _XHOUSE_ID_COLS[check_id]

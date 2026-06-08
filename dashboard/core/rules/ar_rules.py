@@ -18,20 +18,6 @@ def get_ar_checks():
 
         # ── Completeness ──────────────────────────────────────────────────────
 
-        ('CUS_VAT_MISSING', 11, 'Customers', 'Completeness', 'Medium',
-         'Active customer missing VAT registration number',
-         'Every active customer should have a VAT registration number on record. Without it, invoices raised against this customer cannot be correctly reported for UK tax compliance and the record will fail validation at go-live.',
-         'Verify acuheader.vat_reg_no.', 'acuheader', None,
-         'acuheader.vat_reg_no IS NULL WHERE status != "C"',
-         lambda df: df['vat_reg_no'].isna()),
-
-        ('CUS_COMP_REG_MISSING', 11, 'Customers', 'Completeness', 'Low',
-         'Active customer missing company registration number',
-         'Active customers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the customer before migrating the record.',
-         'Verify acuheader.comp_reg_no.', 'acuheader', None,
-         'acuheader.comp_reg_no IS NULL WHERE status != "C"',
-         lambda df: df['comp_reg_no'].isna()),
-
         ('CUS_TERMS_MISSING', 11, 'Customers', 'Completeness', 'High',
          'Active customer missing payment terms',
          'Payment terms must be assigned to every active customer. The system uses this field to calculate invoice due dates and drive the AR aging report. A customer without terms will cause incorrect aging and cannot generate accurate debtor reports.',
@@ -69,23 +55,6 @@ def get_ar_checks():
 
         # ── Validity ──────────────────────────────────────────────────────────
 
-        ('CUS_VAT_FORMAT', 11, 'Customers', 'Validity', 'High',
-         'VAT number format is invalid (Expected GB + 9 digits)',
-         'VAT registration numbers must follow the HMRC format of GB followed by exactly 9 digits. Numbers that do not match this pattern will fail HMRC validation and cannot be used for tax reporting in the new system.',
-         'Correct acuheader.vat_reg_no.', 'acuheader', None,
-         'acuheader.vat_reg_no NOT LIKE "GB_________" (9 digits)',
-         lambda df: (
-             (~df['vat_reg_no'].str.replace(' ', '', regex=False).str.match(r'^(GB)?\d{9}$', na=False)) &
-             df['vat_reg_no'].notna()
-         )),
-
-        ('CUS_COMP_REG_FORMAT', 11, 'Customers', 'Validity', 'Medium',
-         'Company registration format is invalid (Expected 8 digits)',
-         'Companies House registration numbers must be exactly 8 digits. Records that do not match this format cannot be verified against the Companies House register and may indicate data entry errors.',
-         'Correct acuheader.comp_reg_no.', 'acuheader', None,
-         'acuheader.comp_reg_no NOT LIKE "________" (8 digits)',
-         lambda df: (~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)) & df['comp_reg_no'].notna()),
-
         ('CUS_SORT_FORMAT', 11, 'Customers', 'Validity', 'High',
          'Bank sort code format is invalid (Expected XX-XX-XX or XXXXXX)',
          'Bank sort codes must be in either the XX-XX-XX hyphenated format or plain 6-digit format. Sort codes in any other format will be rejected by collection processing systems.',
@@ -120,13 +89,6 @@ def get_ar_checks():
          'acuheader.pay_method = "DD" AND (bank_account IS NULL OR clearing_code IS NULL)',
          lambda df: (df['pay_method'] == 'DD') & (df['bank_account'].isna() | df['clearing_code'].isna())),
 
-        ('CUS_WF_STUCK', 11, 'Customers', 'Consistency', 'High',
-         'Customer record is stuck in an unapproved workflow state',
-         'Customer records stuck in a workflow have not been fully approved in the source system. These records cannot be safely migrated until the workflow is resolved as their final state is unknown.',
-         'Complete or cancel the workflow in acuheader.wf_state.', 'acuheader', None,
-         'acuheader.wf_state NOT IN ("", "T") AND acuheader.wf_state IS NOT NULL',
-         lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
-
         ('CUS_EXPIRED_ACTIVE', 11, 'Customers', 'Consistency', 'Medium',
          'Customer has an expiry date set but is still marked as active',
          'A customer with an expired_date populated but a status of N is in a contradictory state — it has been end-dated but not formally closed. These records must be resolved before migration to avoid creating customers that are active but should not receive new invoices.',
@@ -157,13 +119,6 @@ def get_ar_checks():
          'COUNT(*) OVER(PARTITION BY house, UPPER(apar_name)) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
-        ('CUS_VAT_DUP', 11, 'Customers', 'Uniqueness', 'High',
-         'Duplicate VAT registration number exists within the same House',
-         'A VAT registration number should identify a unique legal entity within a House. The same VAT number on multiple customer records indicates the same company has been registered more than once, creating duplicate receivable risk.',
-         'Review acuheader.vat_reg_no and consolidate duplicate customer records.', 'acuheader', None,
-         'COUNT(*) OVER(PARTITION BY house, vat_reg_no) > 1',
-         lambda df: df.duplicated(subset=['house', 'vat_reg_no'], keep=False) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
-
         ('CUS_BANK_SORT_DUP', 11, 'Customers', 'Uniqueness', 'High',
          'Duplicate bank account and sort code combination exists within the same House',
          'The combination of bank account number and sort code should identify a unique collection destination within a House. The same bank details on multiple customer records means collections could be applied to the same account under different customer names.',
@@ -177,49 +132,6 @@ def get_ar_checks():
          'Investigate and remove duplicate rows in acuheader.', 'acuheader', None,
          'COUNT(*) OVER(PARTITION BY client, apar_id) > 1',
          lambda df: df.duplicated(subset=['client', 'apar_id'], keep=False)),
-
-        # ── Cross-house uniqueness ─────────────────────────────────────────────
-
-        ('CUS_XHOUSE_VAT_DUP', 11, 'Customers', 'Uniqueness', 'High',
-         'VAT registration number exists in both Houses',
-         'A VAT registration number should appear in only one House. The same VAT number in both HOC and HOL indicates the same legal entity is registered in both systems and must be reviewed before migration to avoid duplicate customer records in the new ERP.',
-         'Review acuheader.vat_reg_no across both Houses and consolidate or map to a single record.', 'acuheader', None,
-         'vat_reg_no IN (SELECT vat_reg_no FROM acuheader GROUP BY vat_reg_no HAVING COUNT(DISTINCT house) > 1)',
-         lambda df, frames: df['vat_reg_no'].isin(
-             (lambda f:
-                 f[f['vat_reg_no'].notna() & (f['status'] != 'C') & (f['vat_reg_no'].str.strip().str.len() > 1)]
-                 .groupby('vat_reg_no')['house'].nunique()
-                 .pipe(lambda s: s[s > 1].index)
-             )(frames.get('acuheader', pd.DataFrame()))
-         ) & df['vat_reg_no'].notna() & (df['vat_reg_no'].str.strip().str.len() > 1)),
-
-        ('CUS_XHOUSE_COMP_REG_DUP', 11, 'Customers', 'Uniqueness', 'Medium',
-         'Company registration number exists in both Houses',
-         'A Companies House registration number should appear in only one House. The same number in both HOC and HOL indicates the same legal entity is registered in both systems and requires consolidation before migration.',
-         'Review acuheader.comp_reg_no across both Houses and consolidate or map to a single record.', 'acuheader', None,
-         'comp_reg_no IN (SELECT comp_reg_no FROM acuheader GROUP BY comp_reg_no HAVING COUNT(DISTINCT house) > 1)',
-         lambda df, frames: df['comp_reg_no'].isin(
-             (lambda f:
-                 f[f['comp_reg_no'].notna() & (f['status'] != 'C') & (f['comp_reg_no'].str.strip().str.len() > 1)]
-                 .groupby('comp_reg_no')['house'].nunique()
-                 .pipe(lambda s: s[s > 1].index)
-             )(frames.get('acuheader', pd.DataFrame()))
-         ) & df['comp_reg_no'].notna() & (df['comp_reg_no'].str.strip().str.len() > 1)),
-
-        ('CUS_XHOUSE_NAME_DUP', 11, 'Customers', 'Uniqueness', 'Low',
-         'Customer name (case-insensitive) exists in both Houses',
-         'Customer names should be checked for matches across both Houses. The same customer name in both HOC and HOL may indicate a duplicate registration, though some customers will legitimately appear in both systems.',
-         'Review acuheader.apar_name matches across Houses and confirm whether records relate to the same legal entity.', 'acuheader', None,
-         'UPPER(apar_name) IN (SELECT UPPER(apar_name) FROM acuheader GROUP BY UPPER(apar_name) HAVING COUNT(DISTINCT house) > 1)',
-         lambda df, frames: df['apar_name'].notna() & (df['apar_name'].str.strip().str.len() > 1) & df['apar_name'].str.strip().str.upper().isin(
-             (lambda f:
-                 (lambda fa:
-                     fa.assign(_n=fa['apar_name'].str.strip().str.upper())
-                     .groupby('_n')['house'].nunique()
-                     .pipe(lambda s: s[s > 1].index)
-                 )(f[f['apar_name'].notna() & (f['status'] != 'C') & (f['apar_name'].str.strip().str.len() > 1)])
-             )(frames.get('acuheader', pd.DataFrame()))
-         )),
 
         # ── Timeliness ────────────────────────────────────────────────────────
 
@@ -331,13 +243,6 @@ def get_ar_checks():
          'Investigate acutrans.rest_amount vs acutrans.amount.', 'acutrans', None,
          'ABS(acutrans.rest_amount) > ABS(acutrans.amount) + 0.01',
          lambda df: df['rest_amount'].abs() > df['amount'].abs() + 0.01),
-
-        ('AR_WF_STUCK', 17, 'AR Invoices', 'Consistency', 'High',
-         'Open invoice is stuck in an unapproved workflow state',
-         'AR invoices stuck in an approval workflow cannot be issued or collected until resolved. These must be cleared before cutover or the outstanding receivable cannot be processed in the new system.',
-         'Complete acutrans.wf_state.', 'acutrans', None,
-         'acutrans.wf_state NOT IN ("", "T") AND acutrans.wf_state IS NOT NULL',
-         lambda df: (~df['wf_state'].isin(['', 'T'])) & df['wf_state'].notna()),
 
         # ── Timeliness ────────────────────────────────────────────────────────
 

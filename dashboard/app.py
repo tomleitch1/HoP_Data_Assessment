@@ -384,7 +384,6 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
     _XHOUSE_CHECKS = {
         'SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP', 'SUP_XHOUSE_IBAN_DUP',
         'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',
-        'CUS_XHOUSE_VAT_DUP', 'CUS_XHOUSE_COMP_REG_DUP', 'CUS_XHOUSE_NAME_DUP',
     }
     is_xhouse = check_id in _XHOUSE_CHECKS
     df = get_failing_records(check_id, house, frames)
