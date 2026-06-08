@@ -244,6 +244,18 @@ def get_ar_checks():
          'ABS(acutrans.rest_amount) > ABS(acutrans.amount) + 0.01',
          lambda df: df['rest_amount'].abs() > df['amount'].abs() + 0.01),
 
+        ('AR_NET_NEG_BAL', 17, 'AR Invoices', 'Consistency', 'Medium',
+         'Customer has a net negative open balance (credits exceed invoices)',
+         'The sum of all open rest_amount values for a customer should be positive. '
+         'A net negative balance means Parliament currently owes this customer money. '
+         'This may indicate an unapplied credit note, an overpayment, or a missing invoice. '
+         'Each affected customer must be reviewed before migration to determine whether the balance should be refunded, offset, or written off.',
+         'Review all open acutrans rows for the affected apar_id and resolve the credit balance.', 'acutrans', None,
+         'SUM(rest_amount) < 0 OVER(PARTITION BY apar_id)',
+         lambda df: df['apar_id'].isin(
+             df.groupby('apar_id')['rest_amount'].sum().pipe(lambda s: s[s < 0].index)
+         )),
+
         # ── Timeliness ────────────────────────────────────────────────────────
 
         ('AR_OVERDUE', 17, 'AR Invoices', 'Timeliness', 'Medium',
