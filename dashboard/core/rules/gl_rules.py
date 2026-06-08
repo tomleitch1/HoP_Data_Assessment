@@ -474,37 +474,26 @@ def get_gl_checks():
          'WHERE trans_date > GETDATE()',
          lambda df: df['trans_date'].notna() & (df['trans_date'] > pd.Timestamp.now())),
 
-        ('GL_JNL_APAR_MISMATCH',
-         23, 'GL Journals', 'Consistency', 'Medium',
-         'HOC journal line has apar_id populated on a non-ZR voucher type',
-         'For HoC, sub-ledger references (apar_id) are only expected on ZR voucher type lines. '
-         'An apar_id on any other voucher type indicates the line was mis-coded or carries an unexpected sub-ledger reference. '
-         'These lines cannot be reconciled correctly to the AP or AR sub-ledger in the new system. '
-         'This check applies to HOC only.',
-         'Investigate each affected line. Clear apar_id if it was populated in error, '
-         'or confirm with the finance team whether the voucher type should be ZR.',
-         'gl_journals', None,
-         "WHERE client IN ('CA','CM') AND apar_id IS NOT NULL AND apar_id != '' AND voucher_type != 'ZR'",
-         lambda df: (
-             (_safe_col(df, 'house') == 'HOC') &
-             df['apar_id'].notna() &
-             ~df['apar_id'].astype(str).str.strip().isin(['', 'nan']) &
-             (df['voucher_type'].astype(str).str.strip() != 'ZR')
-         )),
-
         ('GL_JNL_ZR_NO_APAR',
          23, 'GL Journals', 'Consistency', 'Medium',
-         'HOC ZR journal line is missing apar_id',
-         'ZR voucher type lines in HoC are sub-ledger control entries and must carry an apar_id to identify the supplier or customer being referenced. '
-         'A ZR line without apar_id cannot be matched to the correct AP or AR sub-ledger balance in the new system. '
-         'This check applies to HOC only.',
-         'Populate apar_id on each affected ZR line, or investigate whether the voucher type is correct.',
+         'Journal line is missing apar_id (HOC: ZR lines only; HOL: all lines)',
+         'Sub-ledger references (apar_id) link journal lines to AP or AR records in the new system. '
+         'For HoC, ZR voucher type lines are sub-ledger control entries and must carry an apar_id. '
+         'For HoL, all journal lines are expected to carry an apar_id. '
+         'Missing values prevent sub-ledger reconciliation at migration.',
+         'Populate apar_id on each affected line, or investigate whether the voucher type is correct.',
          'gl_journals', None,
-         "WHERE client IN ('CA','CM') AND voucher_type = 'ZR' AND (apar_id IS NULL OR apar_id = '')",
+         "HOC: voucher_type = 'ZR' AND apar_id missing; HOL: apar_id missing",
          lambda df: (
-             (_safe_col(df, 'house') == 'HOC') &
-             (df['voucher_type'].astype(str).str.strip() == 'ZR') &
-             (df['apar_id'].isna() | df['apar_id'].astype(str).str.strip().isin(['', 'nan']))
+             (
+                 (_safe_col(df, 'house') == 'HOC') &
+                 (df['voucher_type'].astype(str).str.strip() == 'ZR') &
+                 (df['apar_id'].isna() | df['apar_id'].astype(str).str.strip().isin(['', 'nan']))
+             ) |
+             (
+                 (_safe_col(df, 'house') == 'HOL') &
+                 (df['apar_id'].isna() | df['apar_id'].astype(str).str.strip().isin(['', 'nan']))
+             )
          )),
 
         ('GL_JNL_DUP_KEY',
