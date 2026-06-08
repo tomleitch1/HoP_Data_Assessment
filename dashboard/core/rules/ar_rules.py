@@ -80,6 +80,14 @@ def get_ar_checks():
          'acuheader.swift length NOT IN (8, 11) or contains invalid chars',
          lambda df: (~df['swift'].str.match(r'^[A-Z0-9]{8,11}$', na=False)) & df['swift'].notna()),
 
+        ('CUS_CREDIT_ZERO', 11, 'Customers', 'Validity', 'Low',
+         'Active customer has a credit limit explicitly set to zero',
+         'A credit limit of zero is distinct from a missing credit limit — it actively blocks all credit for this customer. '
+         'While this may be intentional for internal or prepayment customers, each record should be reviewed to confirm the zero limit is deliberate before migration.',
+         'Review acuheader.credit_limit and confirm zero limit is intentional.', 'acuheader', None,
+         'acuheader.credit_limit = 0 WHERE status != "C"',
+         lambda df: pd.to_numeric(df['credit_limit'], errors='coerce') == 0),
+
         # ── Consistency ───────────────────────────────────────────────────────
 
         ('CUS_BANK_MISSING', 11, 'Customers', 'Consistency', 'Critical',
@@ -102,6 +110,19 @@ def get_ar_checks():
          'Review acuheader.collect_flag and resolve collection case before migration.', 'acuheader', None,
          'acuheader.collect_flag = 1',
          lambda df: df['collect_flag'].notna() & (pd.to_numeric(df['collect_flag'], errors='coerce') == 1)),
+
+        ('CUS_PARENT_ORPHAN', 11, 'Customers', 'Consistency', 'Medium',
+         'Customer references a parent (main_apar_id) that does not exist in the customer master',
+         'When main_apar_id is set, it must reference a valid customer record in acuheader. '
+         'A broken parent link means the subsidiary cannot be correctly associated with its head office in the new system. '
+         'Subsidiary/parent relationships are used for consolidated credit checking and reporting.',
+         'Verify acuheader.main_apar_id and create or correct the missing parent record.', 'acuheader', 'acuheader',
+         'acuheader.main_apar_id IS NOT NULL AND main_apar_id NOT IN (SELECT apar_id FROM acuheader)',
+         lambda df, frames: (
+             df['main_apar_id'].notna() &
+             ~df['main_apar_id'].astype(str).str.strip().isin(['', 'nan']) &
+             ~df['main_apar_id'].isin(frames.get('acuheader', pd.DataFrame(columns=['apar_id']))['apar_id'])
+         )),
 
         # ── Uniqueness ────────────────────────────────────────────────────────
 
@@ -212,6 +233,15 @@ def get_ar_checks():
          'acutrans.voucher_type IN ("CN","IC","IN","RC") AND acutrans.orig_reference IS NULL',
          lambda df: df['voucher_type'].isin(_CREDIT_NOTE_TYPES) & df['orig_reference'].isna()),
 
+        ('CUS_INTRULE_MISSING', 17, 'AR Invoices', 'Completeness', 'Medium',
+         'Open AR transaction is missing an interest and reminder rule',
+         'The interest and reminder rule (intrule_id) on a transaction controls whether overdue interest is charged and which reminder schedule is applied. '
+         'Without it, the new system cannot automatically generate payment reminders or calculate interest on this receivable. '
+         'Known valid values in Parliament data are MP and OT.',
+         'Populate acutrans.intrule_id from the customer master or the appropriate rule for this transaction.', 'acutrans', None,
+         'acutrans.intrule_id IS NULL OR acutrans.intrule_id = ""',
+         lambda df: df['intrule_id'].isna() | df['intrule_id'].astype(str).str.strip().isin(['', 'nan'])),
+
         # ── Validity ──────────────────────────────────────────────────────────
 
         ('AR_FX_NO_CUR_AMT', 17, 'AR Invoices', 'Validity', 'High',
@@ -257,6 +287,15 @@ def get_ar_checks():
          )),
 
         # ── Timeliness ────────────────────────────────────────────────────────
+
+        ('AR_HIGH_REMINDER', 17, 'AR Invoices', 'Timeliness', 'High',
+         'Invoice has reached a high reminder level (3 or above)',
+         'A reminder level of 3 or above indicates the customer has been chased multiple times without payment. '
+         'These invoices are at significant risk of being irrecoverable and should be reviewed for write-off or escalation before migration. '
+         'Migrating deeply overdue receivables without resolution will inflate the opening AR balance in the new system.',
+         'Review acutrans.rem_level and consider write-off or escalation for each affected invoice.', 'acutrans', None,
+         'acutrans.rem_level >= 3',
+         lambda df: pd.to_numeric(df['rem_level'], errors='coerce') >= 3),
 
         ('AR_OVERDUE', 17, 'AR Invoices', 'Timeliness', 'Medium',
          'Invoice is past its due date and remains uncollected',
