@@ -197,7 +197,14 @@ def load_data(tab=None):
                     errors='coerce'
                 )
 
-        date_cols = ['trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'period_from', 'period_to']
+        date_cols = [
+            'trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date',
+            'period_from', 'period_to',
+            # Asset date columns — arrive as Excel serial integers from SSMS/Excel export
+            'cap_date_from', 'date_from', 'date_to', 'org_amt_date',
+            'at_trans_date', 'max_trans_date', 'min_trans_date',
+            'grp_last_update', 'book_last_update',
+        ]
         # agldimvalue: period_from/period_to are YYYYMM integers (e.g. 201202 = period 2 of 2012),
         # not Excel serial dates. Convert to numeric; parse last_update as normal.
         if table == 'agldimvalue':
@@ -210,6 +217,13 @@ def load_data(tab=None):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
             _date_cols = date_cols
+        elif table in ('asset_master', 'asset_depreciation'):
+            # cap_period_from and depr_period are YYYYPP integers, not dates
+            _yypp = ('cap_period_from', 'depr_period')
+            for col in _yypp:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
+            _date_cols = [c for c in date_cols if c not in _yypp]
         else:
             _date_cols = date_cols
         for col in _date_cols:
