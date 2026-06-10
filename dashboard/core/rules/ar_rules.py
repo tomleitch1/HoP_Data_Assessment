@@ -82,7 +82,10 @@ def get_ar_checks():
          lambda df, frames: (
              df['main_apar_id'].notna() &
              ~df['main_apar_id'].astype(str).str.strip().isin(['', 'nan']) &
-             ~df['main_apar_id'].isin(frames.get('acuheader', pd.DataFrame(columns=['apar_id']))['apar_id'])
+             ~df['main_apar_id'].astype(str).str.strip().isin(
+                 frames.get('acuheader', pd.DataFrame(columns=['apar_id']))['apar_id']
+                       .astype(str).str.strip()
+             )
          )),
 
         # ── Uniqueness ────────────────────────────────────────────────────────
