@@ -69,9 +69,11 @@
 --     potential issue but may be valid for donated or grant-funded assets.
 -- A3. ND volume may still be significant even with the type filter. If the
 --     register has been live for many years on monthly depreciation frequency
---     the ND rows alone could be large. The fiscal_year secondary filter
---     described above is available as a fallback — note it as an assumption
---     if applied.
+--     the ND rows alone could be large. The HOC/HOL run files apply a
+--     fiscal_year >= 2023 filter (current FY 2025 minus 2). Depreciation
+--     posted more than two years ago cannot fail the date_to check for any
+--     asset still active today. CA records older than the window will be
+--     missed — Parliament confirmed this lookback window is acceptable.
 -- A4. This extract does not replace asset_balances.sql for balance derivation.
 --     The two extracts must not be confused — this one is DQ flags only.
 --
