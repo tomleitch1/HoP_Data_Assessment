@@ -11,6 +11,8 @@
 --
 -- Aggregates aattrans to one row per (client, asset_id, depr_book_id, trans_type).
 -- CI (Calculatory Interest) excluded — does not affect NBV or GL balance.
+-- amount is already signed (dc_flag mirrors sign, does not drive it).
+-- SUM(amount) gives correct aggregated balance without dc_flag multiplication.
 -- See asset_balances.sql for full DQ test descriptions and assumptions.
 -- =============================================================================
 

@@ -56,13 +56,10 @@
 -- ASSUMPTIONS
 -- A1. CI (Calculatory Interest) does not affect NBV or the GL balance sheet.
 --     Excluded from this extract by the WHERE clause.
--- A2. dc_flag convention (which sign represents debit vs credit) must be
---     confirmed with Parliament or the technical team before Python aggregation
---     logic is written. The SUM(amount) logic above assumes amounts are signed
---     correctly in the source data. If dc_flag drives the sign rather than the
---     amount field itself, Python must apply dc_flag before aggregating.
---     This is a hard dependency — do not write the Python balance derivation
---     until dc_flag convention is confirmed.
+-- A2. dc_flag is +1 (debit) or -1 (credit). amount is already signed —
+--     negative amounts carry a minus sign directly in the amount field.
+--     dc_flag mirrors the sign but does not drive it. SUM(amount) is
+--     therefore correct as written — no dc_flag multiplication needed.
 -- A3. RV (Reversal) transactions fully offset the transaction they reverse.
 --     Including them in the aggregation means they net out automatically.
 --     If Unit4 stores reversals as equal and opposite amounts, the net effect

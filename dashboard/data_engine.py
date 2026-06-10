@@ -226,7 +226,7 @@ def load_data(tab=None):
         # before any downstream pd.to_numeric calls, otherwise values >= 1000 become NaN
         numeric_cols = ['amount', 'rest_amount', 'cur_amount', 'rest_curr', 'discount',
                         'exch_rate', 'credit_limit', 'pay_delay', 'dc_flag', 'sequence_no',
-                        'update_flag']
+                        'update_flag', 'total_amount', 'total_cur_amount']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(
