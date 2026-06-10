@@ -543,7 +543,7 @@ def get_ar_volumetrics(df_dict: dict) -> dict:
     intro layout as the suppliers tab.
     """
     today = pd.Timestamp.now().normalize()
-    open_statuses = ['N', 'R', 'I', 'P']
+    open_statuses = ['N', 'R', 'I', 'P', 'H']
 
     header = df_dict.get('acuheader', pd.DataFrame())
     trans  = df_dict.get('acutrans',  pd.DataFrame())
@@ -604,7 +604,7 @@ def get_ar_volumetrics(df_dict: dict) -> dict:
         # Balance broken down by status (mirrors AP pattern)
         balance_by_status = {}
         if not t_open.empty and 'status' in t_open.columns and 'rest_amount' in t_open.columns:
-            for s in ['N', 'R', 'I', 'P']:
+            for s in ['N', 'R', 'I', 'P', 'H']:
                 s_rows = t_open[t_open['status'] == s]
                 balance_by_status[s] = float(
                     pd.to_numeric(s_rows['rest_amount'], errors='coerce').sum()

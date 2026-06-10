@@ -53,7 +53,7 @@ class APConfig:
 
 class ARConfig:
     CLOSED_STATUS = 'C'
-    OPEN_TRANSACTION_STATUSES = ['N', 'R', 'I', 'P']
+    OPEN_TRANSACTION_STATUSES = ['N', 'R', 'I', 'P', 'H']
     WORKFLOW_PENDING_STATUSES = ['W', 'R', 'U']
 
 class GLConfig:

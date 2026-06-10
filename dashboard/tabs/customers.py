@@ -19,6 +19,7 @@ _DIV     = '#1e3550'
 # ── Status visual config (AR statuses) ───────────────────────────────────────
 _STATUS = {
     'N': {'color': '#1a7a4a', 'label': 'Normal',       'risk': None},
+    'H': {'color': '#c0711b', 'label': 'On Hold',       'risk': 'medium'},
     'P': {'color': '#c0392b', 'label': 'Parked',        'risk': 'high'},
     'T': {'color': '#d4820a', 'label': 'Terminated',    'risk': 'medium'},
     'R': {'color': '#d4820a', 'label': 'On Proposal',   'risk': None},
@@ -286,7 +287,7 @@ def _seq17_col(house, t):
     count    = t.get('open_count', 0)
     sb       = t.get('status_breakdown', {})
     bb       = t.get('balance_by_status', {})
-    statuses = [s for s in ['N', 'R', 'I', 'P'] if sb.get(s, 0) > 0]
+    statuses = [s for s in ['N', 'H', 'R', 'I', 'P'] if sb.get(s, 0) > 0]
     total_b  = sum(bb.get(s, 0.0) for s in statuses)
 
     return html.Div(style={
