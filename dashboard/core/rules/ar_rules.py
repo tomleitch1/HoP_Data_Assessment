@@ -6,11 +6,6 @@ _CREDIT_NOTE_TYPES  = ['CN', 'IC', 'IN', 'RC']
 _REVERSAL_TYPES     = ['IR', 'PR', 'RV']
 _CREDIT_OR_REVERSAL = _CREDIT_NOTE_TYPES + _REVERSAL_TYPES
 
-# HOC AR voucher types where a negative amount is expected and should not be flagged.
-# Includes receipt/matching types (SR, SM, SN, ZR, MM), adjustment types (ZX),
-# reversal (RV), migration opening balance types (SZ, PM), and system-triggered (ZZ).
-_AR_NEG_EXCLUDE = set(_CREDIT_OR_REVERSAL) | {'ZX', 'SR', 'SM', 'SN', 'ZR', 'MM', 'SZ', 'PM', 'ZZ'}
-
 def get_ar_checks():
     """Returns a list of Customer and AR DQ check definitions."""
     today = pd.Timestamp(date.today())
@@ -209,8 +204,8 @@ def get_ar_checks():
          'Negative amount found on a standard AR invoice voucher type',
          'Standard AR invoices must carry a positive amount. A negative amount on an invoice type indicates the wrong voucher type has been used — the record should be a credit note, not an invoice.',
          'Correct acutrans.voucher_type or repost as a credit note.', 'acutrans', None,
-         'acutrans.amount < 0 AND acutrans.voucher_type NOT IN (RV, ZX, SR, SM, SN, ZR, MM, SZ, PM, ZZ, CN, IC, IN, RC, IR, PR)',
-         lambda df: (df['amount'] < 0) & ~df['voucher_type'].isin(_AR_NEG_EXCLUDE)),
+         'acutrans.amount < 0 AND acutrans.voucher_type IN ("SI", "SC")',
+         lambda df: (df['amount'] < 0) & df['voucher_type'].isin(['SI', 'SC'])),
 
         # ── Consistency ───────────────────────────────────────────────────────
 
