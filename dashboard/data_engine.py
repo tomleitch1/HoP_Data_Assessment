@@ -38,6 +38,20 @@ def _data_path(base_name: str, suffix: str = '') -> str:
 _EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
 _EXCEL_MIN, _EXCEL_MAX = 20000, 55000  # approx year 1954 – 2050
 
+_CACHE_DIR = os.path.join('data', '.cache')
+
+def _cache_path(table: str) -> str:
+    return os.path.join(_CACHE_DIR, f'{table}.pkl')
+
+def _cache_fresh(table: str, source_paths: list) -> bool:
+    """True if the cached pickle exists and is newer than all source CSVs."""
+    cp = _cache_path(table)
+    if not os.path.exists(cp):
+        return False
+    ct = os.path.getmtime(cp)
+    return all(not os.path.exists(p) or os.path.getmtime(p) <= ct for p in source_paths)
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
     """
     Parse a date column that may arrive in three formats:
@@ -52,6 +66,21 @@ def _parse_dates(series: pd.Series) -> pd.Series:
     s = series.astype(str).str.strip().str.split().str[0]
     blank = s.isin(['nan', 'None', 'NaT', ''])
     result = pd.Series(pd.NaT, index=series.index, dtype='datetime64[us]')
+
+    non_blank = s[~blank]
+    if non_blank.empty:
+        return result
+
+    # Fast path: if ALL non-blank values are numeric, skip straight to Excel
+    # serial conversion. On real SSMS/Excel exports every date is an integer
+    # serial — this avoids two wasted pd.to_datetime format attempts per column.
+    if pd.to_numeric(non_blank, errors='coerce').notna().all():
+        numeric = pd.to_numeric(non_blank, errors='coerce')
+        in_range = numeric[numeric.between(_EXCEL_MIN, _EXCEL_MAX)]
+        if not in_range.empty:
+            converted = (_EXCEL_ORIGIN + pd.to_timedelta(in_range.astype(int), unit='D')).dt.as_unit('us')
+            result[in_range.index] = converted
+        return result
 
     # 1. ISO YYYY-MM-DD
     iso = pd.to_datetime(s, format='%Y-%m-%d', errors='coerce')
@@ -110,6 +139,7 @@ def load_data(tab=None):
     loaded.  Pass None (default) to load everything.
     """
     frames = {}
+    _cached = set()  # tables loaded from cache — skip re-processing
 
     names_to_load = set(SUBDIR.get(tab, [])) if tab else {
         n for names in SUBDIR.values() for n in names
@@ -156,6 +186,11 @@ def load_data(tab=None):
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
             continue
+        source_paths = [_data_path(base_name, f'_{h}') for h in ['HOC', 'HOL']]
+        if _cache_fresh(table, source_paths):
+            frames[table] = pd.read_pickle(_cache_path(table))
+            _cached.add(table)
+            continue
         dfs = []
         for house in ['HOC', 'HOL']:
             path = _data_path(base_name, f'_{house}')
@@ -171,8 +206,10 @@ def load_data(tab=None):
         if dfs:
             frames[table] = pd.concat(dfs, ignore_index=True)
 
-    # Process all frames for strings and dates
+    # Process frames that were not loaded from cache
     for table, df in frames.items():
+        if table in _cached:
+            continue
         # Force ID and registration columns to string to prevent DQ test errors
         string_cols = ['apar_id', 'vat_reg_no', 'comp_reg_no', 'bank_account', 'clearing_code', 'swift', 'iban', 'ext_inv_ref', 'voucher_no', 'account', 'dim_value', 'rel_value']
         for col in string_cols:
@@ -230,6 +267,15 @@ def load_data(tab=None):
             if col in df.columns:
                 df[col] = _parse_dates(df[col])
         frames[table] = df
+
+    # Save newly processed frames to cache for fast reload next run
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    for table, df in frames.items():
+        if table not in _cached:
+            try:
+                df.to_pickle(_cache_path(table))
+            except Exception:
+                pass
 
     return frames
 
