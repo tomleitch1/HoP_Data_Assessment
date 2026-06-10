@@ -196,10 +196,9 @@ SELECT
     g.depr_method,          -- Group default depreciation method. LIN/BAL/EXP/SYD.
     g.depr_percent,         -- Group default depreciation rate (%). Required for BAL method.
     g.lifetime,             -- Group default useful life in years. Required for LIN and SYD.
-    g.res_value,            -- Group default residual value.
-    g.res_val_flag,         -- Controls how residual value is applied in calculation.
-    g.salvage_amount,       -- Group default salvage/scrap value.
     g.depr_start,           -- When depreciation begins for assets in this group.
+    -- NOTE: res_value, res_val_flag, salvage_amount do not exist on aatassetgroup.
+    --       These fields are book-level only (aatassetgrbook) — see book_* columns below.
                             -- e.g. from capitalisation date, period start. SI needs this.
     g.depr_limit,           -- Minimum depreciation threshold for this group.
     g.depr_max_perc,        -- Maximum annual depreciation as % of fixed value.
