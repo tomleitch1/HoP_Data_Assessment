@@ -56,10 +56,12 @@
 -- ASSUMPTIONS
 -- A1. CI (Calculatory Interest) does not affect NBV or the GL balance sheet.
 --     Excluded from this extract by the WHERE clause.
--- A2. dc_flag is +1 (debit) or -1 (credit). amount is already signed —
---     negative amounts carry a minus sign directly in the amount field.
---     dc_flag mirrors the sign but does not drive it. SUM(amount) is
---     therefore correct as written — no dc_flag multiplication needed.
+-- A2. dc_flag = 1 marks real transactions; dc_flag = -1 marks the AT
+--     module's year-end reset reversals. Every real transaction is
+--     exactly mirrored by a dc_flag=-1 entry, causing SUM(amount) across
+--     all history to equal zero. The WHERE clause must include dc_flag = 1
+--     to extract real transactions only. Confirmed from real HoC data
+--     June 2026.
 -- A3. RV (Reversal) transactions fully offset the transaction they reverse.
 --     Including them in the aggregation means they net out automatically.
 --     If Unit4 stores reversals as equal and opposite amounts, the net effect

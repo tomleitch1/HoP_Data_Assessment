@@ -11,8 +11,9 @@
 --
 -- Aggregates aattrans to one row per (client, asset_id, depr_book_id, trans_type).
 -- CI (Calculatory Interest) excluded — does not affect NBV or GL balance.
--- amount is already signed (dc_flag mirrors sign, does not drive it).
--- SUM(amount) gives correct aggregated balance without dc_flag multiplication.
+-- dc_flag = 1 filters to real transactions only. dc_flag = -1 entries are
+-- the AT module's year-end reset reversals — including them causes every
+-- trans_type group to SUM to zero. Confirmed from real HoC data June 2026.
 -- See asset_balances.sql for full DQ test descriptions and assumptions.
 -- =============================================================================
 
@@ -33,6 +34,7 @@ FROM
 WHERE
     client = 'LA'
     AND trans_type != 'CI'
+    AND dc_flag = 1
 GROUP BY
     client,
     asset_id,
