@@ -457,6 +457,69 @@ The `get_failing_records` early-return for `AP_ORPHANED_TRANS` returns a summary
 
 ---
 
+## Customer / AR Domain — Implementation Details
+
+### `voucher_type` codes in acutrans / acuhistr
+
+HOC and HOL use entirely different picklists for AR voucher types. The same code can mean different things in each house.
+
+**HOC AR voucher types — standard invoice/sales types (positive amount expected):**
+
+| Code | Description | Category |
+|------|-------------|----------|
+| `SI` | Sales Invoices | Invoice |
+| `SC` | Catering and Retail | Invoice |
+| `BA` | BizTalk Events Perfect Invoices | Invoice |
+| `BC` | BizTalk Micros Sales | Invoice |
+| `BD` | BizTalk Micros On Account Sales | Invoice |
+| `BG` | BizTalk TSO Invoice | Invoice |
+| `BH` | BizTalk IndiCater Invoices | Invoice |
+| `BP` | BizTalk RMS On Account Sales | Invoice |
+| `BS` | BizTalk Tours Ticketing | Invoice |
+
+**HOC AR voucher types — negative amount expected (receipts, matching, reversals, adjustments):**
+
+| Code | Description |
+|------|-------------|
+| `RV` | Reversing entries |
+| `ZX` | Invoice Adjustments |
+| `SR` | Cash Receipts |
+| `SM` | Matched Receipts |
+| `SN` | Manual Matching Customer Transactions |
+| `ZR` | Central Allocated Receipts |
+| `MM` | Manual Matching |
+| `SZ` | AR O/S Invoices from 5.4 (migration) |
+| `PM` | O/S AR Transactions from 5.4 (migration) |
+| `ZZ` | Transactions post Periodical Triggers |
+
+**HOL AR voucher types — standard invoice/sales types (positive amount expected):**
+
+| Code | Description | Category |
+|------|-------------|----------|
+| `DR` | Debtors Refreshment Department | Invoice |
+| `RI` | Registered Invoices | Invoice |
+| `EI` | EPOS Interface Journals | Invoice |
+| `MI` | Micros Interface Journals | Invoice |
+
+**HOL AR voucher types — negative amount expected (credit notes, reversals, receipts, write-offs):**
+
+| Code | Description |
+|------|-------------|
+| `CN` | Purchase Credit Notes |
+| `IC` | Incoming Invoices Registration Credit Notes |
+| `IN` | Incoming Invoices Posting Credit Notes |
+| `RC` | Registration Credit Notes |
+| `IR` | Incoming Invoices Payment Reversal |
+| `PR` | Payment Reversal |
+| `RV` | Reversals |
+| `DB` | Debtors - Banking |
+| `DP` | Debtors - Post payments against invoices |
+| `WO` | Debtors Write-Off |
+
+**`AR_NEG_INV` check logic:** flags negative `amount` only on the house-specific invoice whitelist above. HOC and HOL whitelists are applied per row using the `house` column. Any code not in the whitelist is left unchecked (most AR types can legitimately carry either sign).
+
+---
+
 ## SSMS Extraction Quirks
 
 Known issues when extracting data on the Parliament laptop and saving via Excel:
