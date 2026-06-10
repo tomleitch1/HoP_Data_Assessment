@@ -46,39 +46,7 @@ def get_ar_checks():
          'acuheader.credit_limit IS NULL WHERE status != "C"',
          lambda df: df['credit_limit'].isna()),
 
-        ('CUS_SWIFT_MISSING', 11, 'Customers', 'Completeness', 'Medium',
-         'Customer has an IBAN but is missing a SWIFT/BIC code',
-         'Customers with an IBAN must also have a SWIFT/BIC code populated. International payment systems require both fields to route cross-border receipts correctly. An IBAN without a SWIFT code will cause international collection instructions to be rejected.',
-         'Populate acuheader.swift.', 'acuheader', None,
-         'acuheader.iban IS NOT NULL AND acuheader.swift IS NULL',
-         lambda df: df['iban'].notna() & df['swift'].isna()),
-
         # ── Validity ──────────────────────────────────────────────────────────
-
-        ('CUS_SORT_FORMAT', 11, 'Customers', 'Validity', 'High',
-         'Bank sort code format is invalid (Expected XX-XX-XX or XXXXXX)',
-         'Bank sort codes must be in either the XX-XX-XX hyphenated format or plain 6-digit format. Sort codes in any other format will be rejected by collection processing systems.',
-         'Correct acuheader.clearing_code.', 'acuheader', None,
-         'acuheader.clearing_code NOT LIKE "__-__-__" AND NOT LIKE "______" (6 digits)',
-         lambda df: (
-             df['clearing_code'].notna() &
-             ~df['clearing_code'].str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False) &
-             ~('0' + df['clearing_code'].fillna('')).str.match(r'^(\d{2}-\d{2}-\d{2}|\d{6})$', na=False)
-         )),
-
-        ('CUS_BANK_FORMAT', 11, 'Customers', 'Validity', 'High',
-         'Bank account format is invalid (More than 8 digits, or contains non-numeric characters)',
-         'Bank account numbers must contain only digits and be no longer than 8 digits. Values exceeding 8 digits or containing non-numeric characters will be rejected during collection processing.',
-         'Correct acuheader.bank_account.', 'acuheader', None,
-         'acuheader.bank_account containing non-digits OR length > 8',
-         lambda df: df['bank_account'].notna() & ~df['bank_account'].str.match(r'^\d{1,8}$', na=False)),
-
-        ('CUS_SWIFT_FORMAT', 11, 'Customers', 'Validity', 'High',
-         'SWIFT/BIC format is invalid (Expected 8 or 11 chars)',
-         'SWIFT/BIC codes must be either 8 or 11 alphanumeric characters in line with the internationally recognised standard. Codes that do not match this format will be rejected by international payment systems.',
-         'Correct acuheader.swift.', 'acuheader', None,
-         'acuheader.swift length NOT IN (8, 11) or contains invalid chars',
-         lambda df: (~df['swift'].str.match(r'^[A-Z0-9]{8,11}$', na=False)) & df['swift'].notna()),
 
         ('CUS_CREDIT_ZERO', 11, 'Customers', 'Validity', 'Low',
          'Active customer has a credit limit explicitly set to zero',
@@ -89,13 +57,6 @@ def get_ar_checks():
          lambda df: pd.to_numeric(df['credit_limit'], errors='coerce') == 0),
 
         # ── Consistency ───────────────────────────────────────────────────────
-
-        ('CUS_BANK_MISSING', 11, 'Customers', 'Consistency', 'Critical',
-         'Payment method indicates Direct Debit but bank details are missing',
-         'Customers set to Direct Debit must have both a bank account number and a sort code populated. A DD collection cannot be initiated without these details. Any outstanding balance against this customer would need to be collected manually.',
-         'Obtain and populate acuheader.bank_account and clearing_code.', 'acuheader', None,
-         'acuheader.pay_method = "DD" AND (bank_account IS NULL OR clearing_code IS NULL)',
-         lambda df: (df['pay_method'] == 'DD') & (df['bank_account'].isna() | df['clearing_code'].isna())),
 
         ('CUS_EXPIRED_ACTIVE', 11, 'Customers', 'Consistency', 'Medium',
          'Customer has an expiry date set but is still marked as active',
@@ -140,13 +101,6 @@ def get_ar_checks():
          'COUNT(*) OVER(PARTITION BY house, UPPER(apar_name)) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
-        ('CUS_BANK_SORT_DUP', 11, 'Customers', 'Uniqueness', 'High',
-         'Duplicate bank account and sort code combination exists within the same House',
-         'The combination of bank account number and sort code should identify a unique collection destination within a House. The same bank details on multiple customer records means collections could be applied to the same account under different customer names.',
-         'Review acuheader.bank_account and clearing_code and confirm each is a distinct entity.', 'acuheader', None,
-         'COUNT(*) OVER(PARTITION BY house, bank_account, clearing_code) > 1',
-         lambda df: df.duplicated(subset=['house', 'bank_account', 'clearing_code'], keep=False) & df['bank_account'].notna() & df['clearing_code'].notna() & (df['bank_account'].str.strip().str.len() > 1) & (df['clearing_code'].str.strip().str.len() > 1)),
-
         ('CUS_CLIENT_APAR_DUP', 11, 'Customers', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id) combination found in customer master',
          'The combination of client code and customer ID must be unique in the customer master. Any duplicate on this key is a data integrity error in the source system that must be resolved before the record can be safely migrated.',
@@ -176,13 +130,6 @@ def get_ar_checks():
          )),
 
         # ── Validity (scope) ──────────────────────────────────────────────────
-
-        ('CUS_SUNDRY', 11, 'Customers', 'Validity', 'Low',
-         'Record is a Sundry/One-time customer',
-         'One-time (sundry) customer records are typically created for single-use billing and are not part of the standing customer master. These records should be reviewed to confirm whether they need to be included in migration scope.',
-         'Verify acuheader.apar_once migration scope.', 'acuheader', None,
-         'acuheader.apar_once = "1" OR "Y"',
-         lambda df: df['apar_once'].isin(['1', 'Y', 1])),
 
 
         # ======================================================================
