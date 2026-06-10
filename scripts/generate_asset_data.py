@@ -22,7 +22,7 @@ fake = Faker('en_GB')
 random.seed(42)
 Faker.seed(42)
 
-OUTPUT_DIR = 'data'
+OUTPUT_DIR = os.path.join('data', 'assets')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TODAY = date.today()
@@ -197,8 +197,9 @@ def make_clean_trans_flags(client: str, asset_id: str, book_id: str, master_row:
     rows = []
     start_date = date.fromisoformat(master_row['cap_date_from']) if master_row['cap_date_from'] else date.fromisoformat(master_row['date_from'])
     org_amount = master_row['org_amount'] or 0.0
-    
+
     if org_amount > 0:
+        # CA — individual row (row_type=INDIVIDUAL mirrors the real SQL extract)
         rows.append({
             'client': client, 'asset_id': asset_id, 'depr_book_id': book_id,
             'trans_type': 'CA',
@@ -207,24 +208,34 @@ def make_clean_trans_flags(client: str, asset_id: str, book_id: str, master_row:
             'fiscal_year': start_date.year,
             'amount': org_amount,
             'dc_flag': 1,
+            'row_type': 'INDIVIDUAL',
             '_edge_case': None
         })
-        
+
+        # ND — one aggregated LATEST_DEPR row (MAX trans_date across all ND postings).
+        # Real SQL does GROUP BY to avoid millions of monthly-depreciation rows.
+        nd_dates = []
         for i in range(3):
             nd_date = start_date + timedelta(days=30*(i+1))
-            if nd_date > TODAY: break
-            if master_row['date_to'] and nd_date > date.fromisoformat(master_row['date_to']): break
+            if nd_date > TODAY:
+                break
+            if master_row['date_to'] and nd_date > date.fromisoformat(master_row['date_to']):
+                break
+            nd_dates.append(nd_date)
+        if nd_dates:
             rows.append({
                 'client': client, 'asset_id': asset_id, 'depr_book_id': book_id,
                 'trans_type': 'ND',
-                'trans_date': nd_date.isoformat(),
-                'at_trans_date': nd_date.isoformat(),
-                'fiscal_year': nd_date.year,
-                'amount': -round(org_amount * 0.01, 2),
-                'dc_flag': -1,
+                'trans_date': max(nd_dates).isoformat(),
+                'at_trans_date': None,
+                'fiscal_year': None,
+                'amount': None,
+                'dc_flag': None,
+                'row_type': 'LATEST_DEPR',
                 '_edge_case': None
             })
-            
+
+        # SA — individual row for disposed/transferred assets
         if master_row['status'] in ('C', 'T'):
             disp_date = date.fromisoformat(master_row['date_to']) if master_row['date_to'] else TODAY
             rows.append({
@@ -235,9 +246,10 @@ def make_clean_trans_flags(client: str, asset_id: str, book_id: str, master_row:
                 'fiscal_year': disp_date.year,
                 'amount': org_amount * 0.5,
                 'dc_flag': -1,
+                'row_type': 'INDIVIDUAL',
                 '_edge_case': None
             })
-            
+
     return rows
 
 def generate_house_data(house: str, clients: list, n_baseline: int):
@@ -412,7 +424,7 @@ def generate_house_data(house: str, clients: list, n_baseline: int):
         'depr_book_id': tlist[0]['depr_book_id'], 'trans_type': 'SA',
         'trans_date': TODAY.isoformat(), 'at_trans_date': TODAY.isoformat(),
         'fiscal_year': TODAY.year, 'amount': 1000, 'dc_flag': -1,
-        '_edge_case': 'DQ-AF-X01'
+        'row_type': 'INDIVIDUAL', '_edge_case': 'DQ-AF-X01'
     }])
     
     def mod_af_x02(tlist):
@@ -453,14 +465,15 @@ def generate_house_data(house: str, clients: list, n_baseline: int):
     trans_rows.append({
         'client': c, 'asset_id': 'ORPHAN_TRANS', 'depr_book_id': 'FINBOOK',
         'trans_type': 'CA', 'trans_date': TODAY.isoformat(), 'at_trans_date': TODAY.isoformat(),
-        'fiscal_year': TODAY.year, 'amount': 1000.0, 'dc_flag': 1, '_edge_case': 'DQ-AM-R01'
+        'fiscal_year': TODAY.year, 'amount': 1000.0, 'dc_flag': 1,
+        'row_type': 'INDIVIDUAL', '_edge_case': 'DQ-AM-R01'
     })
 
     # Return DataFrames with guaranteed column order matching SQL
     cols_m = ['client', 'asset_id', 'asset_group', 'description', 'short_info', 'status', 'wf_state', 'cap_date_from', 'cap_period_from', 'date_from', 'date_to', 'apar_id', 'parent_asset', 'grant_flag', 'org_amount', 'org_amt_date', 'base_amount', 'std_amount', 'ins_amount', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7', 'last_update', 'user_id', '_edge_case']
     cols_d = ['client', 'asset_id', 'depr_book_id', 'status', 'depr_method', 'depr_percent', 'lifetime', 'res_value', 'res_val_flag', 'salvage_amount', 'cap_date_from', 'cap_period_from', 'cap_flag', 'date_from', 'date_to', 'depr_period', 'depr_limit', 'depr_max_perc', 'nbv_rounding', 'switch', 'period_exact', 'frequency', 'index_id', 'index_code', 'repl_amount', 'dim_1', 'dim_2', 'dim_3', 'dim_4', 'dim_5', 'dim_6', 'dim_7', 'last_update', 'user_id', '_edge_case']
     cols_b = ['client', 'asset_id', 'depr_book_id', 'trans_type', 'total_amount', 'total_cur_amount', 'max_trans_date', 'min_trans_date', 'transaction_count', '_edge_case']
-    cols_t = ['client', 'asset_id', 'depr_book_id', 'trans_type', 'trans_date', 'at_trans_date', 'fiscal_year', 'amount', 'dc_flag', '_edge_case']
+    cols_t = ['client', 'asset_id', 'depr_book_id', 'trans_type', 'trans_date', 'at_trans_date', 'fiscal_year', 'amount', 'dc_flag', 'row_type', '_edge_case']
     
     return (
         pd.DataFrame(master_rows)[cols_m],
