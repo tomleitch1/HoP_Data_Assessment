@@ -204,8 +204,8 @@ def get_ar_checks():
          'Negative amount found on a standard AR invoice voucher type',
          'Standard AR invoices must carry a positive amount. A negative amount on an invoice type indicates the wrong voucher type has been used — the record should be a credit note, not an invoice.',
          'Correct acutrans.voucher_type or repost as a credit note.', 'acutrans', None,
-         'acutrans.amount < 0 AND acutrans.voucher_type IN ("SI", "SC")',
-         lambda df: (df['amount'] < 0) & df['voucher_type'].isin(['SI', 'SC'])),
+         'acutrans.amount < 0 AND acutrans.voucher_type IN ("SI", "SC", "BA", "BC", "BD", "BG", "BH", "BP", "BS")',
+         lambda df: (df['amount'] < 0) & df['voucher_type'].isin(['SI', 'SC', 'BA', 'BC', 'BD', 'BG', 'BH', 'BP', 'BS'])),
 
         # ── Consistency ───────────────────────────────────────────────────────
 
