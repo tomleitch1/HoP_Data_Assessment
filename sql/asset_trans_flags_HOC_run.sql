@@ -9,15 +9,14 @@
 -- Output    : asset_trans_flags_HOC.csv
 -- Place in  : data/assets/
 --
--- Fiscal year filter applied: fiscal_year >= 2023 (current FY 2025 minus 2).
--- Depreciation posted more than two years ago cannot fail the date_to check
--- for any asset still active today. CA (capitalisation) events older than the
--- window will be missed — confirm with Parliament that this lookback is acceptable.
--- See asset_trans_flags.sql (full spec) for complete DQ test descriptions.
+-- See asset_trans_flags.sql for full design rationale.
+-- Hybrid extract: individual rows for CA/SA, aggregated MAX date for ND/ED/FD.
+-- The row_type column tells Python which is which.
 -- =============================================================================
 
 USE Agresso_HoC;
 
+-- Part 1: Individual CA and SA transactions (low volume, full row detail needed)
 SELECT
     client,
     asset_id,
@@ -27,13 +26,39 @@ SELECT
     at_trans_date,
     fiscal_year,
     amount,
-    dc_flag
+    dc_flag,
+    'INDIVIDUAL'    AS row_type
 FROM
     aattrans
 WHERE
     client IN ('CA', 'CM')
-    AND trans_type IN ('CA', 'SA', 'ND', 'ED', 'FD')
-    AND fiscal_year >= 2023
+    AND trans_type IN ('CA', 'SA')
+
+UNION ALL
+
+-- Part 2: Latest depreciation date per asset/book/type (collapses high-volume ND/ED/FD)
+SELECT
+    client,
+    asset_id,
+    depr_book_id,
+    trans_type,
+    MAX(trans_date) AS trans_date,
+    NULL            AS at_trans_date,
+    NULL            AS fiscal_year,
+    NULL            AS amount,
+    NULL            AS dc_flag,
+    'LATEST_DEPR'   AS row_type
+FROM
+    aattrans
+WHERE
+    client IN ('CA', 'CM')
+    AND trans_type IN ('ND', 'ED', 'FD')
+GROUP BY
+    client,
+    asset_id,
+    depr_book_id,
+    trans_type
+
 ORDER BY
     client,
     asset_id,
