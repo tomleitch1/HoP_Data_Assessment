@@ -548,7 +548,7 @@ def get_check_columns():
         'CUS_CREDIT_LIMIT_MISSING': ['credit_limit'],
         'CUS_VAT_FORMAT':           ['vat_reg_no'],
         'CUS_COMP_REG_FORMAT':      ['comp_reg_no'],
-        'CUS_CREDIT_ZERO':          ['credit_limit'],
+        'CUS_CREDIT_NONZERO':       ['credit_limit'],
         'CUS_PARENT_ORPHAN':        ['apar_id', 'main_apar_id'],
         'CUS_EXPIRED_ACTIVE':       ['expired_date', 'status'],
         'CUS_COLLECT_ACTIVE':       ['collect_flag'],

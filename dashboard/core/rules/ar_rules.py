@@ -47,13 +47,13 @@ def get_ar_checks():
 
         # ── Validity ──────────────────────────────────────────────────────────
 
-        ('CUS_CREDIT_ZERO', 11, 'Customers', 'Validity', 'Low',
-         'Active customer has a credit limit explicitly set to zero',
-         'A credit limit of zero is distinct from a missing credit limit — it actively blocks all credit for this customer. '
-         'While this may be intentional for internal or prepayment customers, each record should be reviewed to confirm the zero limit is deliberate before migration.',
-         'Review acuheader.credit_limit and confirm zero limit is intentional.', 'acuheader', None,
-         'acuheader.credit_limit = 0 WHERE status != "C"',
-         lambda df: pd.to_numeric(df['credit_limit'], errors='coerce') == 0),
+        ('CUS_CREDIT_NONZERO', 11, 'Customers', 'Validity', 'Low',
+         'Active customer has a non-zero credit limit set',
+         'Credit limits are not used operationally at Parliament — the standard is zero for all customers. '
+         'A non-zero credit limit indicates a record has been manually overridden and should be reviewed before migration to confirm whether the limit should be carried across or reset to zero in the new system.',
+         'Review acuheader.credit_limit and confirm whether the non-zero limit is intentional.', 'acuheader', None,
+         'acuheader.credit_limit != 0 AND credit_limit IS NOT NULL WHERE status != "C"',
+         lambda df: pd.to_numeric(df['credit_limit'], errors='coerce').fillna(0) != 0),
 
         ('CUS_VAT_FORMAT', 11, 'Customers', 'Validity', 'Medium',
          'Customer VAT registration number format is invalid',
