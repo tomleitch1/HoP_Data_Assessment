@@ -222,14 +222,26 @@ def get_ar_checks():
          lambda df: (df['currency'] != 'GBP') & df['cur_amount'].isna()),
 
         ('AR_NEG_INV', 17, 'AR Invoices', 'Validity', 'Medium',
-         'Negative amount found on a standard AR invoice voucher type',
-         'Standard AR invoices must carry a positive amount. A negative amount on an invoice type indicates the wrong voucher type has been used — the record should be a credit note, not an invoice.',
-         'Correct acutrans.voucher_type or repost as a credit note.', 'acutrans', None,
-         'HOC: amount < 0 AND voucher_type IN (SI,SC,BA,BC,BD,BG,BH,BP,BS) | HOL: amount < 0 AND voucher_type IN (DR,RI,EI,MI)',
-         lambda df: (df['amount'] < 0) & (
-             ((df['house'] == 'HOC') & df['voucher_type'].isin(['SI', 'SC', 'BA', 'BC', 'BD', 'BG', 'BH', 'BP', 'BS'])) |
-             ((df['house'] == 'HOL') & df['voucher_type'].isin(['DR', 'RI', 'EI', 'MI']))
-         )),
+         'Negative amount found on a standard AR invoice voucher type with no matching paid history',
+         'Standard AR invoices must carry a positive amount. A negative amount on an invoice type indicates the wrong voucher type has been used — the record should be a credit note, not an invoice. '
+         'Records are excluded where the same voucher number already has positive lines in AR history — those are internal accounting split entries from automated interfaces (e.g. BizTalk Events Perfect) where the invoice was paid and the negative line is a VAT contra artifact, not a genuine wrong-type posting.',
+         'Correct acutrans.voucher_type or repost as a credit note.', 'acutrans', 'acuhistr',
+         'HOC: amount < 0 AND voucher_type IN (SI,SC,BA,...) AND voucher_no NOT IN (SELECT voucher_no FROM acuhistr WHERE amount > 0 AND apar_id = acutrans.apar_id)',
+         lambda df, frames: (
+             lambda hist: (
+                 pd.to_numeric(df['amount'], errors='coerce').lt(0) &
+                 (
+                     ((df['house'] == 'HOC') & df['voucher_type'].isin(['SI', 'SC', 'BA', 'BC', 'BD', 'BG', 'BH', 'BP', 'BS'])) |
+                     ((df['house'] == 'HOL') & df['voucher_type'].isin(['DR', 'RI', 'EI', 'MI']))
+                 ) &
+                 ~(df['apar_id'].astype(str) + '||' + df['house'].astype(str) + '||' + df['voucher_no'].astype(str)).isin(
+                     (hist[pd.to_numeric(hist['amount'], errors='coerce') > 0][['apar_id', 'house', 'voucher_no']]
+                      .drop_duplicates()
+                      .pipe(lambda h: h['apar_id'].astype(str) + '||' + h['house'].astype(str) + '||' + h['voucher_no'].astype(str)))
+                     if len(hist) > 0 else pd.Series([], dtype=str)
+                 )
+             )
+         )(frames.get('acuhistr', pd.DataFrame(columns=['apar_id', 'house', 'voucher_no', 'amount'])))),
 
         # ── Consistency ───────────────────────────────────────────────────────
 
