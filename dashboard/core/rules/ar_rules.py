@@ -287,11 +287,16 @@ def get_ar_checks():
          lambda df: df.duplicated(subset=['client', 'apar_id', 'voucher_no', 'sequence_no'], keep=False)),
 
         ('AR_EXT_REF_DUP', 17, 'AR Invoices', 'Uniqueness', 'High',
-         'Duplicate external reference found for the same customer',
-         'The same customer invoice reference should not appear on multiple open invoices for the same customer. Duplicate external references are a strong indicator of duplicate billing risk and must be investigated before cutover.',
-         'Resolve duplicate acutrans.ext_inv_ref.', 'acutrans', None,
-         'COUNT(*) OVER(PARTITION BY acutrans.apar_id, acutrans.ext_inv_ref) > 1',
-         lambda df: df.duplicated(subset=['apar_id', 'ext_inv_ref'], keep=False) & df['ext_inv_ref'].notna()),
+         'Duplicate external reference found for the same customer across different vouchers',
+         'The same customer invoice reference should not appear on more than one voucher for the same customer. '
+         'Multiple sequence lines on the same voucher sharing a reference is normal for multi-line invoices. '
+         'The same reference on different voucher numbers is a strong indicator of duplicate billing and must be investigated before cutover.',
+         'Resolve duplicate acutrans.ext_inv_ref across different voucher numbers.', 'acutrans', None,
+         'COUNT(DISTINCT voucher_no) OVER(PARTITION BY apar_id, ext_inv_ref) > 1',
+         lambda df: (
+             df['ext_inv_ref'].notna() &
+             (df.groupby(['apar_id', 'ext_inv_ref'])['voucher_no'].transform('nunique') > 1)
+         )),
 
         # ── Referential integrity ─────────────────────────────────────────────
 
