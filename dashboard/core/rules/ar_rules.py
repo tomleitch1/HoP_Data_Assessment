@@ -69,6 +69,20 @@ def get_ar_checks():
              ~df['vat_reg_no'].str.replace(' ', '', regex=False).str.match(r'^(GB)?\d{9}$', na=False)
          )),
 
+        ('CUS_COMP_REG_FORMAT', 11, 'Customers', 'Validity', 'Medium',
+         'Company registration number format is invalid (Expected 8 digits)',
+         'Companies House registration numbers must be exactly 8 digits. '
+         'A number that does not match this format cannot be verified against the Companies House register and may indicate a data entry error or a foreign registration number. '
+         'Records where the field is blank or zero are not flagged — only meaningfully populated values that fail the format check.',
+         'Correct acuheader.comp_reg_no to 8 digits.', 'acuheader', None,
+         'acuheader.comp_reg_no NOT LIKE "________" AND comp_reg_no IS NOT NULL AND comp_reg_no != "0"',
+         lambda df: (
+             df['comp_reg_no'].notna() &
+             (df['comp_reg_no'].str.strip().str.len() > 0) &
+             (df['comp_reg_no'].str.strip() != '0') &
+             ~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)
+         )),
+
         # ── Consistency ───────────────────────────────────────────────────────
 
         ('CUS_EXPIRED_ACTIVE', 11, 'Customers', 'Consistency', 'Medium',
