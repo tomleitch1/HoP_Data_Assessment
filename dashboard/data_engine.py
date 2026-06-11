@@ -553,7 +553,6 @@ def get_check_columns():
         'CUS_EXPIRED_ACTIVE':       ['expired_date', 'status'],
         'CUS_COLLECT_ACTIVE':       ['collect_flag'],
         'CUS_NAME_DUP':             ['apar_name', 'client'],
-        'CUS_NAME_DUP_ANY':         ['apar_name', 'client'],
         'CUS_CLIENT_APAR_DUP':      ['client', 'apar_id'],
         'CUS_DORMANT':              ['last_update', 'status'],
 

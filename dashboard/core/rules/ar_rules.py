@@ -124,13 +124,6 @@ def get_ar_checks():
          'COUNT(*) OVER(PARTITION BY house, apar_name) > 1',
          lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
 
-        ('CUS_NAME_DUP_ANY', 11, 'Customers', 'Uniqueness', 'Low',
-         'Customer name appears more than once within the same House (any address)',
-         'Customer names appear more than once within the same House. Records sharing a name may be legitimate separate entities but should be reviewed to confirm each is a distinct legal entity and not an accidental duplicate.',
-         'Review acuheader.apar_name for same-name records and confirm each is a distinct legal entity.', 'acuheader', None,
-         'COUNT(*) OVER(PARTITION BY house, UPPER(apar_name)) > 1',
-         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
-
         ('CUS_CLIENT_APAR_DUP', 11, 'Customers', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id) combination found in customer master',
          'The combination of client code and customer ID must be unique in the customer master. Any duplicate on this key is a data integrity error in the source system that must be resolved before the record can be safely migrated.',
