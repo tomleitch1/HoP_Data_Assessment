@@ -295,6 +295,8 @@ def get_ar_checks():
          'COUNT(DISTINCT voucher_no) OVER(PARTITION BY apar_id, ext_inv_ref) > 1',
          lambda df: (
              df['ext_inv_ref'].notna() &
+             (df['ext_inv_ref'].astype(str).str.strip().str.len() > 0) &
+             (df['ext_inv_ref'].astype(str).str.strip() != '0') &
              (df.groupby(['apar_id', 'ext_inv_ref'])['voucher_no'].transform('nunique') > 1)
          )),
 
