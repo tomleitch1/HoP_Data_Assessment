@@ -55,6 +55,20 @@ def get_ar_checks():
          'acuheader.credit_limit = 0 WHERE status != "C"',
          lambda df: pd.to_numeric(df['credit_limit'], errors='coerce') == 0),
 
+        ('CUS_VAT_FORMAT', 11, 'Customers', 'Validity', 'Medium',
+         'Customer VAT registration number format is invalid',
+         'VAT registration numbers must follow the HMRC format of GB followed by exactly 9 digits. '
+         'A number that does not match this pattern cannot be used for tax reporting or verified against HMRC records. '
+         'Records where the field is blank or zero are not flagged — only meaningfully populated values that fail the format check.',
+         'Correct acuheader.vat_reg_no to GB followed by 9 digits.', 'acuheader', None,
+         'acuheader.vat_reg_no NOT LIKE "GB_________" AND vat_reg_no IS NOT NULL AND vat_reg_no != "0"',
+         lambda df: (
+             df['vat_reg_no'].notna() &
+             (df['vat_reg_no'].str.strip().str.len() > 0) &
+             (df['vat_reg_no'].str.strip() != '0') &
+             ~df['vat_reg_no'].str.replace(' ', '', regex=False).str.match(r'^(GB)?\d{9}$', na=False)
+         )),
+
         # ── Consistency ───────────────────────────────────────────────────────
 
         ('CUS_EXPIRED_ACTIVE', 11, 'Customers', 'Consistency', 'Medium',
