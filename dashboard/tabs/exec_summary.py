@@ -174,7 +174,8 @@ def _data_snapshot(vol_stats: dict, frames: dict) -> html.Div:
                     hoc_n = len(df)
                     hol_n = 0
                 date_col = 'last_update' if 'last_update' in df.columns else None
-                date_str = pd.to_datetime(df[date_col], errors='coerce').loc[lambda x: x <= pd.Timestamp.now()].max().strftime('%d %b %Y').lstrip('0') if date_col else '—'
+                _max_date = pd.to_datetime(df[date_col], errors='coerce').loc[lambda x: x <= pd.Timestamp.now()].max() if date_col else pd.NaT
+                date_str = _max_date.strftime('%d %b %Y').lstrip('0') if not pd.isnull(_max_date) else '—'
             else:
                 hoc_n = 0
                 hol_n = 0
