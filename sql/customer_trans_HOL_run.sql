@@ -13,6 +13,7 @@ SELECT
     t.apar_id,
     t.voucher_no,
     t.sequence_no,
+    t.account,
 
     -- === TRANSACTION DETAIL ===
     t.voucher_type,
