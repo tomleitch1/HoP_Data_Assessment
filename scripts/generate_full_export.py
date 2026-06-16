@@ -41,6 +41,14 @@ TAB_ALIASES = {
     'assets':    'assets',
 }
 
+# Maps engine tab key → SCOPE_CONFIG key
+SCOPE_KEY = {
+    'suppliers': 'ap',
+    'customers': 'ar',
+    'gl':        'gl',
+    'assets':    'assets',
+}
+
 HEADER_FILL  = PatternFill('solid', fgColor='1E1528')
 HEADER_FONT  = Font(color='FFFFFF', bold=True, size=10)
 THIN_BORDER  = Border(
@@ -112,7 +120,7 @@ def _write_tracker(out_df: pd.DataFrame, out_path: str) -> None:
 
 
 def make_tracker(tab_key: str, house: str, dq_results: pd.DataFrame, out_dir: str) -> None:
-    scope_ids = SCOPE_CONFIG[tab_key]['scope_ids']
+    scope_ids = SCOPE_CONFIG[SCOPE_KEY[tab_key]]['scope_ids']
 
     df = dq_results[
         (dq_results['scope_id'].isin(scope_ids)) &
@@ -183,7 +191,7 @@ def _safe_filename(house: str, dimension: str, check_id: str) -> str:
 
 def export_evidence(tab_key: str, house: str, dq_results: pd.DataFrame,
                     frames: dict, out_dir: str) -> None:
-    scope_ids = SCOPE_CONFIG[tab_key]['scope_ids']
+    scope_ids = SCOPE_CONFIG[SCOPE_KEY[tab_key]]['scope_ids']
 
     failing_checks = dq_results[
         (dq_results['scope_id'].isin(scope_ids)) &

@@ -41,6 +41,13 @@ TAB_ALIASES = {
     'assets':    'assets',
 }
 
+SCOPE_KEY = {
+    'suppliers': 'ap',
+    'customers': 'ar',
+    'gl':        'gl',
+    'assets':    'assets',
+}
+
 SEV_FILL = {
     'Critical': 'FFD7D7',
     'High':     'FFE8CC',
@@ -79,7 +86,7 @@ def make_tracker(tab: str, house: str) -> None:
     print(f"Running DQ analysis...")
     dq_results = run_dq_analysis(frames, tab=tab_key)
 
-    scope_ids = SCOPE_CONFIG[tab_key]['scope_ids']
+    scope_ids = SCOPE_CONFIG[SCOPE_KEY[tab_key]]['scope_ids']
 
     df = dq_results[
         (dq_results['scope_id'].isin(scope_ids)) &
