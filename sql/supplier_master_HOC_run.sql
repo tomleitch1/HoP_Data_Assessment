@@ -38,7 +38,10 @@ SELECT
     -- === STATUS & DATES ===
     h.expired_date,
     h.last_update,
-    h.wf_state
+    h.wf_state,
+
+    -- === ACTIVITY ===
+    lt.last_trans_date
 
 FROM asuheader h
 LEFT JOIN (
@@ -50,5 +53,15 @@ LEFT JOIN (
 ) a ON  a.client    = h.client
     AND a.dim_value = h.apar_id
     AND a.rn        = 1
+LEFT JOIN (
+    SELECT client, apar_id, MAX(trans_date) AS last_trans_date
+    FROM (
+        SELECT client, apar_id, trans_date FROM asutrans  WHERE client IN ('CA', 'CM')
+        UNION ALL
+        SELECT client, apar_id, trans_date FROM asuhistr  WHERE client IN ('CA', 'CM')
+    ) t
+    GROUP BY client, apar_id
+) lt ON lt.client  = h.client
+    AND lt.apar_id = h.apar_id
 WHERE h.client IN ('CA', 'CM')
 ORDER BY h.client, h.apar_id;
