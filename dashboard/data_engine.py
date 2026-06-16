@@ -503,12 +503,7 @@ def get_check_columns():
         'SUP_VAT_DUP':       ['vat_reg_no', 'client'],
         'SUP_BANK_SORT_DUP': ['bank_account', 'clearing_code', 'client'],
         'SUP_BANK_DUP': ['bank_account', 'clearing_code', 'vat_reg_no', 'client'],
-        'SUP_XHOUSE_VAT_DUP': ['vat_reg_no'],
-        'SUP_XHOUSE_COMP_REG_DUP': ['comp_reg_no'],
-        'SUP_XHOUSE_IBAN_DUP': ['iban'],
-        'SUP_XHOUSE_BANK_DUP': ['bank_account', 'clearing_code'],
-        'SUP_XHOUSE_NAME_DUP': ['apar_name'],
-        'SUP_STALE': ['last_update'],
+'SUP_STALE': ['last_update'],
         'SUP_DORMANT': ['last_update', 'status'],
         'SUP_SUNDRY': ['apar_once'],
         
@@ -693,27 +688,6 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         return pd.DataFrame()
         
     df_table = frames[table].copy()
-
-    # Cross-house uniqueness checks: skip single-house filter, return both sides of each match
-    _XHOUSE_ID_COLS = {
-        'SUP_XHOUSE_VAT_DUP':      ['vat_reg_no'],
-        'SUP_XHOUSE_COMP_REG_DUP': ['comp_reg_no'],
-        'SUP_XHOUSE_IBAN_DUP':     ['iban'],
-        'SUP_XHOUSE_BANK_DUP':     ['bank_account', 'clearing_code'],
-        'SUP_XHOUSE_NAME_DUP':     ['apar_name'],
-    }
-    if check_id in _XHOUSE_ID_COLS:
-        id_cols = _XHOUSE_ID_COLS[check_id]
-        both = df_table[df_table['status'] != 'C'].copy()
-        import inspect as _inspect
-        mask = filter_func(both, frames)
-        failing = both[mask].copy()
-        if failing.empty:
-            return failing
-        display_cols = list(dict.fromkeys(['house', 'client', 'apar_id', 'apar_name', 'status'] + [c for c in id_cols if c in failing.columns]))
-        result = failing[[c for c in display_cols if c in failing.columns]]
-        sort_by = [c for c in id_cols if c in result.columns] + ['house']
-        return result.sort_values(sort_by).reset_index(drop=True)
 
     # Apply standard population filters
     if table == 'asuheader':

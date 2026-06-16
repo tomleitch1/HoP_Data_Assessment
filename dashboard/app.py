@@ -381,11 +381,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
         return dash.no_update, dash.no_update, dash.no_update
 
     # ── RENDER CONTENT ──
-    _XHOUSE_CHECKS = {
-        'SUP_XHOUSE_VAT_DUP', 'SUP_XHOUSE_COMP_REG_DUP', 'SUP_XHOUSE_IBAN_DUP',
-        'SUP_XHOUSE_BANK_DUP', 'SUP_XHOUSE_NAME_DUP',
-    }
-    is_xhouse = check_id in _XHOUSE_CHECKS
+    is_xhouse = False
     df = get_failing_records(check_id, house, frames)
     check_info = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
     
