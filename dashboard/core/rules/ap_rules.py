@@ -133,7 +133,7 @@ def get_ap_checks():
          'Populate agladdress.zip_code for this supplier.', 'asuheader', None,
          'agladdress.zip_code IS NULL OR empty',
          lambda df: (df['zip_code'].isna() | (df['zip_code'].str.strip().str.len() == 0)) & ~(
-             (df['house'] == 'HOC') & (df['apar_id'].astype(str).str[:4].isin(['1000']) | df['apar_id'].astype(str).str[:2].isin(['74']))
+             (df['house'] == 'HOC') & df['apar_id'].astype(str).str.strip().str.startswith(('1000', '74'))
          ) & ~(df['pay_method'] == 'FC')),
 
         ('SUP_VAT_FORMAT', 10, 'Suppliers', 'Validity', 'High',
