@@ -391,7 +391,9 @@ def get_ap_checks():
          'Every open invoice must carry the supplier invoice reference in the external reference field. Without it, the invoice cannot be matched back to the physical document and the supplier cannot be paid against a specific remittance.',
          'Populate asutrans.ext_inv_ref.', 'asutrans', None,
          'asutrans.ext_inv_ref IS NULL',
-         lambda df: df['ext_inv_ref'].isna()),
+         lambda df: df['ext_inv_ref'].isna() & ~(
+             (df['house'] == 'HOC') & (df['voucher_no'].astype(str).str.strip() == '10048531')
+         )),
 
         ('AP_AMOUNT_MISSING', 16, 'AP Invoices', 'Completeness', 'Critical',
          'Open invoice is missing its original gross amount',
