@@ -75,9 +75,9 @@ def make_tracker(tab: str, house: str) -> None:
         sys.exit(1)
 
     print(f"Loading data...")
-    frames = load_data()
+    frames = load_data(tab=tab_key)
     print(f"Running DQ analysis...")
-    dq_results = run_dq_analysis(frames)
+    dq_results = run_dq_analysis(frames, tab=tab_key)
 
     scope_ids = SCOPE_CONFIG[tab_key]['scope_ids']
 
