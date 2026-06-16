@@ -235,7 +235,7 @@ def load_data(tab=None):
                 )
 
         date_cols = [
-            'trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date',
+            'trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'last_trans_date',
             'period_from', 'period_to',
             # Asset date columns — arrive as Excel serial integers from SSMS/Excel export
             'cap_date_from', 'date_from', 'date_to', 'org_amt_date',
