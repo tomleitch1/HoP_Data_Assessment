@@ -446,14 +446,7 @@ def get_ap_checks():
          'ABS(asutrans.rest_amount) > ABS(asutrans.amount) + 0.01',
          lambda df: df['rest_amount'].abs() > df['amount'].abs() + 0.01),
 
-        ('AP_OVERDUE', 16, 'AP Invoices', 'Timeliness', 'Medium',
-         'Invoice is past its due date and remains unpaid',
-         'Open invoices past their due date represent outstanding liabilities that have not been settled on time. These records need to be reviewed before cutover to confirm whether they should be paid, disputed or written off.',
-         'Review asutrans.due_date.', 'asutrans', None,
-         'asutrans.due_date < TODAY',
-         lambda df: df['due_date'] < today),
-
-        ('AP_TRANS_KEY_DUP', 16, 'AP Invoices', 'Uniqueness', 'Critical',
+('AP_TRANS_KEY_DUP', 16, 'AP Invoices', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id, voucher_no, sequence_no) found in open transactions',
          'The combination of client, supplier ID, voucher number and sequence number must be unique in the open transactions table. Any duplicate on this key is a data integrity error that must be resolved before the record can be safely migrated.',
          'Investigate and remove duplicate rows in asutrans.', 'asutrans', None,
