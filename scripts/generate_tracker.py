@@ -33,10 +33,10 @@ from dashboard.data_engine import load_data, run_dq_analysis
 from dashboard.core.config import SCOPE_CONFIG
 
 TAB_ALIASES = {
-    'suppliers': 'ap',
-    'ap':        'ap',
-    'customers': 'ar',
-    'ar':        'ar',
+    'suppliers': 'suppliers',
+    'ap':        'suppliers',
+    'customers': 'customers',
+    'ar':        'customers',
     'gl':        'gl',
     'assets':    'assets',
 }
