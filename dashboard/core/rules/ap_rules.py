@@ -99,7 +99,7 @@ def get_ap_checks():
          'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL AND pay_method != "CH"',
          lambda df: df['clearing_code'].isna() & df['iban'].isna() & ~(df['pay_method'] == 'CH') & ~(
              (df['house'] == 'HOC') &
-             df['apar_id'].astype(str).str[:4].isin(['1000'])
+             df['apar_id'].astype(str).str.strip().str.startswith(('1000', '741'))
          )),
 
         ('SUP_SWIFT_MISSING', 10, 'Suppliers', 'Completeness', 'High',
