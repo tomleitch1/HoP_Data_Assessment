@@ -160,6 +160,7 @@ def get_ap_checks():
          'asuheader.comp_reg_no NOT LIKE "________" (8 digits)',
          lambda df: (
              (~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)) &
+             (~df['comp_reg_no'].str.match(r'^\d{7}$', na=False)) &
              df['comp_reg_no'].notna() &
              ~(
                  (df['house'] == 'HOC') &
