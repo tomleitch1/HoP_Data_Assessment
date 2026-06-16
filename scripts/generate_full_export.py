@@ -155,10 +155,8 @@ def _style_evidence_sheet(ws, df: pd.DataFrame) -> None:
     """Apply consistent styling to an evidence worksheet."""
     # Auto-width (capped at 60)
     for col_idx, col_name in enumerate(df.columns, start=1):
-        max_len = max(
-            len(str(col_name)),
-            df[col_name].astype(str).str.len().max() if not df.empty else 0,
-        )
+        sample = df[col_name].head(200) if not df.empty else df[col_name]
+        max_len = max(len(str(col_name)), sample.astype(str).str.len().max() if not sample.empty else 0)
         ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 60)
 
     # Header row
@@ -266,9 +264,9 @@ def run(tab: str, house: str) -> None:
         sys.exit(1)
 
     print(f"Loading data...")
-    frames = load_data()
+    frames = load_data(tab=tab_key)
     print(f"Running DQ analysis...")
-    dq_results = run_dq_analysis(frames)
+    dq_results = run_dq_analysis(frames, tab=tab_key)
 
     tracker_dir  = 'trackers'
     evidence_dir = os.path.join('trackers', 'evidence')
