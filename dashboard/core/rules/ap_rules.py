@@ -217,7 +217,7 @@ def get_ap_checks():
          'asuheader.pay_method IN ("IP","CP","BB") AND (bank_account IS NULL OR clearing_code IS NULL)',
          lambda df: (df['pay_method'].isin(['IP', 'CP', 'BB'])) & (df['bank_account'].isna() | df['clearing_code'].isna()) & ~(
              (df['house'] == 'HOC') &
-             df['apar_id'].astype(str).str[:4].isin(['1000'])
+             df['apar_id'].astype(str).str.strip().str.startswith(('1000', '741'))
          )),
 
         ('SUP_INT_NO_IBAN', 10, 'Suppliers', 'Consistency', 'Critical',
