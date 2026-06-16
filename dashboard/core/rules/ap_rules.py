@@ -293,7 +293,7 @@ def get_ap_checks():
              ) &
              ~df['apar_id'].astype(str).str[:4].isin(['1000']) &
              ~((df['house'] == 'HOC') & df['apar_id'].astype(str).str.strip().str.startswith('71')) &
-             ~((df['house'] == 'HOC') & df['apar_name'].str.contains(r'school|academy|college|sixth\s*form', case=False, na=False))
+             ~((df['house'] == 'HOC') & (df['apar_gr_id'] == 'SC'))
          )),
 
         ('SUP_SUNDRY', 10, 'Suppliers', 'Validity', 'Low',
