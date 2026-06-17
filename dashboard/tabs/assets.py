@@ -1,343 +1,648 @@
-from dash import dcc, html
+from dash import html
 import pandas as pd
-import plotly.graph_objects as go
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid, render_dimensions_table
-from dashboard.core.theme import DISPLAY_FONT, HOUSE_HEX
+from dashboard.core.theme import UI, HOUSE_HEX, DISPLAY_FONT
 
-def get_asset_volumetrics(frames, dq_results=None):
-    vols = {'HOC': {}, 'HOL': {}}
+# ── Design tokens (warm amber — distinct from supplier purple / customer blue) ─
+_HDR     = '#1f1a0f'
+_HDR2    = '#181408'
+_SEQ_BG  = '#3d2d0a'
+_AST_BG  = '#150f04'
+_SEQ_TXT = '#e8b86a'
+_AST_TXT = '#7a6030'
+_BODY_BG = '#ffffff'
+_BAR_BG  = '#f5eedc'
+_DIV     = '#3a2f18'
+
+# ── Status visual config ───────────────────────────────────────────────────────
+_STATUS = {
+    'N': {'color': '#1a7a4a', 'label': 'Normal',      'risk': None},
+    'T': {'color': '#c07820', 'label': 'Transferred',  'risk': None},
+    'C': {'color': '#94a3b8', 'label': 'Closed',       'risk': None},
+}
+
+# ── Depreciation method config ─────────────────────────────────────────────────
+_METHODS = {
+    'LIN': {'color': '#1a7a4a', 'label': 'Straight-line'},
+    'BAL': {'color': '#3a7abf', 'label': 'Reducing balance'},
+    'EXP': {'color': '#c07820', 'label': 'Expanding'},
+    'SYD': {'color': '#7c5cbf', 'label': 'Sum-of-years digits'},
+}
+
+
+# ── Shared helpers ─────────────────────────────────────────────────────────────
+
+def _badge(text, bg, color):
+    return html.Span(text, style={
+        'background': bg, 'color': color,
+        'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.1em',
+        'padding': '3px 9px', 'borderRadius': '4px',
+        'textTransform': 'uppercase', 'display': 'inline-block', 'lineHeight': '1.6',
+    })
+
+
+def _card_header(seq, name, source, filter_desc, type_label, is_mig, right_content=None):
+    left = html.Div(style={'flex': '1'}, children=[
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '10px',
+        }, children=[
+            _badge(f'SEQ {seq}', _SEQ_BG, _SEQ_TXT) if seq else None,
+            _badge(type_label, _SEQ_BG if is_mig else _AST_BG, _SEQ_TXT if is_mig else _AST_TXT),
+        ]),
+        html.Div(name, style={
+            'fontSize': '15px', 'fontWeight': '700', 'color': '#f8f0e0',
+            'lineHeight': '1.3', 'marginBottom': '8px',
+        }),
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+            html.Span(source, style={
+                'fontSize': '11px', 'color': '#c09060',
+                'fontFamily': "'Courier New', monospace",
+                'background': '#0f0a04', 'padding': '2px 7px', 'borderRadius': '3px',
+            }),
+            html.Span('·', style={'color': '#5a4a28', 'fontSize': '12px'}),
+            html.Span(filter_desc, style={'fontSize': '11px', 'color': _AST_TXT}),
+        ]),
+    ])
+    return html.Div(style={
+        'background': _HDR if is_mig else _HDR2,
+        'padding': '18px 28px',
+        'display': 'flex', 'alignItems': 'flex-start', 'gap': '24px',
+    }, children=[left, right_content] if right_content else [left])
+
+
+def _section_label(text):
+    return html.Div(text, style={
+        'fontSize': '10px', 'fontWeight': '700', 'color': UI['text_secondary'],
+        'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginBottom': '10px',
+    })
+
+
+def _status_bar_row(status, count, total):
+    cfg   = _STATUS.get(status, {'color': '#94a3b8', 'label': status, 'risk': None})
+    pct   = (count / total * 100) if total > 0 else 0
+    color = cfg['color']
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'padding': '5px 0',
+    }, children=[
+        html.Span(status, style={
+            'background': color + '1a', 'color': color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
+            'padding': '2px 7px', 'borderRadius': '3px',
+            'minWidth': '22px', 'textAlign': 'center',
+        }),
+        html.Span(cfg['label'], style={
+            'fontSize': '11px', 'color': UI['text_secondary'], 'minWidth': '88px',
+        }),
+        html.Div(style={
+            'flex': '1', 'height': '7px', 'background': _BAR_BG,
+            'borderRadius': '4px', 'overflow': 'hidden',
+        }, children=[
+            html.Div(style={
+                'height': '100%',
+                'width': f'{min(pct, 100):.1f}%',
+                'background': color, 'borderRadius': '4px',
+                'minWidth': '3px' if count > 0 else '0',
+            })
+        ]),
+        html.Span(f'{count:,}', style={
+            'fontSize': '12px', 'fontWeight': '700',
+            'minWidth': '48px', 'textAlign': 'right',
+            'color': UI['text_primary'],
+        }),
+        html.Span(f'{pct:.0f}%', style={
+            'fontSize': '10px', 'color': UI['text_secondary'], 'minWidth': '34px',
+        }),
+        html.Div(style={'minWidth': '14px'}),
+    ])
+
+
+def _method_bar_row(method, count, total):
+    cfg   = _METHODS.get(method, {'color': '#94a3b8', 'label': method})
+    pct   = (count / total * 100) if total > 0 else 0
+    color = cfg['color']
+    return html.Div(style={
+        'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'padding': '5px 0',
+    }, children=[
+        html.Span(method, style={
+            'background': color + '1a', 'color': color,
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
+            'padding': '2px 7px', 'borderRadius': '3px',
+            'minWidth': '34px', 'textAlign': 'center',
+        }),
+        html.Span(cfg['label'], style={
+            'fontSize': '11px', 'color': UI['text_secondary'], 'minWidth': '130px',
+        }),
+        html.Div(style={
+            'flex': '1', 'height': '7px', 'background': _BAR_BG,
+            'borderRadius': '4px', 'overflow': 'hidden',
+        }, children=[
+            html.Div(style={
+                'height': '100%',
+                'width': f'{min(pct, 100):.1f}%',
+                'background': color, 'borderRadius': '4px',
+                'minWidth': '3px' if count > 0 else '0',
+            })
+        ]),
+        html.Span(f'{count:,}', style={
+            'fontSize': '12px', 'fontWeight': '700',
+            'minWidth': '48px', 'textAlign': 'right',
+            'color': UI['text_primary'],
+        }),
+        html.Span(f'{pct:.0f}%', style={
+            'fontSize': '10px', 'color': UI['text_secondary'], 'minWidth': '34px',
+        }),
+        html.Div(style={'minWidth': '14px'}),
+    ])
+
+
+# ── Data extraction ────────────────────────────────────────────────────────────
+
+def get_asset_intro_data(frames):
     am = frames.get('asset_master', pd.DataFrame())
-    ab = frames.get('asset_balances', pd.DataFrame())
     ad = frames.get('asset_depreciation', pd.DataFrame())
+    ag = frames.get('asset_groups', pd.DataFrame())
 
+    result = {}
     for house in ['HOC', 'HOL']:
         h_am = am[am['house'] == house] if not am.empty else pd.DataFrame()
-        h_ab = ab[ab['house'] == house] if not ab.empty else pd.DataFrame()
         h_ad = ad[ad['house'] == house] if not ad.empty else pd.DataFrame()
-        
-        count = len(h_am)
-        # Treat both 'N' (Normal) and 'T' (Transferred) as in-scope for migration
-        mig_scope = len(h_am[h_am['status'].isin(['N', 'T'])]) if count > 0 else 0
-        archive = len(h_am[h_am['status'] == 'C']) if count > 0 else 0
-        grant_funded = len(h_am[pd.to_numeric(h_am.get('grant_flag', 0), errors='coerce') == 1]) if count > 0 else 0
-        
-        status_counts = h_am['status'].value_counts().to_dict() if count > 0 else {}
-        
-        # Balance scope and Business Metrics
-        nbv_by_client = {}
-        total_nbv = 0
-        total_cost = 0
-        total_depr = 0
-        zero_value_count = 0
-        
-        if not h_ab.empty:
-            # NBV = (CA + PC + VN + ZU) - (ND + ED + FD + SA)
-            cost_types = ['CA', 'PC']
-            depr_types = ['ND', 'ED', 'FD']
-            pos_types = ['CA', 'PC', 'VN', 'ZU']
-            neg_types = ['ND', 'ED', 'FD', 'SA']
-            
-            total_cost = h_ab[h_ab['trans_type'].isin(cost_types)]['total_amount'].sum()
-            total_depr = h_ab[h_ab['trans_type'].isin(depr_types)]['total_amount'].sum()
-            
-            asset_pos = h_ab[h_ab['trans_type'].isin(pos_types)].groupby('asset_id')['total_amount'].sum()
-            asset_neg = h_ab[h_ab['trans_type'].isin(neg_types)].groupby('asset_id')['total_amount'].sum()
-            
-            asset_nbv = asset_pos.add(-asset_neg, fill_value=0)
-            total_nbv = asset_nbv.sum()
-            zero_value_count = len(asset_nbv[asset_nbv.abs() < 0.01])
-            
-            if 'client' in h_ab.columns:
-                for client in h_ab['client'].dropna().unique():
-                    c_ab = h_ab[h_ab['client'] == client]
-                    c_pos = c_ab[c_ab['trans_type'].isin(pos_types)]['total_amount'].sum()
-                    c_neg = c_ab[c_ab['trans_type'].isin(neg_types)]['total_amount'].sum()
-                    nbv_by_client[client] = c_pos - c_neg
+        h_ag = ag[ag['house'] == house] if not ag.empty else pd.DataFrame()
 
-        # Books and Depreciation Scope
-        multi_book = len(h_ad.groupby('asset_id').filter(lambda g: len(g) > 1).drop_duplicates('asset_id')) if not h_ad.empty else 0
-        indexed = len(h_ad[h_ad.get('index_id', '').notna() & (h_ad.get('index_id', '') != '')]) if not h_ad.empty else 0
-        
-        # DQ-AB-S01: CA only (Non-depreciating)
-        non_depr_count = 0
-        if not h_ab.empty:
-            # Group by book level
-            grp = h_ab.groupby(['client', 'asset_id', 'depr_book_id'])['trans_type'].unique()
-            # Count where 'CA' is present but no depreciation types ('ND', 'ED', 'FD')
-            non_depr_count = sum(grp.apply(lambda x: 'CA' in x and not any(d in x for d in ['ND', 'ED', 'FD'])))
+        # ── Seq 12 — asset master ──────────────────────────────────────────────
+        total        = len(h_am)
+        status_counts = h_am['status'].value_counts().to_dict() if total > 0 else {}
+        normal       = status_counts.get('N', 0)
+        transferred  = status_counts.get('T', 0)
+        archive      = status_counts.get('C', 0)
+        in_scope     = normal + transferred
 
-        # Readiness Calculation
-        readiness_pct = 100.0
-        if dq_results is not None and not dq_results.empty:
-            asset_dq = dq_results[(dq_results['house'] == house) & 
-                                  (dq_results['object'].str.contains('Asset')) & 
-                                  (dq_results['severity'].isin(['Critical', 'High']))]
-            if not asset_dq.empty:
-                max_failing = asset_dq['failing'].max()
-                readiness_pct = max(0, (count - max_failing) / count * 100) if count > 0 else 100.0
+        grant_funded = 0
+        if total > 0 and 'grant_flag' in h_am.columns:
+            grant_funded = int((pd.to_numeric(h_am['grant_flag'], errors='coerce') == 1).sum())
 
-        # GL Reconciliation
-        gl_bal = 0
-        gl_df = frames.get('aglyearend', pd.DataFrame())
-        if not gl_df.empty:
-            house_gl = gl_df[gl_df['house'] == house]
-            asset_gl = house_gl[house_gl['account'].isin(['1300', '1301'])]
-            gl_bal = asset_gl['amount'].sum()
+        # ── Seq 13 — depreciation configuration ───────────────────────────────
+        total_books      = len(h_ad)
+        method_breakdown = h_ad['depr_method'].value_counts().to_dict() if total_books > 0 else {}
 
-        vols[house] = {
-            'Total Assets': count,
-            'Migration Scope (N)': mig_scope,
-            'Archive Candidates': archive,
-            'Grant Funded': grant_funded,
-            'Multi-book Assets': multi_book,
-            'Indexed Assets': indexed,
-            'Disposals (SA)': len(h_ab[h_ab['trans_type'] == 'SA']) if not h_ab.empty else 0,
-            'Disposals Value': h_ab[h_ab['trans_type'] == 'SA']['total_amount'].sum() if not h_ab.empty else 0,
-            'Status Counts': status_counts,
-            'NBV by Client': nbv_by_client,
-            'Total NBV': total_nbv,
-            'Total Cost': total_cost,
-            'Total Depr': total_depr,
-            'Zero Value Assets': zero_value_count,
-            'Readiness %': readiness_pct,
-            'GL Balance': gl_bal,
-            'Variance': total_nbv - gl_bal,
-            'Non-depreciating Assets': non_depr_count
+        multi_book = 0
+        if total_books > 0:
+            multi_book = int(
+                h_ad.groupby('asset_id').size().gt(1).sum()
+            )
+
+        indexed = 0
+        if total_books > 0 and 'index_id' in h_ad.columns:
+            indexed = int(
+                h_ad[h_ad['index_id'].notna() & (h_ad['index_id'].astype(str).str.strip() != '')]
+                ['asset_id'].nunique()
+            )
+
+        # Assets in master with no depreciation record at all
+        assets_in_master = set(h_am['asset_id'].tolist()) if total > 0 else set()
+        assets_with_depr = set(h_ad['asset_id'].tolist()) if total_books > 0 else set()
+        assets_without_depr = len(assets_in_master - assets_with_depr)
+
+        # Per-asset configuration overrides vs group defaults
+        method_overrides  = 0
+        lifetime_overrides = 0
+        if total_books > 0 and not h_am.empty and not h_ag.empty and 'asset_group' in h_am.columns:
+            merged = (
+                h_ad
+                .merge(h_am[['asset_id', 'asset_group']].drop_duplicates('asset_id'),
+                       on='asset_id', how='left')
+                .merge(h_ag[['asset_group', 'depr_method', 'lifetime']].drop_duplicates('asset_group'),
+                       on='asset_group', how='inner', suffixes=('', '_grp'))
+            )
+            if 'depr_method_grp' in merged.columns:
+                method_overrides = int((merged['depr_method'] != merged['depr_method_grp']).sum())
+            if 'lifetime_grp' in merged.columns and 'lifetime' in merged.columns:
+                both_present = merged['lifetime'].notna() & merged['lifetime_grp'].notna()
+                lifetime_overrides = int(
+                    (merged.loc[both_present, 'lifetime'] != merged.loc[both_present, 'lifetime_grp']).sum()
+                )
+
+        result[house] = {
+            'master': {
+                'total':            total,
+                'migration_scope':  in_scope,
+                'active':           normal,
+                'transferred':      transferred,
+                'archive':          archive,
+                'status_breakdown': status_counts,
+                'grant_funded':     grant_funded,
+            },
+            'depr': {
+                'total_books':        total_books,
+                'method_breakdown':   method_breakdown,
+                'multi_book':         multi_book,
+                'indexed':            indexed,
+                'assets_without_depr': assets_without_depr,
+                'method_overrides':   method_overrides,
+                'lifetime_overrides': lifetime_overrides,
+            },
         }
-            
-    return vols
+    return result
 
-def render_house_asset_cards(house, data):
-    house_color = HOUSE_HEX.get(house, '#00703c')
-    colors = ['#00703c', '#28a367', '#d4820a', '#c0392b', '#5c5470', '#3498DB', '#9B59B6', '#F1C40F']
 
-    def fmt_gbp(val):
-        if abs(val) >= 1_000_000: return f"£{val/1_000_000:.2f}M"
-        if abs(val) >= 1_000: return f"£{val/1_000:.1f}k"
-        return f"£{val:,.2f}"
+# ── Seq 12 column — Fixed Asset Registry ──────────────────────────────────────
 
-    # ── 1. ASSET MASTER CARD ──────────────────────────────────────────────
-    status_counts = data.get('Status Counts', {})
-    m_sorted = sorted(status_counts.items(), key=lambda x: x[1], reverse=True)
+def _seq12_col(house, m):
+    colour      = HOUSE_HEX[house]
+    total       = m.get('total', 0)
+    in_scope    = m.get('migration_scope', 0)
+    normal      = m.get('active', 0)
+    transferred = m.get('transferred', 0)
+    archive     = m.get('archive', 0)
+    sb          = m.get('status_breakdown', {})
+    grant       = m.get('grant_funded', 0)
 
-    master_fig = go.Figure(go.Pie(
-        labels=[s for s, c in m_sorted],
-        values=[c for s, c in m_sorted],
-        hole=0.7,
-        marker_colors=colors,
-        textinfo='none',
-        hovertemplate='<b>Status %{label}</b>: %{value:,}<extra></extra>'
-    ))
-    master_fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        height=140, margin=dict(t=0, b=0, l=0, r=0), showlegend=False,
-        annotations=[dict(text=f"<b>{data['Total Assets']:,}</b><br><span style='font-size:9px'>TOTAL</span>",
-                          x=0.5, y=0.5, showarrow=False, font=dict(size=16, color='#1E293B', family=DISPLAY_FONT))]
-    )
+    scope_pct = int(in_scope / total * 100) if total else 0
 
-    m_status_list = []
-    for i, (status, count) in enumerate(m_sorted):
-        m_status_list.append(html.Div([
-            html.Span('●', style={'color': colors[i % len(colors)], 'marginRight': '8px'}),
-            html.Span(f"Status {status}: ", style={'fontSize': '11px', 'fontWeight': '600', 'color': '#64748B'}),
-            html.Span(f"{count:,}", style={'fontSize': '11px', 'fontWeight': '700', 'color': '#1E293B'})
-        ], style={'marginBottom': '4px', 'display': 'inline-block', 'width': '50%', 'whiteSpace': 'nowrap'}))
+    status_rows = [
+        _status_bar_row(s, sb.get(s, 0), in_scope)
+        for s in ['N', 'T']
+        if sb.get(s, 0) > 0
+    ]
 
-    master_card = html.Div(style={
-        'background': 'white', 'border': '1px solid #D0CCE0', 'borderRadius': '12px',
-        'flex': '1.4', 'display': 'flex', 'flexDirection': 'column', 'overflow': 'hidden',
-        'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.05)'
-    }, children=[
-        html.Div(style={
-            'background': '#F8FAFC', 'padding': '14px 20px', 'borderBottom': '1px solid #E2E8F0',
-            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'
-        }, children=[
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
-                html.Div(style={'width': '3px', 'height': '16px', 'background': house_color, 'borderRadius': '2px'}),
-                html.Div(f"{house} — Asset Master", style={
-                    'fontSize': '13px', 'fontWeight': '600', 'color': '#475569',
-                    'textTransform': 'uppercase', 'letterSpacing': '0.5px'
-                }),
-            ]),
-            html.Div("asset_master", style={'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '600'})
-        ]),
-        html.Div(style={'padding': '20px', 'display': 'flex', 'flexDirection': 'column'}, children=[
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '20px', 'marginBottom': '16px'}, children=[
-                html.Div(style={'flex': '1'}, children=[dcc.Graph(figure=master_fig, config={'displayModeBar': False})]),
-                html.Div(style={'flex': '1.2'}, children=[
-                    html.Div('Population Status', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase', 'marginBottom': '8px'}),
-                    html.Div(m_status_list, style={'display': 'flex', 'flexWrap': 'wrap'})
-                ])
-            ]),
-            # Scope Metrics underneath pie chart
-            html.Div(style={'display': 'flex', 'gap': '20px', 'paddingTop': '12px', 'borderTop': '1px dashed #E2E8F0'}, children=[
-                html.Div([
-                    html.Div(f"{data['Migration Scope (N)']:,}", style={'fontSize': '18px', 'fontWeight': '800', 'color': '#00703c', 'fontFamily': DISPLAY_FONT}),
-                    html.Div('Migration Scope (N+T)', style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ], style={'flex': '1'}),
-                html.Div([
-                    html.Div(f"{data['Archive Candidates']:,}", style={'fontSize': '18px', 'fontWeight': '800', 'color': '#c0392b', 'fontFamily': DISPLAY_FONT}),
-                    html.Div('Archive Candidates (C)', style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ], style={'flex': '1'}),
-            ])
-        ])
-    ])
-
-    # ── 2. BALANCES / DEPRECIATION CARD ───────────────────────────────────────
-    clients = list(data['NBV by Client'].keys())
-    nbvs = list(data['NBV by Client'].values())
-
-    nbv_fig = go.Figure()
-    for i, (client, val) in enumerate(zip(clients, nbvs)):
-        if val == 0: continue
-        nbv_fig.add_trace(go.Bar(
-            name=str(client), y=['NBV'], x=[val], orientation='h',
-            marker_color=colors[i % len(colors)], marker_line_width=0,
-            hovertemplate=f"<b>{client}</b>: £{val:,.0f}<extra></extra>"
-        ))
-
-    nbv_fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        height=50, margin=dict(t=0, b=0, l=0, r=0), barmode='stack', showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(showgrid=False, zeroline=False, visible=False)
-    )
-
-    nbv_legend = []
-    for i, (client, val) in enumerate(zip(clients, nbvs)):
-        lbl = f"£{val/1000:,.0f}k" if abs(val) >= 1000 else f"£{val:,.0f}"
-        nbv_legend.append(html.Div([
-            html.Span('●', style={'color': colors[i % len(colors)], 'marginRight': '6px'}),
-            html.Span(f"{client}: {lbl}", style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B'})
-        ], style={'marginRight': '12px', 'display': 'inline-block'}))
-
-    trans_card = html.Div(style={
-        'background': 'white', 'border': '1px solid #D0CCE0', 'borderRadius': '12px',
-        'flex': '1.6', 'display': 'flex', 'flexDirection': 'column', 'overflow': 'hidden',
-        'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.05)'
-    }, children=[
-        html.Div(style={
-            'background': '#F8FAFC', 'padding': '14px 20px', 'borderBottom': '1px solid #E2E8F0',
-            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center'
-        }, children=[
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
-                html.Div(style={'width': '3px', 'height': '16px', 'background': house_color, 'borderRadius': '2px'}),
-                html.Div(f"{house} — Asset Balances & Metrics", style={
-                    'fontSize': '13px', 'fontWeight': '600', 'color': '#475569',
-                    'textTransform': 'uppercase', 'letterSpacing': '0.5px'
-                }),
-            ]),
-            html.Div("asset_balances, asset_depreciation", style={'fontSize': '10px', 'color': '#94A3B8', 'fontWeight': '600'})
-        ]),
-        html.Div(style={'padding': '20px'}, children=[
-            html.Div(style={'display': 'grid', 'gridTemplateColumns': 'repeat(4, 1fr)', 'gap': '12px', 'marginBottom': '20px'}, children=[
-                html.Div([
-                    html.Div(fmt_gbp(data['Total Cost']), style={'fontSize': '18px', 'fontWeight': '800', 'color': '#1E293B', 'fontFamily': DISPLAY_FONT}),
-                    html.Div('Original Cost', style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ]),
-                html.Div([
-                    html.Div(fmt_gbp(data['Total Depr']), style={'fontSize': '18px', 'fontWeight': '800', 'color': '#c0392b', 'fontFamily': DISPLAY_FONT}),
-                    html.Div('Accum Depr', style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ]),
-                html.Div([
-                    html.Div(fmt_gbp(data['Total NBV']), style={'fontSize': '18px', 'fontWeight': '800', 'color': '#3498DB', 'fontFamily': DISPLAY_FONT}),
-                    html.Div('Total NBV', style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ]),
-                html.Div([
-                    html.Div(f"{data['Disposals (SA)']:,}", style={'fontSize': '18px', 'fontWeight': '800', 'color': '#F59E0B', 'fontFamily': DISPLAY_FONT}),
-                    html.Div(f"Disposals ({fmt_gbp(data['Disposals Value'])})", style={'fontSize': '9px', 'fontWeight': '600', 'color': '#64748B', 'textTransform': 'uppercase'})
-                ]),
-            ]),
-            html.Div([
-                html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'marginBottom': '8px'}, children=[
-                    html.Div('Net Book Value by Client', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase'}),
-                    html.Div(f"Total: {fmt_gbp(data['Total NBV'])}", style={'fontSize': '9px', 'color': '#94A3B8'})
-                ]),
-                dcc.Graph(figure=nbv_fig, config={'displayModeBar': False}),
-                html.Div(nbv_legend, style={'marginTop': '8px', 'display': 'flex', 'flexWrap': 'wrap'})
-            ])
-        ]),
-        html.Div(style={'background': '#F1F5F9', 'padding': '8px 20px', 'fontSize': '11px', 'color': '#64748B', 'borderTop': '1px solid #E2E8F0', 'display': 'flex', 'gap': '16px'}, children=[
-            html.Span([html.Strong('Grant Funded: ', style={'fontWeight': '600'}), html.Span(f"{data['Grant Funded']:,}", style={'color': '#1E293B', 'fontWeight': '700'})]),
-            html.Span([html.Strong('Multi-book: ', style={'fontWeight': '600'}), html.Span(f"{data['Multi-book Assets']:,}", style={'color': '#1E293B', 'fontWeight': '700'})]),
-            html.Span([html.Strong('Indexed: ', style={'fontWeight': '600'}), html.Span(f"{data['Indexed Assets']:,}", style={'color': '#1E293B', 'fontWeight': '700'})]),
-            html.Span([html.Strong('Non-depreciating: ', style={'fontWeight': '600'}), html.Span(f"{data['Non-depreciating Assets']:,}", style={'color': '#1E293B', 'fontWeight': '700'})])
-        ])
-    ])
-
-    return [master_card, trans_card]
-
-def render_gl_reconciliation(house, data):
-    house_color = HOUSE_HEX.get(house, '#00703c')
-    recon_color = '#00703c' if abs(data['Variance']) < 0.01 else '#c0392b'
-
-    def fmt_gbp(val):
-        if abs(val) >= 1_000_000: return f"£{val/1_000_000:.2f}M"
-        if abs(val) >= 1_000: return f"£{val/1_000:.1f}k"
-        return f"£{val:,.2f}"
-    
     return html.Div(style={
-        'background': 'white', 'border': '1px solid #D0CCE0', 'borderRadius': '12px',
-        'padding': '20px', 'flex': '1', 'boxShadow': '0 4px 6px -1px rgba(0,0,0,0.05)',
-        'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center'
+        'flex': '1', 'padding': '28px 36px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
     }, children=[
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px', 'marginBottom': '12px'}, children=[
-            html.Div(style={'width': '3px', 'height': '16px', 'background': house_color, 'borderRadius': '2px'}),
-            html.Div(f"{house} — GL Reconciliation", style={
-                'fontSize': '13px', 'fontWeight': '600', 'color': '#475569',
-                'textTransform': 'uppercase', 'letterSpacing': '0.5px'
+
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '6px',
+        }),
+
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '12px', 'marginBottom': '6px',
+        }, children=[
+            html.Span(f'{in_scope:,}', style={
+                'fontSize': '52px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+                'letterSpacing': '-0.03em',
             }),
-        ]),
-        
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '40px'}, children=[
-            html.Div([
-                html.Div('Asset Sub-Ledger', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase', 'marginBottom': '2px'}),
-                html.Div(fmt_gbp(data['Total NBV']), style={'fontSize': '20px', 'fontWeight': '800', 'color': '#1E293B', 'fontFamily': DISPLAY_FONT}),
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                html.Span('in migration scope', style={
+                    'fontSize': '12px', 'fontWeight': '600', 'color': UI['text_primary'],
+                }),
+                html.Span(f'of {total:,} extracted  ({scope_pct}%)', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'],
+                }),
             ]),
-            html.Div([
-                html.Div('General Ledger', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase', 'marginBottom': '2px'}),
-                html.Div(fmt_gbp(data['GL Balance']), style={'fontSize': '20px', 'fontWeight': '800', 'color': '#1E293B', 'fontFamily': DISPLAY_FONT}),
+        ]),
+
+        html.Div(style={
+            'height': '4px', 'background': UI['border'],
+            'borderRadius': '2px', 'marginBottom': '24px',
+        }, children=[
+            html.Div(style={
+                'height': '100%', 'width': f'{scope_pct}%',
+                'background': colour, 'borderRadius': '2px',
+            })
+        ]),
+
+        _section_label('Scope composition'),
+        html.Div(style={
+            'display': 'flex', 'gap': '12px', 'marginBottom': '24px',
+        }, children=[
+            html.Div(style={
+                'flex': '1', 'padding': '12px 16px',
+                'background': colour + '0d', 'borderRadius': '8px',
+                'border': f'1px solid {colour}30',
+            }, children=[
+                html.Div(f'{normal:,}', style={
+                    'fontSize': '22px', 'fontWeight': '900',
+                    'color': colour, 'fontFamily': DISPLAY_FONT,
+                }),
+                html.Div('Active  (status N)', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '2px',
+                }),
             ]),
             html.Div(style={
-                'marginLeft': 'auto', 'padding': '10px 24px', 'borderRadius': '8px', 
-                'background': '#F8FAFC' if abs(data['Variance']) < 0.01 else '#FEF2F2',
-                'border': '1px solid ' + ('#E2E8F0' if abs(data['Variance']) < 0.01 else '#FEE2E2'),
-                'textAlign': 'right'
+                'flex': '1', 'padding': '12px 16px',
+                'background': UI['purple_light'], 'borderRadius': '8px',
+                'border': f'1px solid {UI["border"]}',
             }, children=[
-                html.Div('Variance', style={'fontSize': '10px', 'fontWeight': '700', 'color': '#64748B', 'textTransform': 'uppercase'}),
-                html.Div(fmt_gbp(data['Variance']), style={'fontSize': '22px', 'fontWeight': '900', 'color': recon_color, 'fontFamily': DISPLAY_FONT}),
-            ])
-        ])
+                html.Div(f'{transferred:,}', style={
+                    'fontSize': '22px', 'fontWeight': '900',
+                    'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+                }),
+                html.Div('Transferred  (status T)', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '2px',
+                }),
+            ]),
+        ]),
+
+        _section_label('Status breakdown  (in-scope population)'),
+        html.Div(style={'marginBottom': '20px'}, children=status_rows if status_rows else [
+            html.Div('No status data available', style={
+                'fontSize': '12px', 'color': UI['text_secondary'], 'fontStyle': 'italic',
+            })
+        ]),
+
+        html.Div(style={
+            'borderTop': f'1px dashed {UI["border"]}', 'paddingTop': '14px',
+        }, children=[
+            html.Div(style={
+                'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+                'marginBottom': '8px',
+            }, children=[
+                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                    html.Span('Archive candidates', style={
+                        'fontSize': '12px', 'color': UI['text_secondary'],
+                    }),
+                    html.Span('Status C — disposed or written off', style={
+                        'fontSize': '10px', 'color': UI['text_secondary'], 'opacity': '0.7',
+                    }),
+                ]),
+                html.Span(f'{archive:,}', style={
+                    'fontSize': '18px', 'fontWeight': '700',
+                    'color': UI['text_secondary'], 'fontFamily': DISPLAY_FONT,
+                }),
+            ]),
+            html.Div(style={
+                'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+            }, children=[
+                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                    html.Span('Grant-funded assets', style={
+                        'fontSize': '12px', 'color': UI['text_secondary'],
+                    }),
+                    html.Span('Require special handling at migration', style={
+                        'fontSize': '10px', 'color': UI['text_secondary'], 'opacity': '0.7',
+                    }),
+                ]),
+                html.Span(f'{grant:,}', style={
+                    'fontSize': '18px', 'fontWeight': '700',
+                    'color': '#c07820' if grant > 0 else UI['text_secondary'],
+                    'fontFamily': DISPLAY_FONT,
+                }),
+            ]),
+        ]),
     ])
 
+
+# ── Seq 13 column — Depreciation Rules ────────────────────────────────────────
+
+def _seq13_col(house, d):
+    colour      = HOUSE_HEX[house]
+    total_books = d.get('total_books', 0)
+    mb          = d.get('method_breakdown', {})
+    multi_book  = d.get('multi_book', 0)
+    indexed     = d.get('indexed', 0)
+    no_depr     = d.get('assets_without_depr', 0)
+    m_overrides = d.get('method_overrides', 0)
+    l_overrides = d.get('lifetime_overrides', 0)
+
+    method_rows = [
+        _method_bar_row(m, mb.get(m, 0), total_books)
+        for m in ['LIN', 'BAL', 'EXP', 'SYD']
+        if mb.get(m, 0) > 0
+    ]
+
+    def _complexity_row(label, sublabel, value, color):
+        return html.Div(style={
+            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+            'padding': '6px 0', 'borderBottom': f'1px solid {UI["border"]}',
+        }, children=[
+            html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '1px'}, children=[
+                html.Span(label, style={'fontSize': '12px', 'color': UI['text_primary']}),
+                html.Span(sublabel, style={
+                    'fontSize': '10px', 'color': UI['text_secondary'], 'opacity': '0.8',
+                }),
+            ]),
+            html.Span(f'{value:,}', style={
+                'fontSize': '16px', 'fontWeight': '800',
+                'color': color, 'fontFamily': DISPLAY_FONT,
+            }),
+        ])
+
+    return html.Div(style={
+        'flex': '1', 'padding': '28px 36px',
+        'borderRight': f'1px solid {UI["border"]}' if house == 'HOC' else 'none',
+    }, children=[
+
+        html.Div(house, style={
+            'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.15em',
+            'color': colour, 'textTransform': 'uppercase', 'marginBottom': '6px',
+        }),
+
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '22px',
+        }, children=[
+            html.Span(f'{total_books:,}', style={
+                'fontSize': '40px', 'fontWeight': '900', 'lineHeight': '1',
+                'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT,
+                'letterSpacing': '-0.02em',
+            }),
+            html.Span('depreciation books', style={'fontSize': '12px', 'color': UI['text_secondary']}),
+        ]),
+
+        _section_label('Method breakdown'),
+        html.Div(style={'marginBottom': '24px'}, children=method_rows if method_rows else [
+            html.Div('No depreciation data available', style={
+                'fontSize': '12px', 'color': UI['text_secondary'], 'fontStyle': 'italic',
+            })
+        ]),
+
+        html.Div(style={'borderTop': f'1px dashed {UI["border"]}', 'paddingTop': '14px'}, children=[
+            _section_label('Migration configuration complexity'),
+            _complexity_row(
+                'Method overrides', 'Asset-level method differs from group default',
+                m_overrides, '#c07820' if m_overrides > 0 else UI['text_secondary'],
+            ),
+            _complexity_row(
+                'Lifetime overrides', 'Asset-level useful life differs from group default',
+                l_overrides, '#c07820' if l_overrides > 0 else UI['text_secondary'],
+            ),
+            _complexity_row(
+                'Multi-book assets', 'Assets with more than one depreciation book',
+                multi_book, '#3a7abf' if multi_book > 0 else UI['text_secondary'],
+            ),
+            _complexity_row(
+                'Indexed assets', 'Linked to an indexation rate',
+                indexed, UI['text_secondary'],
+            ),
+            html.Div(style={
+                'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+                'padding': '6px 0',
+            }, children=[
+                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '1px'}, children=[
+                    html.Span('Assets without depreciation config', style={
+                        'fontSize': '12px', 'color': UI['text_primary'],
+                    }),
+                    html.Span('In master but no depreciation record', style={
+                        'fontSize': '10px', 'color': UI['text_secondary'], 'opacity': '0.8',
+                    }),
+                ]),
+                html.Span(f'{no_depr:,}', style={
+                    'fontSize': '16px', 'fontWeight': '800',
+                    'color': '#c0392b' if no_depr > 0 else UI['text_secondary'],
+                    'fontFamily': DISPLAY_FONT,
+                }),
+            ]),
+        ]),
+    ])
+
+
+# ── Total migration footer ─────────────────────────────────────────────────────
+
+def _migration_footer(hoc_m, hol_m, hoc_d, hol_d):
+    def _house_row(house, m, d, border_bottom):
+        colour = HOUSE_HEX[house]
+        assets = m.get('migration_scope', 0)
+        books  = d.get('total_books', 0)
+        total  = assets + books
+        items  = [
+            ('Seq 12  ·  Fixed Assets',       assets),
+            ('Seq 13  ·  Depreciation Books', books),
+        ]
+        return html.Div(style={
+            'display': 'flex', 'alignItems': 'center',
+            'padding': '16px 28px',
+            'borderBottom': f'1px solid {UI["border"]}' if border_bottom else 'none',
+        }, children=[
+            html.Div(style={
+                'background': colour, 'borderRadius': '4px',
+                'padding': '4px 10px', 'marginRight': '24px',
+            }, children=[
+                html.Span(house, style={
+                    'fontSize': '11px', 'fontWeight': '800',
+                    'color': '#ffffff', 'letterSpacing': '0.1em',
+                }),
+            ]),
+            html.Div(style={
+                'display': 'flex', 'gap': '48px', 'flex': '1', 'alignItems': 'center',
+            }, children=[
+                html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '2px'}, children=[
+                    html.Span(f'{cnt:,}', style={
+                        'fontSize': '20px', 'fontWeight': '800',
+                        'color': UI['text_primary'], 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+                    }),
+                    html.Span(label, style={
+                        'fontSize': '10px', 'color': UI['text_secondary'], 'letterSpacing': '0.04em',
+                    }),
+                ]) for label, cnt in items
+            ]),
+            html.Div(style={
+                'width': '1px', 'height': '36px',
+                'background': UI['border'], 'margin': '0 28px',
+            }),
+            html.Div(style={'textAlign': 'right', 'minWidth': '120px'}, children=[
+                html.Div(f'{total:,}', style={
+                    'fontSize': '30px', 'fontWeight': '900', 'lineHeight': '1',
+                    'color': colour, 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.02em',
+                }),
+                html.Div('total records', style={
+                    'fontSize': '11px', 'color': UI['text_secondary'], 'marginTop': '3px',
+                }),
+            ]),
+        ])
+
+    return html.Div(style={
+        'borderRadius': '10px', 'overflow': 'hidden',
+        'border': f'1px solid {UI["border"]}',
+        'boxShadow': '0 2px 8px rgba(31,26,15,0.08)',
+        'background': UI['card_bg'], 'marginTop': '16px',
+    }, children=[
+        html.Div(style={
+            'padding': '14px 28px',
+            'borderBottom': f'1px solid {_DIV}',
+            'display': 'flex', 'alignItems': 'center', 'gap': '12px',
+            'background': _HDR,
+        }, children=[
+            _badge('Scope', _SEQ_BG, _SEQ_TXT),
+            html.Span('Total Migration', style={
+                'fontSize': '13px', 'fontWeight': '700', 'color': '#f8f0e0',
+            }),
+            html.Span('Seq 12  +  Seq 13', style={
+                'fontSize': '11px', 'color': _AST_TXT, 'marginLeft': 'auto',
+            }),
+        ]),
+        _house_row('HOC', hoc_m, hoc_d, border_bottom=True),
+        _house_row('HOL', hol_m, hol_d, border_bottom=False),
+    ])
+
+
+# ── Intro assembly ─────────────────────────────────────────────────────────────
+
+def _render_intro(intro_data):
+    hoc_m = intro_data.get('HOC', {}).get('master', {})
+    hol_m = intro_data.get('HOL', {}).get('master', {})
+    hoc_d = intro_data.get('HOC', {}).get('depr', {})
+    hol_d = intro_data.get('HOL', {}).get('depr', {})
+
+    def _card(children):
+        return html.Div(style={
+            'borderRadius': '10px', 'overflow': 'hidden',
+            'border': f'1px solid {UI["border"]}',
+            'boxShadow': '0 2px 12px rgba(31,26,15,0.10)',
+            'background': _BODY_BG,
+        }, children=children)
+
+    seq12 = _card([
+        _card_header('12', 'Fixed Asset Registry', 'asset_master',
+                     'Active + Transferred (N + T) in scope', 'Migration Object', True),
+        html.Div(style={'display': 'flex'}, children=[
+            _seq12_col('HOC', hoc_m),
+            _seq12_col('HOL', hol_m),
+        ]),
+    ])
+
+    seq13 = _card([
+        _card_header('13', 'Asset Depreciation Rules', 'asset_depreciation  +  asset_groups',
+                     'All active depreciation books', 'Migration Object', True),
+        html.Div(style={'display': 'flex'}, children=[
+            _seq13_col('HOC', hoc_d),
+            _seq13_col('HOL', hol_d),
+        ]),
+    ])
+
+    return html.Div(style={'marginBottom': '28px'}, children=[
+        html.Div(style={
+            'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '14px',
+        }, children=[
+            html.Div('Migration Scope', style={
+                'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
+                'textTransform': 'uppercase', 'letterSpacing': '0.01em',
+            }),
+            html.Div('Extracts aligned to programme scope objects', style={
+                'fontSize': '12px', 'color': UI['text_secondary'],
+            }),
+        ]),
+        html.Div(style={'marginBottom': '16px'}, children=[seq12]),
+        seq13,
+        _migration_footer(hoc_m, hol_m, hoc_d, hol_d),
+    ])
+
+
+# ── DQ section header ──────────────────────────────────────────────────────────
+
+def _dq_section_header():
+    return html.Div(style={
+        'borderTop': f'1px solid {UI["border"]}',
+        'paddingTop': '20px', 'marginBottom': '20px',
+        'display': 'flex', 'alignItems': 'baseline', 'gap': '10px',
+    }, children=[
+        html.Div('Data Quality Checks', style={
+            'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
+            'textTransform': 'uppercase', 'letterSpacing': '0.01em',
+        }),
+        html.Div('All rule categories across asset register and configuration tables', style={
+            'fontSize': '12px', 'color': UI['text_secondary'],
+        }),
+    ])
+
+
+# ── Tab entry point ────────────────────────────────────────────────────────────
+
 def render_tab(dq_results, frames):
-    vols = get_asset_volumetrics(frames, dq_results)
-
-    hoc_cards = render_house_asset_cards('HOC', vols['HOC'])
-    hol_cards = render_house_asset_cards('HOL', vols['HOL'])
-    
-    hoc_recon = render_gl_reconciliation('HOC', vols['HOC'])
-    hol_recon = render_gl_reconciliation('HOL', vols['HOL'])
-
+    intro_data = get_asset_intro_data(frames)
     return html.Div([
+        _render_intro(intro_data),
+        _dq_section_header(),
         render_dimension_scorecard(dq_results),
-        
-        # Row 1: HOC Volumetrics
-        html.Div(style={'marginBottom': '20px'}, children=[
-            html.Div(style={'display': 'flex', 'gap': '20px'}, children=hoc_cards),
-        ]),
-        
-        # Row 2: HOL Volumetrics
-        html.Div(style={'marginBottom': '24px'}, children=[
-            html.Div(style={'display': 'flex', 'gap': '20px'}, children=hol_cards),
-        ]),
-
-        # Row 3: Reconciliation (Horizontal Row)
-        html.Div(style={'marginBottom': '24px', 'display': 'flex', 'gap': '20px'}, children=[
-            hoc_recon, hol_recon
-        ]),
-        
         render_dimension_grid(dq_results),
         render_dimensions_table(dq_results),
-        html.Div(id='dim-drill-down-container', style={'marginTop': '24px'})
+        html.Div(id='dim-drill-down-container', style={'marginTop': '24px'}),
     ])
