@@ -718,12 +718,113 @@ Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, perio
 
 ---
 
+## Fixed Assets Domain — Implementation Details
+
+### Iterative approach
+
+**The same principle applies as for the GL tab**: do not finalise DQ checks or balance calculations against assumptions that have not been verified against real Parliament data. The asset extracts are loaded and checks are live, but several critical assumptions about `aattrans` content remain unconfirmed. See QUESTIONS_FOR_PARLIAMENT.md Q3.
+
+### SQL extract files (`sql/`)
+
+| File | Database | Output |
+|------|----------|--------|
+| `asset_master_HOC_run.sql` | `Agresso_HoC` | `asset_master_HOC.csv` |
+| `asset_master_HOL_run.sql` | `agresso_HoL` | `asset_master_HOL.csv` |
+| `asset_depreciation_HOC_run.sql` | `Agresso_HoC` | `asset_depreciation_HOC.csv` |
+| `asset_depreciation_HOL_run.sql` | `agresso_HoL` | `asset_depreciation_HOL.csv` |
+| `asset_balances_HOC_run.sql` | `Agresso_HoC` | `asset_balances_HOC.csv` |
+| `asset_balances_HOL_run.sql` | `agresso_HoL` | `asset_balances_HOL.csv` |
+| `asset_groups_HOC_run.sql` | `Agresso_HoC` | `asset_groups_HOC.csv` |
+| `asset_groups_HOL_run.sql` | `agresso_HoL` | `asset_groups_HOL.csv` |
+| `asset_trans_flags_HOC_run.sql` | `Agresso_HoC` | `asset_trans_flags_HOC.csv` |
+| `asset_trans_flags_HOL_run.sql` | `agresso_HoL` | `asset_trans_flags_HOL.csv` |
+
+### `aattrans` — dc_flag mechanism (confirmed from real HoC data, June 2026)
+
+`aattrans` stores every real transaction with `dc_flag = 1`, **and** mirrors each one with an equal-and-opposite year-end reset entry at `dc_flag = -1`. The reset entries are an internal AT module housekeeping mechanism — they are not real financial movements. Without `AND dc_flag = 1` in the WHERE clause, `SUM(amount)` nets to zero for every asset and every trans_type. **All run SQL files include `dc_flag = 1`.** The spec file `asset_balances.sql` documents this in assumptions but omitted it from the WHERE clause — the run files are correct.
+
+### `aattrans` — trans_type codes confirmed from real data (June 2026)
+
+The following were verified by running `SELECT trans_type, dc_flag, COUNT(*), SUM(amount) FROM aattrans GROUP BY trans_type, dc_flag` on the real Parliament databases:
+
+**Confirmed and understood:**
+
+| Code | Meaning | HOC rows (dc=1) | HOL rows (dc=1) |
+|------|---------|----------------|----------------|
+| CA | Capitalisation (original cost) | 62,737 | 10,131 |
+| PC | Post-capitalisation addition / betterment | 263 | 1,340 |
+| ND | Normal (periodic) depreciation | 2,594,255 | 382,061 |
+| ED | Extraordinary depreciation | 366 | 34 |
+| FD | Final depreciation at disposal | 12 | 2,354 |
+| SA | Disposal | 98,109 | 25,829 |
+| VN | Revaluation movement | 487 | 327 |
+| CI | Calculatory Interest — **excluded from extract** (internal mgmt charge, does not affect NBV or GL) | 6 | 36 |
+
+**Confirmed absent from real data (were in spec as assumed):**
+- `ZU` (grant credit) — does not appear in either house. Grant-funded assets may be handled differently or not used.
+- `RV` (reversal) — does not appear. Reversals may be handled via negative amounts on the original type.
+
+**Unknown trans_types found in real data — awaiting Parliament confirmation (see QUESTIONS_FOR_PARLIAMENT.md Q3):**
+
+| Code | HOC rows (dc=1) | HOC total amount | HOL rows (dc=1) | HOL total amount | Pattern |
+|------|----------------|-----------------|----------------|-----------------|---------|
+| NF | 3,874 | £13.0m | 9,857 | £1.97m | Paired with NT (identical counts + amounts) |
+| NT | 3,874 | £13.0m | 9,857 | £1.97m | Paired with NF |
+| RF | 68 | £0 | 31 | £15.3m | Paired with RT — zero at HOC |
+| RT | 68 | £0 | 31 | £15.3m | Paired with RF |
+| TF | 51 | £15.0m | 50 | £178.9m | Paired with TT — largest unknown |
+| TT | 51 | £10.9m | 50 | £44.6m | Paired with TF |
+| OS | 51,297 | £0 | 21,799 | £0 | **No dc_flag=-1 counterpart at all** — anomalous. Zero amounts. |
+| WU | — | — | 179 | £12.7m | HOL only |
+| TC | 8 | £31k | 10 | £0 | Small/zero |
+
+The NF/NT, RF/RT, and TF/TT pairs are almost certainly **internal asset transfer types** — when an asset moves between cost centres or entities, one side is debited and the other credited. TF/TT is significant: £178m at HOL. The NBV formula cannot be finalised until Parliament confirms whether these should be included and on which side.
+
+OS is the most anomalous: 51k rows at HOC, 21k at HOL, all zero amount, no year-end reversal entry. Likely a marker or flag transaction rather than a financial posting.
+
+**VN count anomaly (HOC):** `dc_flag=1` has 487 VN rows but `dc_flag=-1` has only 477 — 10 revaluation transactions without a year-end reset mirror. These are likely recent postings not yet through a year-end close. No action required, but confirms the `dc_flag=1` filter is essential.
+
+### Amount sign convention — NOT YET CONFIRMED
+
+The NBV formula in the Python dashboard currently applies signs based on trans_type category (positive for CA/PC/VN, negative for ND/ED/FD/SA). Whether amounts in `aattrans` for these types are stored as absolute positives (formula applies the sign) or as signed values (ND already negative) has not been explicitly confirmed from real data. Run:
+
+```sql
+SELECT trans_type, MIN(amount), MAX(amount), AVG(amount)
+FROM aattrans WHERE dc_flag = 1 AND trans_type != 'CI'
+GROUP BY trans_type ORDER BY trans_type;
+```
+
+If ND always has negative MIN and MAX → amounts are signed (formula must not double-negate). If ND always has positive MIN and MAX → amounts are absolute (formula is correct as written).
+
+### Balance formula status
+
+Current formula in `assets.py` / `get_asset_volumetrics`:
+```
+NBV = (CA + PC + VN + ZU) − (ND + ED + FD + SA)
+```
+
+Limitations as of June 2026:
+- ZU excluded from real data — has no effect
+- NF, NT, RF, RT, TF, TT, WU, OS, TC all excluded — **TF/TT alone is £178m at HOL**
+- Amount sign convention unconfirmed — formula may double-negate depreciation
+- **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types and sign convention**
+
+### Checks requiring verification before results are reliable
+
+| Check | Dependency |
+|-------|-----------|
+| All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types and sign convention |
+| DQ-AB-V01 (unexpected trans_type) | Will fire on NF/NT/TF/TT/RF/RT/OS/WU/TC until confirmed |
+| Any check referencing `ZU` | ZU does not exist in real data |
+
+---
+
 ## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
 - Customers / AR (master, open transactions, history) — full check suite live
-- Fixed Assets (master, depreciation, balances, groups, transactions) — full check suite live
+- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live but balance-derived checks unvalidated pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS) and amount sign convention. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3.
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle

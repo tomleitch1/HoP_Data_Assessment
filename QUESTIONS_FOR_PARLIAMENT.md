@@ -51,3 +51,65 @@ As a result:
 **Checks affected:** `AP_CN_NO_REF`, `AP_ORPHANED_CREDITS`, `HIS_CN_NO_REF` in `dashboard/core/rules/ap_rules.py`
 
 ---
+
+## 3. Fixed Asset Transaction Types — `aattrans` unknown codes
+
+**Context:** When profiling the fixed asset transaction ledger (`aattrans`) on the real Parliament databases, the following transaction type codes were found that are not in the Unit4 standard specification we have been working from. Until these are understood, the net book value calculations and several DQ checks cannot be finalised.
+
+**The current NBV formula excludes all of these.** For HOL, TF/TT alone represent approximately £178m — a material omission if these codes belong in the balance calculation.
+
+### Transfer-type pairs (identical row counts and total amounts — likely internal asset transfers)
+
+| Codes | HOC rows | HOC value | HOL rows | HOL value |
+|-------|----------|-----------|----------|-----------|
+| TF / TT | 51 each | ~£15m each | 50 each | ~£179m / £45m |
+| NF / NT | 3,874 each | ~£13m each | 9,857 each | ~£2m each |
+| RF / RT | 68 each | £0 (HOC) | 31 each | ~£15m each |
+
+**Questions:**
+- What do TF, TT, NF, NT, RF, RT represent?
+- When an asset is transferred between cost centres or entities, which codes are used and what is the debit/credit convention?
+- Should these be included when calculating an asset's net book value? If so, which side adds to cost and which subtracts?
+
+### WU (HOL only)
+
+| Code | HOL rows | HOL value |
+|------|----------|-----------|
+| WU | 179 | ~£12.7m |
+
+**Questions:**
+- What does WU represent? Is this a write-up (upward revaluation), distinct from VN?
+- Should it be included in the NBV calculation?
+
+### OS (both houses, zero amounts, no year-end reversal)
+
+| Code | HOC rows | HOL rows | Amount |
+|------|----------|----------|--------|
+| OS | 51,297 | 21,799 | Always £0 |
+
+OS is the most unusual code found: very high volume, always zero amount, and uniquely has **no corresponding dc_flag = -1 year-end reset entries** — unlike every other trans_type. This suggests it is a marker or flag transaction rather than a financial posting.
+
+**Questions:**
+- What does OS represent?
+- Is it expected to always be zero?
+- Does it have any significance for migration or asset status?
+
+### TC (small volumes, zero or near-zero amounts)
+
+| Code | HOC rows | HOL rows |
+|------|----------|----------|
+| TC | 8 | 10 |
+
+**Questions:**
+- What does TC represent? Is it a technical correction?
+- Are these records expected to persist or should they have been cleared?
+
+### Amount sign convention
+
+The standard trans_type codes (CA, ND, ED, FD, SA) have been confirmed to exist in the data, but we have not yet confirmed whether the `amount` field in `aattrans` is stored as a **signed value** (ND already negative) or as an **absolute positive** (sign determined by trans_type in the formula). This affects whether the NBV calculation is correct.
+
+**Questions:**
+- For Normal Depreciation (ND) rows with dc_flag = 1, is `amount` stored as a negative number (e.g. -£240) or a positive number (e.g. +£240)?
+- Same question for SA (disposal) rows.
+
+---
