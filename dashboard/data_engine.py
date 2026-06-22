@@ -776,7 +776,7 @@ def get_check_columns():
         'DQ-AD-K02': ['depr_period'],
         'DQ-AD-K03': ['switch', 'depr_method'],
         'DQ-AD-K04': ['index_id', 'depr_method'],
-        'DQ-AD-K05': ['res_value', 'org_amount'],
+        'DQ-AD-K05': ['res_value', 'base_amount'],
         'DQ-AD-D01': ['client', 'asset_id', 'depr_book_id', 'status', 'depr_method', 'lifetime'],
         'DQ-AD-X01': ['asset_id'],
         'DQ-AD-X02': ['asset_id', 'status'],
@@ -947,20 +947,16 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K05':
-        # Join to Asset Master to get org_amount for comparison
         if 'asset_master' in frames:
-            master_link = frames['asset_master'][['house', 'asset_id', 'org_amount']].copy()
+            master_link = frames['asset_master'][['house', 'asset_id', 'base_amount']].copy()
             master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
             failing = failing.merge(master_link, on=['house', 'asset_id'], how='left')
- 
-        # Rename to explicit Source.Field format for the evidence table
         failing = failing.rename(columns={
-            'asset_id':          'ASSET_DEPRECIATION.asset_id',
-            'res_value':         'ASSET_DEPRECIATION.res_value',
-            'org_amount':        'ASSET_MASTER.org_amount',
+            'asset_id':    'ASSET_DEPRECIATION.asset_id',
+            'res_value':   'ASSET_DEPRECIATION.res_value',
+            'base_amount': 'ASSET_MASTER.base_amount',
         })
- 
-        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.res_value', 'ASSET_MASTER.org_amount']
+        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.res_value', 'ASSET_MASTER.base_amount']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_master' and check_id == 'DQ-AG-X01':
