@@ -197,12 +197,6 @@ def get_asset_checks():
          'date_to IS NOT NULL AND status="N"',
          lambda df: df['date_to'].notna() & (df['status'] == 'N')),
 
-        ('DQ-AM-K02', 19, 'Asset Master', 'Consistency', 'High',
-         'wf_state indicates stuck workflow',
-         'Identifies active assets with a stuck or in-flight workflow state — the asset cannot be used or migrated until the workflow is resolved.',
-         'Resolve workflow.', 'asset_master', None, 
-         'wf_state IN (W,R,U,X) AND status="N"',
-         lambda df: df['wf_state'].isin(['W', 'R', 'U', 'X']) & (df['status'] == 'N')),
 
         ('DQ-AM-K03', 19, 'Asset Master', 'Consistency', 'Medium',
          'org_amt_date is null but org_amount populated',

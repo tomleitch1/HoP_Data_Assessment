@@ -746,7 +746,6 @@ def get_check_columns():
         'DQ-AM-V06': ['org_amt_date', 'cap_date_from'],
         'DQ-AM-T01': ['last_update'],
         'DQ-AM-K01': ['date_to', 'status'],
-        'DQ-AM-K02': ['wf_state', 'status'],
         'DQ-AM-K03': ['org_amt_date', 'org_amount'],
         'DQ-AM-K04': ['grant_flag', 'dim_1'],
         'DQ-AM-D01': ['asset_id', 'description', 'asset_group', 'status'],
@@ -1226,14 +1225,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.date_to', 'ASSET_MASTER.status']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if table == 'asset_master' and check_id == 'DQ-AM-K02':
-        failing = failing.rename(columns={
-            'asset_id': 'ASSET_MASTER.asset_id',
-            'wf_state': 'ASSET_MASTER.wf_state',
-            'status':   'ASSET_MASTER.status',
-        })
-        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.wf_state', 'ASSET_MASTER.status']
-        return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_master' and check_id == 'DQ-AM-K03':
         failing = failing.rename(columns={
