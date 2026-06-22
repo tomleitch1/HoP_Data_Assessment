@@ -680,7 +680,7 @@ def get_check_columns():
 
     }
 
-def get_failing_records(check_id, house, frames, base_cols=None):
+def get_failing_records(check_id, house, frames, base_cols=None, for_export=False):
     """Retrieves the actual failing records for a specific check and house with enriched context."""
     checks = get_dq_checks()
     check = next((c for c in checks if c[0] == check_id), None)
@@ -762,6 +762,8 @@ def get_failing_records(check_id, house, frames, base_cols=None):
         
     failing = h_df[mask].copy()
     if failing.empty:
+        return failing
+    if for_export:
         return failing
 
     # Enrich with context for better inspection

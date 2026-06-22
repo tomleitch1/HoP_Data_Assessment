@@ -1302,7 +1302,7 @@ def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
 
     if not check_id or not house: return None
 
-    df = get_failing_records(check_id, house, frames)
+    df = get_failing_records(check_id, house, frames, for_export=True)
 
     check_row = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
     description = check_row.iloc[0]['description'] if not check_row.empty else check_id
