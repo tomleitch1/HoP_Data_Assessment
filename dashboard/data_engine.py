@@ -915,32 +915,39 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         failing = failing.merge(coa.rename(columns={'account': 'dim_value'}), on=['client', 'dim_value'], how='left')
 
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
-        # 1. Join to Master to get the Bridging Group — join on client too
+        # 1. Join to Master to get asset_group (join on client to avoid cross-client matches)
         if 'asset_master' in frames:
             master_link = frames['asset_master'][['house', 'client', 'asset_id', 'asset_group']].copy()
             master_link = master_link.drop_duplicates(subset=['house', 'client', 'asset_id'])
             failing = failing.merge(master_link, on=['house', 'client', 'asset_id'], how='left')
 
-        # 2. Join to Group Config — include client to avoid cross-client contamination
+        # 2. Join to Group Config — match on depr_book_id so each book compares
+        #    against the correct group book default (not the group master summary)
         if 'asset_groups' in frames:
-            target_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
-            grp_link = frames['asset_groups'][['house', 'client', 'asset_group', target_field]].copy()
-            grp_link = grp_link.drop_duplicates(subset=['house', 'client', 'asset_group'])
-            grp_link = grp_link.rename(columns={target_field: f'STANDARD_{target_field}'})
-            failing = failing.merge(grp_link, on=['house', 'client', 'asset_group'], how='left')
-            
-        # 3. Final Explicit Mapping for business users
-        val_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
-        
-        # We rename to explicit Source.Field format
-        failing = failing.rename(columns={
-            'asset_id': 'ASSET_DEPRECIATION.asset_id',
-            val_field: f'ASSET_DEPRECIATION.{val_field}',
-            'asset_group': 'ASSET_MASTER.asset_group',
-            f'STANDARD_{val_field}': f'ASSET_GROUPS.{val_field}'
-        })
-        
-        cols = ['ASSET_DEPRECIATION.asset_id', f'ASSET_DEPRECIATION.{val_field}', 'ASSET_MASTER.asset_group', f'ASSET_GROUPS.{val_field}']
+            if check_id == 'DQ-AG-X04':
+                grp_link = frames['asset_groups'][['house', 'client', 'asset_group', 'depr_book_id', 'book_lifetime']].copy()
+                grp_link = grp_link.rename(columns={'book_lifetime': 'STANDARD_lifetime'})
+                failing = failing.merge(grp_link, on=['house', 'client', 'asset_group', 'depr_book_id'], how='left')
+                failing = failing.rename(columns={
+                    'asset_id':         'ASSET_DEPRECIATION.asset_id',
+                    'depr_book_id':     'ASSET_DEPRECIATION.depr_book_id',
+                    'lifetime':         'ASSET_DEPRECIATION.lifetime',
+                    'asset_group':      'ASSET_MASTER.asset_group',
+                    'STANDARD_lifetime':'ASSET_GROUPS.book_lifetime',
+                })
+                cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.lifetime', 'ASSET_MASTER.asset_group', 'ASSET_GROUPS.book_lifetime']
+            else:  # DQ-AG-X03
+                grp_link = frames['asset_groups'][['house', 'client', 'asset_group', 'depr_book_id', 'book_depr_method']].copy()
+                grp_link = grp_link.rename(columns={'book_depr_method': 'STANDARD_depr_method'})
+                failing = failing.merge(grp_link, on=['house', 'client', 'asset_group', 'depr_book_id'], how='left')
+                failing = failing.rename(columns={
+                    'asset_id':               'ASSET_DEPRECIATION.asset_id',
+                    'depr_book_id':           'ASSET_DEPRECIATION.depr_book_id',
+                    'depr_method':            'ASSET_DEPRECIATION.depr_method',
+                    'asset_group':            'ASSET_MASTER.asset_group',
+                    'STANDARD_depr_method':   'ASSET_GROUPS.book_depr_method',
+                })
+                cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.depr_method', 'ASSET_MASTER.asset_group', 'ASSET_GROUPS.book_depr_method']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-K05':

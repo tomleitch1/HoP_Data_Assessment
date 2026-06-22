@@ -73,30 +73,33 @@ def get_asset_checks():
          'Asset method differs from Group default',
          'Flags assets whose depreciation method differs from their group default. each override is an individual configuration item that will require manual setup in the target system.',
          'Verify if override is intentional.', 'asset_depreciation', 'asset_groups',
-         'asset.depr_method != group.depr_method',
+         'asset.depr_method != group.book_depr_method',
          lambda df, frames: df['asset_id'].isin(
              df.merge(
                  frames.get('asset_master', pd.DataFrame())[['house', 'client', 'asset_id', 'asset_group']],
                  on=['house', 'client', 'asset_id'], how='left'
              ).merge(
-                 frames.get('asset_groups', pd.DataFrame()).drop_duplicates(subset=['house', 'client', 'asset_group'])[['house', 'client', 'asset_group', 'depr_method']],
-                 on=['house', 'client', 'asset_group'], how='inner', suffixes=('', '_grp')
-             ).query('depr_method != depr_method_grp')['asset_id']
+                 frames.get('asset_groups', pd.DataFrame())[['house', 'client', 'asset_group', 'depr_book_id', 'book_depr_method']],
+                 on=['house', 'client', 'asset_group', 'depr_book_id'],
+                 how='inner'
+             ).query('depr_method != book_depr_method')['asset_id']
          ) if 'asset_groups' in frames and 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AG-X04', 19, 'Asset Depreciation', 'Consistency', 'Medium',
          'Asset lifetime differs from Group default',
          'Flags assets whose useful life differs from their group default. each of these overrides represents a manual configuration item during migration.',
          'Verify if override is intentional.', 'asset_depreciation', 'asset_groups',
-         'status != C AND asset.lifetime != group.lifetime',
+         'status != C AND asset.lifetime != group.book_lifetime',
          lambda df, frames: df.index.isin(
              df[df['status'] != 'C'].merge(
                  frames.get('asset_master', pd.DataFrame())[['house', 'client', 'asset_id', 'asset_group']],
                  on=['house', 'client', 'asset_id'], how='left'
              ).merge(
-                 frames.get('asset_groups', pd.DataFrame()).drop_duplicates(subset=['house', 'client', 'asset_group'])[['house', 'client', 'asset_group', 'lifetime']],
-                 on=['house', 'client', 'asset_group'], how='inner', suffixes=('', '_grp')
-             ).query('lifetime != lifetime_grp').index
+                 frames.get('asset_groups', pd.DataFrame())[['house', 'client', 'asset_group', 'depr_book_id', 'book_lifetime']],
+                 left_on=['house', 'client', 'asset_group', 'depr_book_id'],
+                 right_on=['house', 'client', 'asset_group', 'depr_book_id'],
+                 how='inner'
+             ).query('lifetime != book_lifetime').index
          ) if 'asset_groups' in frames and 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         # ======================================================================
