@@ -809,6 +809,24 @@ Limitations as of June 2026:
 - Amount sign convention unconfirmed — formula may double-negate depreciation
 - **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types and sign convention**
 
+### Depreciation method codes — real data does not match the spec
+
+The SQL spec and all current DQ rules were written assuming Unit4 standard method codes: `LIN`, `BAL`, `EXP`, `SYD`. **The real Parliament data uses entirely different codes: `LNA`, `LNB`, `MAN`, `NOD`.** The data dictionary does not explain what each means.
+
+Until Parliament confirms the meaning of each code, the following checks are unreliable or will produce incorrect results:
+
+| Check | Problem |
+|-------|---------|
+| `DQ-AD-V01` (method not in valid list) | Flags every record — the entire valid set is wrong |
+| `DQ-AG-V01` (method not in valid list at group level) | Same |
+| `DQ-AD-V04` (lifetime <= 0, method != EXP) | EXP does not exist — exclusion is meaningless |
+| `DQ-AD-C04` (lifetime null where method in LIN/SYD) | LIN/SYD do not exist — never fires |
+| `DQ-AD-C05` (depr_percent null where method = BAL) | BAL does not exist — never fires |
+| `DQ-AG-C05` (lifetime null at group level for LIN/SYD) | Same |
+| `DQ-AG-C06` (depr_percent null at group level for BAL) | Same |
+
+**Do not update these checks until Parliament confirms:** which of LNA/LNB/MAN/NOD require `lifetime`, which require `depr_percent`, and which (if any) is the equivalent of EXP (immediate write-off with no ongoing depreciation). See QUESTIONS_FOR_PARLIAMENT.md.
+
 ### Checks requiring verification before results are reliable
 
 | Check | Dependency |
@@ -816,6 +834,7 @@ Limitations as of June 2026:
 | All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types and sign convention |
 | DQ-AB-V01 (unexpected trans_type) | Will fire on NF/NT/TF/TT/RF/RT/OS/WU/TC until confirmed |
 | Any check referencing `ZU` | ZU does not exist in real data |
+| DQ-AD-V01, DQ-AG-V01, DQ-AD-V04, DQ-AD-C04/C05, DQ-AG-C05/C06 | Depreciation method codes not yet confirmed — see section above |
 
 ---
 
