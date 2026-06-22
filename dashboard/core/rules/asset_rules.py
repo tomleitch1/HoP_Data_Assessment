@@ -252,10 +252,17 @@ def get_asset_checks():
 
         ('DQ-AM-R04', 19, 'Asset Master', 'Referential Integrity', 'High',
          'parent_asset does not match active asset in extract',
-         'Finds assets referencing a parent asset ID that does not exist in the master — breaks the component/parent hierarchy.',
-         'Review parent_asset.', 'asset_master', 'asset_master', 
-         'parent_asset NOT IN master',
-         lambda df, frames: df['parent_asset'].notna() & ~df['parent_asset'].isin(frames.get('asset_master', pd.DataFrame())['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
+         'Finds non-closed assets referencing a parent asset ID that either does not exist or is closed. If the parent is not migrating, the child will arrive in the new system with a broken hierarchy reference.',
+         'Review parent_asset.', 'asset_master', 'asset_master',
+         'status != C AND parent_asset NOT IN active master',
+         lambda df, frames: (
+             (df['status'] != 'C') &
+             df['parent_asset'].notna() &
+             ~df['parent_asset'].isin(
+                 frames.get('asset_master', pd.DataFrame())
+                 .query('status != "C"')['asset_id']
+             )
+         ) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AM-R05', 19, 'Asset Master', 'Referential Integrity', 'Medium',
          'apar_id does not match supplier master',
