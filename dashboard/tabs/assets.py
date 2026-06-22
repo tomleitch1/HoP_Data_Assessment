@@ -510,6 +510,5 @@ def render_tab(dq_results, frames):
         _dq_section_header(),
         render_dimension_scorecard(dq_results),
         render_dimension_grid(dq_results),
-        render_dimensions_table(dq_results),
         html.Div(id='dim-drill-down-container', style={'marginTop': '24px'}),
     ])
