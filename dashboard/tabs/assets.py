@@ -480,8 +480,6 @@ def _render_intro(intro_data):
         html.Div(style={'marginBottom': '16px'}, children=[_card_trans_flags(hoc_f, hol_f)]),
         html.Div(style={'marginBottom': '16px'}, children=[_card_depr(hoc_d, hol_d)]),
         _card_balances(hoc_b, hol_b),
-
-        _known_gaps_section(),
     ])
 
 
