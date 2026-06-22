@@ -426,10 +426,14 @@ def get_asset_checks():
 
         ('DQ-AD-D01', 19, 'Asset Depreciation', 'Uniqueness', 'Critical',
          'Duplicate composite key',
-         'Detects duplicate composite keys (house, asset_id, depr_book_id) — a primary key violation that will block migration.',
-         'Resolve duplicate.', 'asset_depreciation', None, 
-         'COUNT > 1',
-         lambda df: df.duplicated(subset=['house', 'asset_id', 'depr_book_id'], keep=False)),
+         'Detects duplicate (client, asset_id, depr_book_id) keys among non-closed books — a primary key violation that will block migration.',
+         'Resolve duplicate.', 'asset_depreciation', None,
+         'status != C AND COUNT > 1',
+         lambda df: df.index.isin(
+             df[df['status'] != 'C']
+             .loc[lambda x: x.duplicated(subset=['client', 'asset_id', 'depr_book_id'], keep=False)]
+             .index
+         )),
 
         ('DQ-AD-X01', 19, 'Asset Depreciation', 'Referential Integrity', 'Critical',
          'Orphaned depreciation book',

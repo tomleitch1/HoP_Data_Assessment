@@ -779,7 +779,7 @@ def get_check_columns():
         'DQ-AD-K03': ['switch', 'depr_method'],
         'DQ-AD-K04': ['index_id', 'depr_method'],
         'DQ-AD-K05': ['res_value', 'org_amount'],
-        'DQ-AD-D01': ['asset_id', 'depr_book_id', 'house'],
+        'DQ-AD-D01': ['client', 'asset_id', 'depr_book_id', 'status', 'depr_method', 'lifetime'],
         'DQ-AD-X01': ['asset_id'],
         'DQ-AD-X02': ['asset_id', 'status'],
         'DQ-AD-X03': ['cap_date_from'],
@@ -1460,11 +1460,14 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-D01':
         failing = failing.rename(columns={
+            'client':       'ASSET_DEPRECIATION.client',
             'asset_id':     'ASSET_DEPRECIATION.asset_id',
             'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id',
-            'house':        'ASSET_DEPRECIATION.house',
+            'status':       'ASSET_DEPRECIATION.status',
+            'depr_method':  'ASSET_DEPRECIATION.depr_method',
+            'lifetime':     'ASSET_DEPRECIATION.lifetime',
         })
-        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.house']
+        cols = ['ASSET_DEPRECIATION.client', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.status', 'ASSET_DEPRECIATION.depr_method', 'ASSET_DEPRECIATION.lifetime']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_balances' and check_id == 'DQ-AB-C01':
