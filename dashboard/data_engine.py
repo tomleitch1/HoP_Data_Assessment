@@ -915,19 +915,19 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         failing = failing.merge(coa.rename(columns={'account': 'dim_value'}), on=['client', 'dim_value'], how='left')
 
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
-        # 1. Join to Master to get the Bridging Group (Deduplicated)
+        # 1. Join to Master to get the Bridging Group — join on client too
         if 'asset_master' in frames:
-            master_link = frames['asset_master'][['house', 'asset_id', 'asset_group']].copy()
-            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
-            failing = failing.merge(master_link, on=['house', 'asset_id'], how='left')
-            
-        # 2. Join to Group Config to get the Standard Value (Deduplicated)
+            master_link = frames['asset_master'][['house', 'client', 'asset_id', 'asset_group']].copy()
+            master_link = master_link.drop_duplicates(subset=['house', 'client', 'asset_id'])
+            failing = failing.merge(master_link, on=['house', 'client', 'asset_id'], how='left')
+
+        # 2. Join to Group Config — include client to avoid cross-client contamination
         if 'asset_groups' in frames:
             target_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
-            grp_link = frames['asset_groups'][['house', 'asset_group', target_field]].copy()
-            grp_link.columns = ['house', 'asset_group', f'STANDARD_{target_field}']
-            grp_link = grp_link.drop_duplicates(subset=['house', 'asset_group'])
-            failing = failing.merge(grp_link, on=['house', 'asset_group'], how='left')
+            grp_link = frames['asset_groups'][['house', 'client', 'asset_group', target_field]].copy()
+            grp_link = grp_link.drop_duplicates(subset=['house', 'client', 'asset_group'])
+            grp_link = grp_link.rename(columns={target_field: f'STANDARD_{target_field}'})
+            failing = failing.merge(grp_link, on=['house', 'client', 'asset_group'], how='left')
             
         # 3. Final Explicit Mapping for business users
         val_field = 'lifetime' if check_id == 'DQ-AG-X04' else 'depr_method'
