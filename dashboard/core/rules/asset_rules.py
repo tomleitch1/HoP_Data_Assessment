@@ -350,8 +350,8 @@ def get_asset_checks():
 
         ('DQ-AD-V04', 19, 'Asset Depreciation', 'Validity', 'High',
          'lifetime <= 0 for active depreciating asset',
-         'Flags non-expensed assets with a zero or negative useful life — the system cannot calculate a depreciation charge without a positive life.',
-         'Correct lifetime.', 'asset_depreciation', None, 
+         'LIN and SYD methods calculate the annual depreciation charge by dividing the asset cost by its useful life. If lifetime is zero or negative that calculation breaks and no depreciation schedule can be generated. These assets will fail to depreciate in the target system until the field is corrected.',
+         'Correct lifetime.', 'asset_depreciation', None,
          'lifetime <= 0 AND method != EXP',
          lambda df: (df['depr_method'] != 'EXP') & (pd.to_numeric(df['lifetime'], errors='coerce').fillna(0) <= 0)),
 
