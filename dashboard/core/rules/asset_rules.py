@@ -140,12 +140,7 @@ def get_asset_checks():
          'cap_date_from IS NULL AND cap_flag=1',
          lambda df, frames: df['cap_date_from'].isna() & df['asset_id'].isin(frames.get('asset_depreciation', pd.DataFrame()).query('cap_flag == 1')['asset_id']) if 'asset_depreciation' in frames else pd.Series(False, index=df.index)),
 
-        ('DQ-AM-C07', 19, 'Asset Master', 'Completeness', 'Low',
-         'ins_amount is null or zero for active asset',
-         'Flags assets with no insurance amount populated — a low-severity completeness gap worth surfacing for review.',
-         'Review ins_amount.', 'asset_master', None, 
-         'ins_amount <= 0',
-         lambda df: pd.to_numeric(df['ins_amount'], errors='coerce').fillna(0) <= 0),
+
 
         ('DQ-AM-V01', 19, 'Asset Master', 'Validity', 'Critical',
          'status not in valid list',
