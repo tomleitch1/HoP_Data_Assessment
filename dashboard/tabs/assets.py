@@ -466,17 +466,6 @@ def _render_intro(intro_data):
     hol_f = intro_data['HOL']['trans_flags']
 
     return html.Div(style={'marginBottom': '28px'}, children=[
-        html.Div(style={
-            'display': 'flex', 'alignItems': 'baseline', 'gap': '10px', 'marginBottom': '14px',
-        }, children=[
-            html.Div('What we extracted', style={
-                'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
-                'textTransform': 'uppercase', 'letterSpacing': '0.01em',
-            }),
-            html.Div('Five datasets from the Unit4 fixed asset module — what each contains and what is still unconfirmed', style={
-                'fontSize': '12px', 'color': UI['text_secondary'],
-            }),
-        ]),
 
         html.Div(style={'marginBottom': '16px'}, children=[_card_master(hoc_m, hol_m)]),
         html.Div(style={'marginBottom': '16px'}, children=[_card_groups(hoc_g, hol_g)]),
