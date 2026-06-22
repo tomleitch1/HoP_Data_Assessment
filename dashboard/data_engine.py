@@ -798,7 +798,7 @@ def get_check_columns():
         'DQ-AG-V04': ['depr_percent'],
         'DQ-AG-V05': ['lifetime', 'depr_method'],
         'DQ-AG-K01': ['book_status', 'grp_status'],
-        'DQ-AG-D02': ['description'],
+        'DQ-AG-D02': ['asset_group', 'description', 'grp_status', 'depr_method', 'lifetime'],
         'DQ-AG-X01': ['asset_group'],
         'DQ-AG-X03': ['depr_method', 'asset_group'],
         'DQ-AG-X04': ['lifetime', 'asset_group'],
@@ -1582,9 +1582,11 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         failing = failing.rename(columns={
             'asset_group': 'ASSET_GROUPS.asset_group',
             'description': 'ASSET_GROUPS.description',
-            'house':       'ASSET_GROUPS.house',
+            'grp_status':  'ASSET_GROUPS.grp_status',
+            'depr_method': 'ASSET_GROUPS.depr_method',
+            'lifetime':    'ASSET_GROUPS.lifetime',
         })
-        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.house']
+        cols = ['ASSET_GROUPS.asset_group', 'ASSET_GROUPS.description', 'ASSET_GROUPS.grp_status', 'ASSET_GROUPS.depr_method', 'ASSET_GROUPS.lifetime']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X03':
