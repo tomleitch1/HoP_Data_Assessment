@@ -155,12 +155,6 @@ def get_asset_intro_data(frames):
         af_total = len(h_af)
         af_ca    = int((h_af['trans_type'] == 'CA').sum()) if af_total > 0 and 'trans_type' in h_af.columns else 0
         af_sa    = int((h_af['trans_type'] == 'SA').sum()) if af_total > 0 and 'trans_type' in h_af.columns else 0
-        if af_total > 0 and 'row_type' in h_af.columns:
-            af_depr = int((h_af['row_type'] == 'LATEST_DEPR').sum())
-        elif af_total > 0 and 'trans_type' in h_af.columns:
-            af_depr = int(h_af['trans_type'].isin(['ND', 'ED', 'FD']).sum())
-        else:
-            af_depr = 0
 
         result[house] = {
             'master': {
@@ -189,10 +183,8 @@ def get_asset_intro_data(frames):
                 'unknown_types':    unkn_types_seen,
             },
             'trans_flags': {
-                'total':      af_total,
-                'ca_rows':    af_ca,
-                'sa_rows':    af_sa,
-                'depr_rows':  af_depr,
+                'ca_rows': af_ca,
+                'sa_rows': af_sa,
             },
         }
     return result
@@ -307,19 +299,14 @@ def _card_groups(hoc, hol):
 def _card_trans_flags(hoc, hol):
     def _col(house, t):
         return _house_col(house, [
-            _kv('Total rows', t['total']),
-            html.Div(style={'marginTop': '10px'}, children=[
-                _section_label('Row breakdown'),
-                _kv('CA — individual capitalisation events', t['ca_rows']),
-                _kv('SA — individual disposal events', t['sa_rows']),
-                _kv('ND/ED/FD — latest depr date per book', t['depr_rows']),
-            ]),
+            _kv('Capitalisation  (CA)', t['ca_rows']),
+            _kv('Disposal  (SA)', t['sa_rows']),
         ], border_right=(house == 'HOC'))
 
     return _extract_card(
         _card_header_row(
-            'Transaction Flags', 'aattrans  (targeted)', True,
-            'A targeted extract of aattrans — individual CA and SA rows plus the latest depreciation date per asset/book. Used for specific timing and completeness checks only.',
+            'Transaction Flags', 'aattrans  (individual rows)', True,
+            'Capitalisation and disposal transactions extracted at individual row level from aattrans. Used to check for zero-cost capitalisations, multiple capitalisation events, and disposal transactions against assets still marked active.',
         ),
         [html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
             _col('HOC', hoc), _col('HOL', hol),
