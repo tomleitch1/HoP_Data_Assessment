@@ -398,12 +398,6 @@ def get_asset_checks():
          'switch=True AND method!=BAL',
          lambda df: (df['switch'] == True) & (df['depr_method'] != 'BAL')),
 
-        ('DQ-AD-K04', 19, 'Asset Depreciation', 'Consistency', 'Medium',
-         'index_id populated but method = EXP',
-         'Finds expensed (EXP method) assets with an index revaluation ID — revaluation indexing does not apply to expensed assets.',
-         'Review index_id.', 'asset_depreciation', None, 
-         'index_id IS NOT NULL AND method=EXP',
-         lambda df: df['index_id'].notna() & (df['depr_method'] == 'EXP')),
 
         ('DQ-AD-K05', 19, 'Asset Depreciation', 'Consistency', 'Medium',
          'res_value > base_amount on master',

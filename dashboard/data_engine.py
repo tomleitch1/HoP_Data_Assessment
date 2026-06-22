@@ -775,7 +775,6 @@ def get_check_columns():
         'DQ-AD-K01': ['date_to', 'status'],
         'DQ-AD-K02': ['depr_period'],
         'DQ-AD-K03': ['switch', 'depr_method'],
-        'DQ-AD-K04': ['index_id', 'depr_method'],
         'DQ-AD-K05': ['res_value', 'base_amount'],
         'DQ-AD-D01': ['client', 'asset_id', 'depr_book_id', 'status', 'depr_method', 'lifetime'],
         'DQ-AD-X01': ['asset_id'],
@@ -1428,14 +1427,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.switch', 'ASSET_DEPRECIATION.depr_method']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if table == 'asset_depreciation' and check_id == 'DQ-AD-K04':
-        failing = failing.rename(columns={
-            'asset_id':    'ASSET_DEPRECIATION.asset_id',
-            'index_id':    'ASSET_DEPRECIATION.index_id',
-            'depr_method': 'ASSET_DEPRECIATION.depr_method',
-        })
-        cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.index_id', 'ASSET_DEPRECIATION.depr_method']
-        return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id == 'DQ-AD-D01':
         failing = failing.rename(columns={
