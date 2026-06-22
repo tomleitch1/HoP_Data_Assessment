@@ -264,7 +264,7 @@ def _card_master(hoc, hol):
     )
 
 
-# ── Card 2: Group Configuration ────────────────────────────────────────────────
+# ── Card 2: Asset Groups ──────────────────────────────────────────────────────
 
 def _card_groups(hoc, hol):
     def _col(house, g):
@@ -285,7 +285,7 @@ def _card_groups(hoc, hol):
 
     return _extract_card(
         _card_header_row(
-            'Group Configuration', 'aatassetgroup + aatassetgrbook', True,
+            'Asset Groups', 'aatassetgroup + aatassetgrbook', True,
             'Asset categories defining default depreciation rules. Every asset inherits its method and useful life from its group unless overridden at asset level.',
         ),
         [html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
