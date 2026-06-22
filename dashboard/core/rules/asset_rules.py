@@ -226,20 +226,25 @@ def get_asset_checks():
 
         ('DQ-AM-D01', 19, 'Asset Master', 'Uniqueness', 'Critical',
          'Duplicate asset_id within client',
-         'Detects duplicate asset IDs within the same House where at least one record is not closed — a primary key violation that will block migration.',
+         'Detects duplicate asset IDs among non-closed records within the same House — a primary key violation that will block migration.',
          'Resolve duplicate.', 'asset_master', None,
-         'COUNT > 1 AND any status != C',
-         lambda df: (
-             df.duplicated(subset=['house', 'asset_id'], keep=False) &
-             df['asset_id'].isin(df[df['status'] != 'C']['asset_id'])
+         'status != C AND COUNT > 1',
+         lambda df: df.index.isin(
+             df[df['status'] != 'C']
+             .loc[lambda x: x.duplicated(subset=['house', 'asset_id'], keep=False)]
+             .index
          )),
 
         ('DQ-AM-D02', 19, 'Asset Master', 'Uniqueness', 'Medium',
          'Identical key fields within client',
-         'Finds assets sharing the same combination of description, group, capitalisation date, and cost — strong candidates for duplicate records.',
-         'Review for duplication.', 'asset_master', None, 
-         'COUNT > 1',
-         lambda df: df.duplicated(subset=['house', 'description', 'asset_group', 'cap_date_from', 'org_amount'], keep=False)),
+         'Finds non-closed assets sharing the same description, group, capitalisation date, and cost — strong candidates for duplicate records in the migration population.',
+         'Review for duplication.', 'asset_master', None,
+         'status != C AND COUNT > 1',
+         lambda df: df.index.isin(
+             df[df['status'] != 'C']
+             .loc[lambda x: x.duplicated(subset=['house', 'description', 'asset_group', 'cap_date_from', 'org_amount'], keep=False)]
+             .index
+         )),
 
         ('DQ-AM-R01', 19, 'Asset Master', 'Referential Integrity', 'Critical',
          'Transaction with no matching master record',
