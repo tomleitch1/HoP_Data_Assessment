@@ -444,9 +444,9 @@ def get_asset_checks():
         ('DQ-AD-X05', 19, 'Asset Depreciation', 'Referential Integrity', 'High',
          'Active book with no transactions',
          'Finds active depreciation books with no associated balance transactions — the asset appears to have never been capitalised or posted.',
-         'Review activity.', 'asset_depreciation', 'asset_balances', 
-         'key NOT IN balances',
-         lambda df, frames: ~df.set_index(['house', 'asset_id', 'depr_book_id']).index.isin(frames.get('asset_balances', pd.DataFrame()).set_index(['house', 'asset_id', 'depr_book_id']).index if 'asset_balances' in frames else [])),
+         'Review activity.', 'asset_depreciation', 'asset_balances',
+         'status != C AND key NOT IN balances',
+         lambda df, frames: (df['status'] != 'C') & ~df.set_index(['house', 'asset_id', 'depr_book_id']).index.isin(frames.get('asset_balances', pd.DataFrame()).set_index(['house', 'asset_id', 'depr_book_id']).index if 'asset_balances' in frames else [])),
 
         # ======================================================================
         # --- ASSET BALANCES (asset_balances) ---
