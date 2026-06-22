@@ -243,12 +243,6 @@ def get_asset_checks():
          'asset_id NOT IN master',
          lambda df, frames: ~df['asset_id'].isin(frames.get('asset_master', pd.DataFrame())['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
-        ('DQ-AM-R03', 19, 'Asset Master', 'Referential Integrity', 'High',
-         'Active transaction against inactive master',
-         'Identifies financial transactions posted against an asset that is no longer active — activity should not exist against closed or disposed assets.',
-         'Review asset status.', 'asset_balances', 'asset_master', 
-         'master.status NOT IN (N, T)',
-         lambda df, frames: df['asset_id'].isin(frames.get('asset_master', pd.DataFrame()).query('status not in ["N", "T"]')['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AM-R04', 19, 'Asset Master', 'Referential Integrity', 'High',
          'parent_asset does not match active asset in extract',

@@ -751,7 +751,6 @@ def get_check_columns():
         'DQ-AM-D02': ['description', 'asset_group', 'cap_date_from', 'org_amount'],
         'DQ-AM-R01': ['asset_id'],
         'DQ-AM-R02': ['asset_id'],
-        'DQ-AM-R03': ['asset_id', 'status'],
         'DQ-AM-R04': ['parent_asset', 'asset_id'],
         'DQ-AM-R05': ['apar_id'],
 
@@ -988,16 +987,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
- 
-    if table == 'asset_balances' and check_id == 'DQ-AM-R03':
-        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id'})
-        if 'asset_master' in frames:
-            master_link = frames['asset_master'][['house', 'asset_id', 'status']].copy()
-            master_link = master_link.drop_duplicates(subset=['house', 'asset_id'])
-            master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'status': 'ASSET_MASTER.status'})
-            failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
-        cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id', 'ASSET_MASTER.status']
         return failing[[c for c in cols if c in failing.columns]]
  
     if table == 'asset_master' and check_id == 'DQ-AM-R05':
