@@ -53,6 +53,39 @@ def _cache_fresh(table: str, source_paths: list) -> bool:
     return all(not os.path.exists(p) or os.path.getmtime(p) <= ct for p in source_paths)
 
 
+def _dq_cache_fresh(cache_key: str, frames: dict) -> bool:
+    """True if the dq_results cache is newer than all frame caches and all rules files.
+
+    Invalidated by: any source CSV change (via frame pickles), any rules .py
+    edit, or any change to data_engine.py itself.  Tab renderer / app.py changes
+    do NOT invalidate it — those are pure UI and don't affect DQ results.
+    """
+    cp = _cache_path(cache_key)
+    if not os.path.exists(cp):
+        return False
+    ct = os.path.getmtime(cp)
+
+    # If any frame pickle is newer → underlying data changed → re-run
+    for table in frames:
+        fp = _cache_path(table)
+        if os.path.exists(fp) and os.path.getmtime(fp) > ct:
+            return False
+
+    # If any rules file changed → check definitions changed → re-run
+    rules_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core', 'rules')
+    if os.path.isdir(rules_dir):
+        for fname in os.listdir(rules_dir):
+            if fname.endswith('.py'):
+                if os.path.getmtime(os.path.join(rules_dir, fname)) > ct:
+                    return False
+
+    # If data_engine.py itself changed → population filters / scoring logic changed → re-run
+    if os.path.getmtime(os.path.abspath(__file__)) > ct:
+        return False
+
+    return True
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
     """
     Parse a date column that may arrive in three formats:
@@ -297,7 +330,18 @@ def run_dq_analysis(frames, tab=None):
     """Executes DQ checks and returns a summary DataFrame.
 
     If *tab* is provided, only checks for that domain's scope IDs are run.
+    Results are cached to data/.cache and reused on restart unless the source
+    data, rules files, or data_engine.py have changed since the last run.
     """
+    cache_key = f'_dq_{tab or "all"}'
+    if _dq_cache_fresh(cache_key, frames):
+        try:
+            cached = pd.read_pickle(_cache_path(cache_key))
+            print(f"  DQ results loaded from cache ({cache_key})")
+            return cached
+        except Exception:
+            pass  # corrupt cache — fall through and recompute
+
     from dashboard.core.config import SCOPE_CONFIG
     results = []
     checks = get_dq_checks()
@@ -425,7 +469,13 @@ def run_dq_analysis(frames, tab=None):
                 'technical_logic': logic
             })
             
-    return pd.DataFrame(results)
+    dq = pd.DataFrame(results)
+    try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        dq.to_pickle(_cache_path(cache_key))
+    except Exception:
+        pass
+    return dq
 
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
