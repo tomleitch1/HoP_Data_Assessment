@@ -86,6 +86,68 @@ def _dq_cache_fresh(cache_key: str, frames: dict) -> bool:
     return True
 
 
+# ── Per-check caching ──────────────────────────────────────────────────────────
+# Each (check_id, house) result row is cached individually so editing one rule
+# only reruns that check — everything else loads from cache instantly.
+
+import hashlib as _hashlib
+import inspect as _inspect
+import pickle as _pickle
+from glob import glob as _glob
+
+_CHK_DIR = os.path.join('data', '.cache', 'checks')
+
+
+def _chk_sig(check_tuple) -> str:
+    """Short content-hash of the full check definition including lambda source.
+    Changes whenever the rule logic, severity, dimension, or table mapping changes.
+    """
+    *meta, filter_func = check_tuple
+    try:
+        src = _inspect.getsource(filter_func).strip()
+    except OSError:
+        src = repr(filter_func)
+    raw = '|'.join(str(m) for m in meta) + '|' + src
+    return _hashlib.md5(raw.encode()).hexdigest()[:12]
+
+
+def _chk_file(check_id: str, house: str, sig: str) -> str:
+    return os.path.join(_CHK_DIR, f'{check_id}__{house}__{sig}.pkl')
+
+
+def _chk_fresh(cache_file: str, relevant_fps: list, engine_mtime: float) -> bool:
+    """True if the per-check cache file exists and no inputs are newer than it."""
+    if not os.path.exists(cache_file):
+        return False
+    ct = os.path.getmtime(cache_file)
+    if engine_mtime > ct:
+        return False
+    for fp in relevant_fps:
+        if os.path.exists(fp) and os.path.getmtime(fp) > ct:
+            return False
+    return True
+
+
+def _read_chk(cache_file: str) -> dict:
+    with open(cache_file, 'rb') as f:
+        return _pickle.load(f)
+
+
+def _write_chk(cache_file: str, row: dict) -> None:
+    os.makedirs(_CHK_DIR, exist_ok=True)
+    # Remove any stale-signature files for this check+house
+    parts = os.path.basename(cache_file).split('__')
+    if len(parts) == 3:
+        for old in _glob(os.path.join(_CHK_DIR, f'{parts[0]}__{parts[1]}__*.pkl')):
+            if old != cache_file:
+                try:
+                    os.remove(old)
+                except Exception:
+                    pass
+    with open(cache_file, 'wb') as f:
+        _pickle.dump(row, f)
+
+
 def _parse_dates(series: pd.Series) -> pd.Series:
     """
     Parse a date column that may arrive in three formats:
@@ -330,18 +392,13 @@ def run_dq_analysis(frames, tab=None):
     """Executes DQ checks and returns a summary DataFrame.
 
     If *tab* is provided, only checks for that domain's scope IDs are run.
-    Results are cached to data/.cache and reused on restart unless the source
-    data, rules files, or data_engine.py have changed since the last run.
+    Each (check_id, house) result row is cached individually in
+    data/.cache/checks/.  Editing one rule re-runs only that check — all other
+    checks load from cache instantly.  Cache is invalidated per-check by:
+      - a change to data_engine.py (population filters / scoring logic)
+      - a change to the frame pickle for the check's source or joined table
+      - any change to the check's own definition (lambda source, severity, etc.)
     """
-    cache_key = f'_dq_{tab or "all"}'
-    if _dq_cache_fresh(cache_key, frames):
-        try:
-            cached = pd.read_pickle(_cache_path(cache_key))
-            print(f"  DQ results loaded from cache ({cache_key})")
-            return cached
-        except Exception:
-            pass  # corrupt cache — fall through and recompute
-
     from dashboard.core.config import SCOPE_CONFIG
     results = []
     checks = get_dq_checks()
@@ -350,14 +407,33 @@ def run_dq_analysis(frames, tab=None):
         if scope_key and scope_key in SCOPE_CONFIG:
             allowed = set(SCOPE_CONFIG[scope_key]['scope_ids'])
             checks = [c for c in checks if c[1] in allowed]
+
+    # Pre-compute engine mtime once — avoids a syscall per check
+    engine_mtime = os.path.getmtime(os.path.abspath(__file__))
     
-    for check_id, scope_id, obj, dim, sev, desc, intent, rem, table, joined_table, logic, filter_func in checks:
+    n_hit = n_miss = 0
+    for check_tuple in checks:
+        check_id, scope_id, obj, dim, sev, desc, intent, rem, table, joined_table, logic, filter_func = check_tuple
         if table not in frames:
             continue
-            
+
         df_table = frames[table]
-        
+        sig       = _chk_sig(check_tuple)
+        rel_fps   = [_cache_path(table)]
+        if joined_table and joined_table in frames:
+            rel_fps.append(_cache_path(joined_table))
+
         for house in CLIENTS:
+            # Per-check cache — load if fresh, skip the run entirely
+            cf = _chk_file(check_id, house, sig)
+            if _chk_fresh(cf, rel_fps, engine_mtime):
+                try:
+                    results.append(_read_chk(cf))
+                    n_hit += 1
+                    continue
+                except Exception:
+                    pass  # corrupt entry — fall through and recompute
+
             # Determine population based on table and check type
             if table == 'asuheader':
                 if house == 'HOL':
@@ -448,7 +524,7 @@ def run_dq_analysis(frames, tab=None):
             green_t, amber_t = RAG_THRESHOLDS.get(sev, (5, 15))
             rag = 'Green' if error_rate <= green_t else ('Amber' if error_rate <= amber_t else 'Red')
             
-            results.append({
+            row = {
                 'check_id': check_id,
                 'scope_id': scope_id,
                 'object': obj,
@@ -467,15 +543,14 @@ def run_dq_analysis(frames, tab=None):
                 'table': table,
                 'joined_table': joined_table,
                 'technical_logic': logic
-            })
-            
-    dq = pd.DataFrame(results)
-    try:
-        os.makedirs(_CACHE_DIR, exist_ok=True)
-        dq.to_pickle(_cache_path(cache_key))
-    except Exception:
-        pass
-    return dq
+            }
+            results.append(row)
+            _write_chk(cf, row)
+            n_miss += 1
+
+    if n_hit or n_miss:
+        print(f"  DQ analysis: {n_hit} cached, {n_miss} recomputed")
+    return pd.DataFrame(results)
 
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
