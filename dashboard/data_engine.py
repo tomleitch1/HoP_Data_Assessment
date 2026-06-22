@@ -1021,7 +1021,9 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id', 'cap_date_from': 'ASSET_MASTER.cap_date_from'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_DEPRECIATION.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id', 'ASSET_DEPRECIATION.cap_date_from', 'ASSET_MASTER.cap_date_from']
-        return failing[[c for c in cols if c in failing.columns]]
+        return failing[[c for c in cols if c in failing.columns]].drop_duplicates(
+            subset=['ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
+        )
  
     if table == 'asset_depreciation' and check_id == 'DQ-AD-X05':
         failing = failing.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id'})
