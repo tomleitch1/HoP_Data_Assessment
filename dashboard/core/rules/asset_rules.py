@@ -226,10 +226,13 @@ def get_asset_checks():
 
         ('DQ-AM-D01', 19, 'Asset Master', 'Uniqueness', 'Critical',
          'Duplicate asset_id within client',
-         'Detects duplicate asset IDs within the same House — a primary key violation that will block migration.',
-         'Resolve duplicate.', 'asset_master', None, 
-         'COUNT > 1',
-         lambda df: df.duplicated(subset=['house', 'asset_id'], keep=False)),
+         'Detects duplicate asset IDs within the same House where at least one record is not closed — a primary key violation that will block migration.',
+         'Resolve duplicate.', 'asset_master', None,
+         'COUNT > 1 AND any status != C',
+         lambda df: (
+             df.duplicated(subset=['house', 'asset_id'], keep=False) &
+             df['asset_id'].isin(df[df['status'] != 'C']['asset_id'])
+         )),
 
         ('DQ-AM-D02', 19, 'Asset Master', 'Uniqueness', 'Medium',
          'Identical key fields within client',
