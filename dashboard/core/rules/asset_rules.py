@@ -162,11 +162,11 @@ def get_asset_checks():
          lambda df: ~df['wf_state'].fillna('').isin(['', 'N', 'T', 'A', 'C', 'R', 'U', 'W', 'X'])),
 
         ('DQ-AM-V03', 19, 'Asset Master', 'Validity', 'High',
-         'org_amount is negative',
-         'Identifies assets where the original cost amount is negative — negative cost is not a valid value for a physical or intangible asset.',
-         'Correct org_amount.', 'asset_master', None, 
-         'org_amount < 0',
-         lambda df: pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) < 0),
+         'base_amount is negative',
+         'Identifies assets where the base amount is negative — negative cost is not a valid value for a physical or intangible asset.',
+         'Correct base_amount.', 'asset_master', None,
+         'base_amount < 0',
+         lambda df: pd.to_numeric(df['base_amount'], errors='coerce').fillna(0) < 0),
 
         ('DQ-AM-V04', 19, 'Asset Master', 'Timeliness', 'High',
          'date_from is after date_to',
@@ -461,7 +461,7 @@ def get_asset_checks():
          'Placeholder check — logic covered by DQ-AD-K05.',
          'Review values.', 'asset_depreciation', 'asset_master', 
          'res_value > org_amount',
-         lambda df, frames: pd.Series(False, index=df.index)),
+         lambda df: pd.Series(False, index=df.index)),
 
         ('DQ-AD-X05', 19, 'Asset Depreciation', 'Referential Integrity', 'High',
          'Active book with no transactions',
