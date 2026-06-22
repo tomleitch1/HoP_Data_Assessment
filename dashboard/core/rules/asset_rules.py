@@ -556,12 +556,7 @@ def get_asset_checks():
          'asset_id NOT IN balances',
          lambda df, frames: (df['status'] == 'N') & ~df['asset_id'].isin(frames.get('asset_balances', pd.DataFrame())['asset_id']) if 'asset_balances' in frames else pd.Series(False, index=df.index)),
 
-        ('DQ-AB-X04', 19, 'Asset Balances', 'Referential Integrity', 'Critical',
-         'Reconcile NBV to GL',
-         'Placeholder for the NBV-to-GL reconciliation check — verifies that the asset register balance agrees with the fixed assets control account in the trial balance.',
-         'Reconcile GL.', 'asset_balances', 'gl_opening_balances', 
-         'NBV != GL Fixed Assets',
-         lambda df: pd.Series(False, index=df.index)),
+
 
         # ======================================================================
         # --- ASSET TRANS FLAGS (asset_trans_flags) ---
