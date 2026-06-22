@@ -111,17 +111,21 @@ def _chk_sig(check_tuple) -> str:
     return _hashlib.md5(raw.encode()).hexdigest()[:12]
 
 
-def _chk_file(check_id: str, house: str, sig: str) -> str:
-    return os.path.join(_CHK_DIR, f'{check_id}__{house}__{sig}.pkl')
+def _chk_file(check_id: str, house: str, check_sig: str, engine_sig: str) -> str:
+    return os.path.join(_CHK_DIR, f'{check_id}__{house}__{check_sig}__{engine_sig}.pkl')
 
 
-def _chk_fresh(cache_file: str, relevant_fps: list, engine_mtime: float) -> bool:
-    """True if the per-check cache file exists and no inputs are newer than it."""
+def _chk_fresh(cache_file: str, relevant_fps: list) -> bool:
+    """True if the per-check cache file exists and source data hasn't changed.
+
+    The engine_sig is embedded in the filename — if run_dq_analysis changes,
+    the filename changes and the file won't be found.  Editing get_failing_records
+    or get_check_columns does NOT change engine_sig so those edits don't
+    invalidate the analysis cache.
+    """
     if not os.path.exists(cache_file):
         return False
     ct = os.path.getmtime(cache_file)
-    if engine_mtime > ct:
-        return False
     for fp in relevant_fps:
         if os.path.exists(fp) and os.path.getmtime(fp) > ct:
             return False
@@ -133,11 +137,28 @@ def _read_chk(cache_file: str) -> dict:
         return _pickle.load(f)
 
 
+_ENGINE_SIG_CACHE: str | None = None
+
+def _engine_sig() -> str:
+    """Hash of run_dq_analysis source only.  Changing get_failing_records,
+    get_check_columns, or any other function in this file does NOT change
+    this value — only edits to run_dq_analysis itself do.
+    """
+    global _ENGINE_SIG_CACHE
+    if _ENGINE_SIG_CACHE is None:
+        try:
+            src = _inspect.getsource(run_dq_analysis)
+        except Exception:
+            src = str(os.path.getmtime(os.path.abspath(__file__)))
+        _ENGINE_SIG_CACHE = _hashlib.md5(src.encode()).hexdigest()[:8]
+    return _ENGINE_SIG_CACHE
+
+
 def _write_chk(cache_file: str, row: dict) -> None:
     os.makedirs(_CHK_DIR, exist_ok=True)
-    # Remove any stale-signature files for this check+house
+    # Remove any stale-signature files for this check+house (old check_sig or engine_sig)
     parts = os.path.basename(cache_file).split('__')
-    if len(parts) == 3:
+    if len(parts) >= 2:
         for old in _glob(os.path.join(_CHK_DIR, f'{parts[0]}__{parts[1]}__*.pkl')):
             if old != cache_file:
                 try:
@@ -408,8 +429,9 @@ def run_dq_analysis(frames, tab=None):
             allowed = set(SCOPE_CONFIG[scope_key]['scope_ids'])
             checks = [c for c in checks if c[1] in allowed]
 
-    # Pre-compute engine mtime once — avoids a syscall per check
-    engine_mtime = os.path.getmtime(os.path.abspath(__file__))
+    # Engine sig: hash of run_dq_analysis source only.  Editing get_failing_records
+    # or get_check_columns won't change this, so those edits don't bust the cache.
+    esig = _engine_sig()
     
     n_hit = n_miss = 0
     for check_tuple in checks:
@@ -425,8 +447,8 @@ def run_dq_analysis(frames, tab=None):
 
         for house in CLIENTS:
             # Per-check cache — load if fresh, skip the run entirely
-            cf = _chk_file(check_id, house, sig)
-            if _chk_fresh(cf, rel_fps, engine_mtime):
+            cf = _chk_file(check_id, house, sig, esig)
+            if _chk_fresh(cf, rel_fps):
                 try:
                     results.append(_read_chk(cf))
                     n_hit += 1
@@ -547,6 +569,7 @@ def run_dq_analysis(frames, tab=None):
             results.append(row)
             _write_chk(cf, row)
             n_miss += 1
+
 
     if n_hit or n_miss:
         print(f"  DQ analysis: {n_hit} cached, {n_miss} recomputed")
