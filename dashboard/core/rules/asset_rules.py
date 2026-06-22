@@ -54,9 +54,13 @@ def get_asset_checks():
         ('DQ-AG-D02', 19, 'Asset Groups', 'Uniqueness', 'Medium',
          'Duplicate group description',
          'Finds duplicate group descriptions within the same House — while not a hard block, duplicate names create ambiguity when users assign assets to groups.',
-         'Review descriptions.', 'asset_groups', None, 
-         'COUNT(*) OVER(PARTITION BY description) > 1',
-         lambda df: df.duplicated(subset=['house', 'description'], keep=False)),
+         'Review descriptions.', 'asset_groups', None,
+         'unique groups with COUNT(*) OVER(PARTITION BY description) > 1',
+         lambda df: df['asset_group'].isin(
+             df.drop_duplicates(subset=['house', 'asset_group'])
+             .loc[lambda x: x.duplicated(subset=['house', 'description'], keep=False)]
+             ['asset_group']
+         )),
 
         ('DQ-AG-X01', 19, 'Asset Master', 'Referential Integrity', 'Critical',
          'Asset assigned to non-existent group',
