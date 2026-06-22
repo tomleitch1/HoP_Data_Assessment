@@ -475,18 +475,20 @@ def _render_intro(intro_data):
             }),
         ]),
 
-        # Row 1: three confirmed extracts
+        # Row 1
         html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '16px'}, children=[
             _card_master(hoc_m, hol_m),
             _card_groups(hoc_g, hol_g),
-            _card_trans_flags(hoc_f, hol_f),
         ]),
 
-        # Row 2: two pending extracts
-        html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
+        # Row 2
+        html.Div(style={'display': 'flex', 'gap': '16px', 'marginBottom': '16px'}, children=[
+            _card_trans_flags(hoc_f, hol_f),
             _card_depr(hoc_d, hol_d),
-            _card_balances(hoc_b, hol_b),
         ]),
+
+        # Row 3 — balance history full width
+        _card_balances(hoc_b, hol_b),
 
         _known_gaps_section(),
     ])
