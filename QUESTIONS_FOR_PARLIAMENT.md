@@ -113,3 +113,28 @@ The standard trans_type codes (CA, ND, ED, FD, SA) have been confirmed to exist 
 - Same question for SA (disposal) rows.
 
 ---
+
+## 4. Fixed Asset Depreciation Methods — `aatassetbook` method codes
+
+**Context:** The data dictionary and Unit4 specification we have been working from documents four depreciation methods: `LIN` (Straight Line), `BAL` (Reducing Balance), `EXP` (Expense), `SYD` (Sum of Years Digits). The real Parliament data in `aatassetbook` uses entirely different codes: **LNA, LNB, MAN, NOD**. None of these appear in the data dictionary.
+
+Until we understand what each code means, several data quality checks cannot be written or validated — including the check for invalid method codes (which would currently flag every single record as invalid), and any check that tests whether the correct supporting fields are present for a given method.
+
+**Questions:**
+
+- What do each of the following depreciation method codes mean in your Agresso installation?
+
+  | Code | Your description |
+  |------|-----------------|
+  | LNA | |
+  | LNB | |
+  | MAN | |
+  | NOD | |
+
+- For each method: does it require a **useful life** (`lifetime` field) to calculate the depreciation charge?
+- For each method: does it require a **depreciation rate** (`depr_percent` field)?
+- Is any of these the equivalent of an "expense" method — where the full cost is written off immediately in one go rather than spread over time?
+
+**Checks affected:** `DQ-AD-V01`, `DQ-AG-V01`, `DQ-AD-V04`, `DQ-AD-C04`, `DQ-AD-C05`, `DQ-AG-C05`, `DQ-AG-C06`
+
+---
