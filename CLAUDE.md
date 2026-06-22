@@ -739,6 +739,14 @@ Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, perio
 | `asset_trans_flags_HOC_run.sql` | `Agresso_HoC` | `asset_trans_flags_HOC.csv` |
 | `asset_trans_flags_HOL_run.sql` | `agresso_HoL` | `asset_trans_flags_HOL.csv` |
 
+### `aatassetgrbook` — depreciation book IDs confirmed from real data (June 2026)
+
+Parliament uses exactly **two depreciation book IDs** across both houses:
+- `CURR` — current / active depreciation book (financial reporting)
+- `HIST` — historical depreciation book
+
+Multi-book assets therefore have one CURR row and one HIST row in `asset_depreciation`. The `depr_book_id` column in `asset_groups` and `asset_depreciation` will always be one of these two values. Do not expect other book names.
+
 ### `aattrans` — dc_flag mechanism (confirmed from real HoC data, June 2026)
 
 `aattrans` stores every real transaction with `dc_flag = 1`, **and** mirrors each one with an equal-and-opposite year-end reset entry at `dc_flag = -1`. The reset entries are an internal AT module housekeeping mechanism — they are not real financial movements. Without `AND dc_flag = 1` in the WHERE clause, `SUM(amount)` nets to zero for every asset and every trans_type. **All run SQL files include `dc_flag = 1`.** The spec file `asset_balances.sql` documents this in assumptions but omitted it from the WHERE clause — the run files are correct.
