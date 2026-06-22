@@ -344,9 +344,9 @@ def get_asset_checks():
         ('DQ-AD-V03', 19, 'Asset Depreciation', 'Validity', 'High',
          'depr_percent > 100',
          'Finds books where the depreciation rate exceeds 100% — mathematically invalid for any depreciation calculation.',
-         'Correct depr_percent.', 'asset_depreciation', None, 
-         'depr_percent > 100',
-         lambda df: pd.to_numeric(df['depr_percent'], errors='coerce').fillna(0) > 100),
+         'Correct depr_percent.', 'asset_depreciation', None,
+         'status != C AND depr_percent > 100',
+         lambda df: (df['status'] != 'C') & (pd.to_numeric(df['depr_percent'], errors='coerce').fillna(0) > 100)),
 
         ('DQ-AD-V04', 19, 'Asset Depreciation', 'Validity', 'High',
          'lifetime <= 0 for active depreciating asset',
