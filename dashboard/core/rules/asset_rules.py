@@ -154,12 +154,6 @@ def get_asset_checks():
          'status NOT IN (N,P,C,T)',
          lambda df: ~df['status'].isin(['N', 'P', 'C', 'T'])),
 
-        ('DQ-AM-V02', 19, 'Asset Master', 'Validity', 'High',
-         'wf_state not in valid list',
-         'Flags assets with an unrecognised workflow state — the value must be one of the defined codes or the record cannot be processed.',
-         'Correct wf_state.', 'asset_master', None, 
-         'wf_state NOT IN ("",N,T,A,C,R,U,W,X)',
-         lambda df: ~df['wf_state'].fillna('').isin(['', 'N', 'T', 'A', 'C', 'R', 'U', 'W', 'X'])),
 
         ('DQ-AM-V03', 19, 'Asset Master', 'Validity', 'High',
          'base_amount is negative',
