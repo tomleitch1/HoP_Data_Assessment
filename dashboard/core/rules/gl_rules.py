@@ -55,22 +55,37 @@ def _gl_dim_dup_desc(df, frames):
 
 
 def _gl_acc_no_activity(df, frames):
-    """HOC: flag 55/56/57 accounts with no current-year posting. HOL: flag all accounts with no posting."""
+    """
+    HOC: flag 55/56/57 accounts with no current-year posting in gl_journals.
+    HOL: flag all accounts not posted to in the last 18 months (gl_active_accounts)
+         and not referenced in the Planner module (gl_planner_accounts).
+         gl_journals is also unioned in as a safety net.
+    """
     if df.empty:
         return pd.Series(False, index=df.index)
     house = _safe_col(df, 'house').iloc[0]
     accounts = _safe_col(df, 'account').astype(str)
+
     if house == 'HOC':
         in_scope = accounts.str[:2].isin(['55', '56', '57'])
-    else:
-        in_scope = pd.Series(True, index=df.index)
-    if 'gl_journals' not in frames or frames['gl_journals'].empty:
-        return in_scope
-    posted = set(
-        frames['gl_journals'][frames['gl_journals']['house'] == house]['account']
-        .astype(str).tolist()
-    )
-    return in_scope & ~accounts.isin(posted)
+        if 'gl_journals' not in frames or frames['gl_journals'].empty:
+            return in_scope
+        posted = set(
+            frames['gl_journals'][frames['gl_journals']['house'] == house]['account']
+            .astype(str).tolist()
+        )
+        return in_scope & ~accounts.isin(posted)
+
+    # HOL: all active accounts in scope; build exclusion set from three sources
+    in_scope = pd.Series(True, index=df.index)
+    excluded = set()
+    for frame_key in ('gl_journals', 'gl_active_accounts', 'gl_planner_accounts'):
+        frame = frames.get(frame_key)
+        if frame is not None and not frame.empty and 'account' in frame.columns:
+            excluded.update(
+                frame[frame['house'] == house]['account'].astype(str).tolist()
+            )
+    return in_scope & ~accounts.isin(excluded)
 
 
 def _compute_dim_depths(df):
@@ -650,16 +665,22 @@ def get_gl_checks():
 
         ('GL_ACC_NO_ACTIVITY',
          20, 'Chart of Accounts', 'Timeliness', 'Low',
-         'Active account with no postings in the current year (HOC: 55/56/57 series only; HOL: all accounts)',
-         'Active accounts with no current-year postings may no longer be required. '
+         'Active account with no postings or Planner use in scope window '
+         '(HOC: current FY, 55/56/57 series only; HOL: last 18 months + Planner exclusion, all series)',
+         'Active accounts with no recent postings and no planned future use may no longer be required. '
          'Migrating unused accounts adds unnecessary complexity to the new chart of accounts. '
-         'For HoC, the check is scoped to the 55/56/57 expenditure and balance sheet ranges. '
-         'For HoL, all active accounts are assessed.',
-         'Review each affected account. Close accounts that have had no activity this year '
+         'For HoC, the check is scoped to the 55/56/57 expenditure and balance sheet ranges using current-year journals only. '
+         'For HoL, all active accounts are assessed against the last 18 months of GL postings (December 2024 onwards). '
+         'HoL accounts referenced in the Planner module within the last 18 months or forecast for future years '
+         'are also excluded, as they are legitimately active even without a GL posting.',
+         'Review each affected account. Close accounts with no recent activity and no planned use '
          'if they are no longer required. Retain accounts expected to receive postings before cutover.',
          'aglaccounts', 'gl_journals',
-         "WHERE status = 'N' AND client IN ('CA','CM') AND LEFT(account,2) IN ('55','56','57') "
-         "AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE house = 'HOC')",
+         "HOC: WHERE status = 'N' AND LEFT(account,2) IN ('55','56','57') "
+         "AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE fiscal_year = <current>) -- "
+         "HOL: WHERE status = 'N' "
+         "AND account NOT IN (SELECT DISTINCT account FROM agltransact WHERE period >= 202409) "
+         "AND account NOT IN (SELECT DISTINCT dim1 FROM aagholp WHERE period >= 202409)",
          lambda df, frames: _gl_acc_no_activity(df, frames)),
 
     ]

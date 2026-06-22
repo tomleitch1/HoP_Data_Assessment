@@ -22,7 +22,8 @@ SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
     'customers': ['customer_master', 'customer_open_trans', 'customer_history'],
     'gl':        ['gl_chart_of_accounts', 'gl_opening_balances', 'gl_dimension_config', 'gl_dimension_values',
-                  'gl_transact_dimensions', 'gl_budgets', 'gl_journals'],
+                  'gl_transact_dimensions', 'gl_budgets', 'gl_journals',
+                  'gl_active_accounts', 'gl_planner_accounts'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
 }
@@ -160,6 +161,8 @@ def load_data(tab=None):
         'gl_transact_dimensions',
         'gl_budgets',
         'gl_journals',
+        'gl_active_accounts',
+        'gl_planner_accounts',
     }
 
     # Load split files
@@ -182,6 +185,8 @@ def load_data(tab=None):
         'gl_transact_dimensions': 'gl_transact_dim',
         'gl_budgets':             'gl_budgets',
         'gl_journals':            'gl_journals',
+        'gl_active_accounts':     'gl_active_accounts',
+        'gl_planner_accounts':    'gl_planner_accounts',
     }
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
