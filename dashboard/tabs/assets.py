@@ -132,9 +132,12 @@ def get_asset_intro_data(frames):
         am_status = h_am['status'].value_counts().to_dict() if am_total > 0 else {}
 
         # ── Asset groups ───────────────────────────────────────────────────────
-        ag_total   = len(h_ag)
-        ag_active  = int((h_ag['grp_status'] == 'N').sum()) if ag_total > 0 else 0
-        ag_methods = h_ag['depr_method'].value_counts().to_dict() if ag_total > 0 else {}
+        # Deduplicate by asset_group — the LEFT JOIN to aatassetgrbook creates
+        # one row per book (CURR + HIST) per group, inflating raw row counts.
+        ag_unique  = h_ag.drop_duplicates(subset=['asset_group']) if not h_ag.empty else pd.DataFrame()
+        ag_total   = len(ag_unique)
+        ag_active  = int((ag_unique['grp_status'] == 'N').sum()) if ag_total > 0 else 0
+        ag_methods = ag_unique['depr_method'].value_counts().to_dict() if ag_total > 0 else {}
 
         # ── Depreciation books ─────────────────────────────────────────────────
         ad_total   = len(h_ad)
