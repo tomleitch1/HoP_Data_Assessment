@@ -23,12 +23,6 @@ def get_asset_checks():
          'grp_status = N AND description IS NULL',
          lambda df: (df['grp_status'] == 'N') & (df['description'].isna() | (df['description'] == ''))),
 
-        ('DQ-AG-V01', 19, 'Asset Groups', 'Validity', 'Critical',
-         'depr_method invalid at group level',
-         'Catches asset groups with an invalid depreciation method. only LIN, BAL, EXP, and SYD are valid; any other value will cause the depreciation engine to fail for all assets in the group.',
-         'Correct depr_method (LIN, BAL, EXP, SYD).', 'asset_groups', None, 
-         'depr_method NOT IN (LIN, BAL, EXP, SYD)',
-         lambda df: ~df['depr_method'].isin(['LIN', 'BAL', 'EXP', 'SYD'])),
 
         ('DQ-AG-V04', 19, 'Asset Groups', 'Validity', 'High',
          'depr_percent exceeds 100%',
@@ -69,38 +63,6 @@ def get_asset_checks():
          'asset_master.asset_group NOT IN asset_groups',
          lambda df, frames: ~df['asset_group'].isin(frames.get('asset_groups', pd.DataFrame())['asset_group']) if 'asset_groups' in frames else pd.Series(False, index=df.index)),
 
-        ('DQ-AG-X03', 19, 'Asset Depreciation', 'Consistency', 'High',
-         'Asset method differs from Group default',
-         'Flags assets whose depreciation method differs from their group default. each override is an individual configuration item that will require manual setup in the target system.',
-         'Verify if override is intentional.', 'asset_depreciation', 'asset_groups',
-         'asset.depr_method != group.book_depr_method',
-         lambda df, frames: df['asset_id'].isin(
-             df.merge(
-                 frames.get('asset_master', pd.DataFrame())[['house', 'client', 'asset_id', 'asset_group']],
-                 on=['house', 'client', 'asset_id'], how='left'
-             ).merge(
-                 frames.get('asset_groups', pd.DataFrame())[['house', 'client', 'asset_group', 'depr_book_id', 'book_depr_method']],
-                 on=['house', 'client', 'asset_group', 'depr_book_id'],
-                 how='inner'
-             ).query('depr_method != book_depr_method')['asset_id']
-         ) if 'asset_groups' in frames and 'asset_master' in frames else pd.Series(False, index=df.index)),
-
-        ('DQ-AG-X04', 19, 'Asset Depreciation', 'Consistency', 'Medium',
-         'Asset lifetime differs from Group default',
-         'Flags assets whose useful life differs from their group default. each of these overrides represents a manual configuration item during migration.',
-         'Verify if override is intentional.', 'asset_depreciation', 'asset_groups',
-         'status != C AND asset.lifetime != group.book_lifetime',
-         lambda df, frames: df.index.isin(
-             df[df['status'] != 'C'].merge(
-                 frames.get('asset_master', pd.DataFrame())[['house', 'client', 'asset_id', 'asset_group']],
-                 on=['house', 'client', 'asset_id'], how='left'
-             ).merge(
-                 frames.get('asset_groups', pd.DataFrame())[['house', 'client', 'asset_group', 'depr_book_id', 'book_lifetime']],
-                 left_on=['house', 'client', 'asset_group', 'depr_book_id'],
-                 right_on=['house', 'client', 'asset_group', 'depr_book_id'],
-                 how='inner'
-             ).query('lifetime != book_lifetime').index
-         ) if 'asset_groups' in frames and 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         # ======================================================================
         # ASSET MASTER (DQ-AM-)
@@ -133,12 +95,6 @@ def get_asset_checks():
          'date_from IS NULL',
          lambda df: df['date_from'].isna()),
          
-        ('DQ-AM-C05', 19, 'Asset Master', 'Completeness', 'High',
-         'org_amount is null or zero for capitalised active asset',
-         'Finds capitalised active assets with no original cost amount. an asset cannot be depreciated if its cost basis is zero or missing.',
-         'Populate org_amount.', 'asset_master', None, 
-         'org_amount <= 0 AND cap_date_from IS NOT NULL',
-         lambda df: (pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) <= 0) & df['cap_date_from'].notna()),
 
         ('DQ-AM-C06', 19, 'Asset Master', 'Completeness', 'Medium',
          'cap_date_from is null where cap_flag is expected to be true',
@@ -225,16 +181,6 @@ def get_asset_checks():
              .index
          )),
 
-        ('DQ-AM-D02', 19, 'Asset Master', 'Uniqueness', 'Medium',
-         'Identical key fields within client',
-         'Finds non-closed assets sharing the same description, group, capitalisation date, and cost. strong candidates for duplicate records in the migration population.',
-         'Review for duplication.', 'asset_master', None,
-         'status != C AND COUNT > 1',
-         lambda df: df.index.isin(
-             df[df['status'] != 'C']
-             .loc[lambda x: x.duplicated(subset=['house', 'description', 'asset_group', 'cap_date_from', 'org_amount'], keep=False)]
-             .index
-         )),
 
         ('DQ-AM-R01', 19, 'Asset Master', 'Referential Integrity', 'Critical',
          'Transaction with no matching master record',
@@ -324,12 +270,6 @@ def get_asset_checks():
          'depr_period IS NULL',
          lambda df: df['depr_period'].isna()),
 
-        ('DQ-AD-V01', 19, 'Asset Depreciation', 'Validity', 'Critical',
-         'depr_method invalid',
-         'Catches depreciation books with an invalid method code. must be one of LIN, BAL, EXP, or SYD to be recognised by the target system.',
-         'Correct depr_method.', 'asset_depreciation', None, 
-         'depr_method NOT IN (LIN,BAL,EXP,SYD)',
-         lambda df: ~df['depr_method'].isin(['LIN', 'BAL', 'EXP', 'SYD'])),
 
         ('DQ-AD-V02', 19, 'Asset Depreciation', 'Validity', 'Critical',
          'status invalid',
@@ -387,12 +327,6 @@ def get_asset_checks():
          'date_to IS NOT NULL AND status=N',
          lambda df: df['date_to'].notna() & (df['status'] == 'N')),
 
-        ('DQ-AD-K02', 19, 'Asset Depreciation', 'Consistency', 'High',
-         'depr_period stale',
-         'Identifies books where the last depreciation period is more than 3 months in the past. suggests depreciation processing has stalled.',
-         'Review depr_period.', 'asset_depreciation', None, 
-         'depr_period stale',
-         lambda df: pd.to_numeric(df['depr_period'], errors='coerce').fillna(999999) < ((today.year * 100) + today.month - 3)),
 
         ('DQ-AD-K03', 19, 'Asset Depreciation', 'Consistency', 'Medium',
          'switch = true but method != BAL',
@@ -486,12 +420,6 @@ def get_asset_checks():
          'total_amount IS NULL',
          lambda df: df['total_amount'].isna()),
 
-        ('DQ-AB-V01', 19, 'Asset Balances', 'Validity', 'Critical',
-         'trans_type invalid',
-         'Catches balance records with a transaction type outside the valid set (CA, PC, SA, ND, ED, FD, VN, RV, ZU). unrecognised types will be rejected during migration.',
-         'Correct trans_type.', 'asset_balances', None, 
-         'trans_type NOT IN (...)',
-         lambda df: ~df['trans_type'].isin(['CA','PC','SA','ND','ED','FD','VN','RV','ZU'])),
 
         ('DQ-AB-V02', 19, 'Asset Balances', 'Validity', 'High',
          'total_amount = 0 for CA',
@@ -590,11 +518,5 @@ def get_asset_checks():
          'trans_date > TODAY',
          lambda df: pd.to_datetime(df['trans_date'], errors='coerce').notna() & (pd.to_datetime(df['trans_date'], errors='coerce') > today)),
 
-        ('DQ-AF-X05', 19, 'Asset Trans Flags', 'Consistency', 'Medium',
-         'Multiple CA transactions',
-         'Identifies assets with more than one capitalisation (CA) transaction. an asset should only be capitalised once; multiple CA records suggest duplicate postings.',
-         'Review capitalisation.', 'asset_trans_flags', None, 
-         'COUNT(CA) > 1',
-         lambda df: df.index.isin(df[df['trans_type'] == 'CA'].groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: len(g) > 1).index)),
     ]
     return checks
