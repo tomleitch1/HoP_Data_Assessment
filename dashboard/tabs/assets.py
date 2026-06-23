@@ -151,8 +151,8 @@ def get_asset_intro_data(frames):
         ab_unknown     = h_ab[h_ab['trans_type'].isin(_UNKNOWN_TYPES)]   if ab_total > 0 else pd.DataFrame()
         conf_txn       = int(ab_confirmed['transaction_count'].sum()) if not ab_confirmed.empty and 'transaction_count' in ab_confirmed.columns else 0
         unkn_txn       = int(ab_unknown['transaction_count'].sum())   if not ab_unknown.empty  and 'transaction_count' in ab_unknown.columns  else 0
-        conf_by_type   = ab_confirmed.groupby('trans_type')['transaction_count'].sum().to_dict() if not ab_confirmed.empty else {}
-        unkn_types_seen = sorted(ab_unknown['trans_type'].unique().tolist()) if not ab_unknown.empty else []
+        conf_by_type = ab_confirmed.groupby('trans_type')['transaction_count'].sum().to_dict() if not ab_confirmed.empty else {}
+        unkn_by_type = ab_unknown.groupby('trans_type')['transaction_count'].sum().to_dict() if not ab_unknown.empty else {}
 
         # ── Transaction flags ──────────────────────────────────────────────────
         af_total = len(h_af)
@@ -179,11 +179,11 @@ def get_asset_intro_data(frames):
                 'method_breakdown': ad_methods,
             },
             'balances': {
-                'total_rows':       ab_total,
-                'confirmed_txns':   conf_txn,
-                'unknown_txns':     unkn_txn,
-                'conf_by_type':     conf_by_type,
-                'unknown_types':    unkn_types_seen,
+                'total_rows':     ab_total,
+                'confirmed_txns': conf_txn,
+                'unknown_txns':   unkn_txn,
+                'conf_by_type':   conf_by_type,
+                'unkn_by_type':   unkn_by_type,
             },
             'trans_flags': {
                 'ca_rows': af_ca,
@@ -357,6 +357,7 @@ def _card_balances(hoc, hol):
         'ED': '#c07820', 'FD': '#c0392b', 'SA': '#94a3b8',
         'VN': '#0891b2', 'CI': '#64748b',
     }
+    _UNKN_COLOR = '#c07820'
 
     def _col(house, b):
         total_txns = b['confirmed_txns'] + b['unknown_txns']
@@ -366,26 +367,24 @@ def _card_balances(hoc, hol):
             for t in ['CA', 'ND', 'SA', 'PC', 'FD', 'ED', 'VN']
             if b['conf_by_type'].get(t, 0) > 0
         ]
-        unkn_chips = [
-            html.Span(t, style={
-                'background': '#c0782020', 'color': '#c07820',
-                'fontSize': '10px', 'fontWeight': '700',
-                'padding': '1px 6px', 'borderRadius': '3px',
-                'marginRight': '4px', 'marginBottom': '4px',
-                'display': 'inline-block',
-            }) for t in b['unknown_types']
+        unkn_rows = [
+            _bar_row(t, b['unkn_by_type'].get(t, 0), max(total_txns, 1), _UNKN_COLOR)
+            for t in sorted(b['unkn_by_type'].keys())
         ]
         return _house_col(house, [
             _kv('Confirmed transactions', b['confirmed_txns'], '#1a7a4a'),
             _kv('Unconfirmed transactions', b['unknown_txns'], '#c07820'),
-            html.Div(style={'marginTop': '10px'}, children=[
-                _section_label('Confirmed type breakdown'),
-                *(conf_rows if conf_rows else [html.Div('No confirmed types', style={'fontSize': '11px', 'color': UI['text_secondary']})]),
+            html.Div(style={
+                'fontSize': '10px', 'color': UI['text_secondary'],
+                'marginBottom': '10px', 'fontStyle': 'italic',
+            }, children='Numbers show individual transaction lines from aattrans before aggregation'),
+            html.Div(style={'marginTop': '6px'}, children=[
+                _section_label('Confirmed types'),
+                *(conf_rows if conf_rows else [html.Div('No data', style={'fontSize': '11px', 'color': UI['text_secondary']})]),
             ]),
             html.Div(style={'marginTop': '10px'}, children=[
-                _section_label('Unconfirmed types found'),
-                html.Div(style={'display': 'flex', 'flexWrap': 'wrap', 'marginTop': '4px'}, children=unkn_chips) if unkn_chips else
-                html.Div('None', style={'fontSize': '11px', 'color': '#1a7a4a'}),
+                _section_label('Unconfirmed types'),
+                *(unkn_rows if unkn_rows else [html.Div('None found', style={'fontSize': '11px', 'color': '#1a7a4a'})]),
             ]),
         ], border_right=(house == 'HOC'))
 
