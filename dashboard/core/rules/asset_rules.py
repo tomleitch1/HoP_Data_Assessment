@@ -162,7 +162,7 @@ def get_asset_checks():
          'Identifies assets where the base amount is negative. Negative cost is not a valid value for a physical or intangible asset.',
          'Correct base_amount.', 'asset_master', None,
          'base_amount < 0',
-         lambda df: pd.to_numeric(df['base_amount'], errors='coerce').fillna(0) < 0),
+         lambda df: (df['status'] != 'C') & (pd.to_numeric(df['base_amount'], errors='coerce').fillna(0) < 0)),
 
         ('DQ-AM-V04', 19, 'Asset Master', 'Timeliness', 'High',
          'date_from is after date_to',
