@@ -61,7 +61,7 @@ def get_asset_checks():
          'Finds asset master records assigned to a group code that does not exist in the asset_groups table. the asset has no valid configuration to inherit.',
          'Correct asset_group in master.', 'asset_master', 'asset_groups', 
          'asset_master.asset_group NOT IN asset_groups',
-         lambda df, frames: ~df['asset_group'].isin(frames.get('asset_groups', pd.DataFrame())['asset_group']) if 'asset_groups' in frames else pd.Series(False, index=df.index)),
+         lambda df, frames: ~df['asset_group'].str.upper().isin(frames.get('asset_groups', pd.DataFrame())['asset_group'].str.upper()) if 'asset_groups' in frames else pd.Series(False, index=df.index)),
 
 
         # ======================================================================
