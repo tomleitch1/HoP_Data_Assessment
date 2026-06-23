@@ -507,12 +507,6 @@ def get_asset_checks():
          'max_trans_date > TODAY',
          lambda df: pd.to_datetime(df.get('max_trans_date', pd.Series(index=df.index)), errors='coerce').notna() & (pd.to_datetime(df.get('max_trans_date', pd.Series(index=df.index)), errors='coerce') > today)),
 
-        ('DQ-AB-K01', 19, 'Asset Balances', 'Consistency', 'High',
-         'Derived NBV is negative',
-         'Identifies assets where the derived Net Book Value (NBV) is negative. accumulated depreciation has exceeded the asset cost, which is not physically possible.',
-         'Review balance.', 'asset_balances', None, 
-         'NBV < 0',
-         lambda df: df.index.isin(df.groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: (g[g['trans_type'].isin(['CA','PC','VN','ZU'])]['total_amount'].sum() - g[g['trans_type'].isin(['ND','ED','FD','SA'])]['total_amount'].sum()) < 0).index)),
 
         ('DQ-AB-K02', 19, 'Asset Balances', 'Consistency', 'High',
          'Disposal without capitalisation',

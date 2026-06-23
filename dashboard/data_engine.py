@@ -789,7 +789,6 @@ def get_check_columns():
         'DQ-AB-V01': ['trans_type'],
         'DQ-AB-V02': ['total_amount', 'trans_type'],
         'DQ-AB-V03': ['max_trans_date'],
-        'DQ-AB-K01': ['total_amount', 'trans_type'],
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
         'DQ-AB-X01': ['asset_id'],
@@ -1490,15 +1489,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.max_trans_date']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if table == 'asset_balances' and check_id == 'DQ-AB-K01':
-        failing = failing.rename(columns={
-            'asset_id':     'ASSET_BALANCES.asset_id',
-            'depr_book_id': 'ASSET_BALANCES.depr_book_id',
-            'trans_type':   'ASSET_BALANCES.trans_type',
-            'total_amount': 'ASSET_BALANCES.total_amount',
-        })
-        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
-        return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_balances' and check_id == 'DQ-AB-K02':
         failing = failing.rename(columns={
