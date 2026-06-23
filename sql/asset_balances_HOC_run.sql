@@ -14,35 +14,41 @@
 -- dc_flag = 1 filters to real transactions only. dc_flag = -1 entries are
 -- the AT module's year-end reset reversals — including them causes every
 -- trans_type group to SUM to zero. Confirmed from real HoC data June 2026.
+-- Closed assets (aatasset.status = 'C') are excluded — balance checks are
+-- only relevant for assets still in scope for migration.
 -- See asset_balances.sql for full DQ test descriptions and assumptions.
 -- =============================================================================
 
 USE Agresso_HoC;
 
 SELECT
-    client,
-    asset_id,
-    depr_book_id,
-    trans_type,
-    SUM(amount)      AS total_amount,
-    SUM(cur_amount)  AS total_cur_amount,
-    MAX(trans_date)  AS max_trans_date,
-    MIN(trans_date)  AS min_trans_date,
-    COUNT(*)         AS transaction_count
+    t.client,
+    t.asset_id,
+    t.depr_book_id,
+    t.trans_type,
+    SUM(t.amount)      AS total_amount,
+    SUM(t.cur_amount)  AS total_cur_amount,
+    MAX(t.trans_date)  AS max_trans_date,
+    MIN(t.trans_date)  AS min_trans_date,
+    COUNT(*)           AS transaction_count
 FROM
-    aattrans
+    aattrans t
+    INNER JOIN aatasset m
+        ON  m.client   = t.client
+        AND m.asset_id = t.asset_id
 WHERE
-    client IN ('CA', 'CM')
-    AND trans_type != 'CI'
-    AND dc_flag = 1
+    t.client IN ('CA', 'CM')
+    AND t.trans_type != 'CI'
+    AND t.dc_flag = 1
+    AND m.status != 'C'
 GROUP BY
-    client,
-    asset_id,
-    depr_book_id,
-    trans_type
+    t.client,
+    t.asset_id,
+    t.depr_book_id,
+    t.trans_type
 ORDER BY
-    client,
-    asset_id,
-    depr_book_id,
-    trans_type
+    t.client,
+    t.asset_id,
+    t.depr_book_id,
+    t.trans_type
 ;
