@@ -287,10 +287,10 @@ def get_asset_checks():
 
         ('DQ-AD-V04', 19, 'Asset Depreciation', 'Validity', 'High',
          'lifetime <= 0 for active depreciating asset',
-         ' If lifetime is zero or negative, no depreciation schedule can be generated. These assets will fail to depreciate in the target system until the field is corrected.',
+         'If lifetime is zero or negative, no depreciation schedule can be generated. These assets will fail to depreciate in the target system until the field is corrected. NOD (not depreciated) assets are excluded as a zero lifetime is valid for that method.',
          'Correct lifetime.', 'asset_depreciation', None,
-         'lifetime <= 0 AND method != EXP',
-         lambda df: (df['depr_method'] != 'EXP') & (pd.to_numeric(df['lifetime'], errors='coerce').fillna(0) <= 0)),
+         'lifetime <= 0 AND method NOT IN (EXP, NOD)',
+         lambda df: (~df['depr_method'].isin(['EXP', 'NOD'])) & (pd.to_numeric(df['lifetime'], errors='coerce').fillna(0) <= 0)),
 
         ('DQ-AD-V05', 19, 'Asset Depreciation', 'Timeliness', 'High',
          'date_from is after date_to',
