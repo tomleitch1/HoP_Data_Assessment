@@ -179,14 +179,20 @@ def render_dimension_widget(dim_name, dq_results):
             hovertemplate=f'<b>{house}</b>: Click anywhere to inspect records<extra></extra>',
             offsetgroup=house, customdata=np.stack((check_ids, [house] * len(check_ids)), axis=-1),
         ))
-        rates = h_data['error_rate'].fillna(0).tolist()
+        rates   = h_data['error_rate'].fillna(0).tolist()
+        failing = h_data['failing'].fillna(0).tolist()
         pos = ['inside' if v > 75 else 'outside' for v in rates]
         col = ['white' if v > 75 else '#1E293B' for v in rates]
+        labels = [
+            f"{v:.1f}%" if v > 0
+            else ("<0.1%" if f > 0 else "")
+            for v, f in zip(rates, failing)
+        ]
         fig.add_trace(go.Bar(
             name=house, x=rates, y=check_descs, orientation='h', marker_color=HOUSE_HEX.get(house),
             offsetgroup=house, customdata=np.stack((check_ids, [house] * len(check_ids)), axis=-1),
             hovertemplate=f'<b>{house}</b><br>%{{y}}<br>Error Rate: %{{x}}%<extra></extra>',
-            text=[f"{v:.1f}%" if v > 0 else "" for v in rates], textposition=pos, textfont=dict(size=10, color=col, family='Poppins')
+            text=labels, textposition=pos, textfont=dict(size=10, color=col, family='Poppins')
         ))
 
     fig.update_layout(**CHART_LAYOUT)
