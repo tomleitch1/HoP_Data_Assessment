@@ -205,6 +205,7 @@ def get_asset_checks():
          lambda df, frames: (
              (df['status'] != 'C') &
              df['parent_asset'].notna() &
+             (df['parent_asset'].astype(str).str.strip() != '') &
              ~df['parent_asset'].isin(
                  frames.get('asset_master', pd.DataFrame())
                  .query('status != "C"')['asset_id']
