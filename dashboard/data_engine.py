@@ -310,7 +310,7 @@ def load_data(tab=None):
         if base_name not in names_to_load:
             continue
         source_paths = [_data_path(base_name, f'_{h}') for h in ['HOC', 'HOL']]
-        if _cache_fresh(table, source_paths):
+        if not _version and _cache_fresh(table, source_paths):
             frames[table] = pd.read_pickle(_cache_path(table))
             _cached.add(table)
             continue
@@ -452,10 +452,13 @@ def run_dq_analysis(frames, tab=None):
         if joined_table and joined_table in frames:
             rel_fps.append(_cache_path(joined_table))
 
+        _dq_version = os.environ.get('DASHBOARD_VERSION', '').strip()
         for house in CLIENTS:
-            # Per-check cache — load if fresh, skip the run entirely
+            # Per-check cache — load if fresh, skip the run entirely.
+            # Bypass cache entirely when a data version is active so versioned
+            # files are always used rather than serving stale cached results.
             cf = _chk_file(check_id, house, sig, esig)
-            if _chk_fresh(cf, rel_fps):
+            if not _dq_version and _chk_fresh(cf, rel_fps):
                 try:
                     results.append(_read_chk(cf))
                     n_hit += 1
