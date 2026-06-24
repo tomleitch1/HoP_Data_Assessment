@@ -400,7 +400,16 @@ def get_ap_checks():
          'Open invoices must not be posted against a supplier that has been closed or deactivated. Liabilities sitting against closed vendor records cannot be processed for payment and must be reassigned to an active supplier or written off before migration.',
          'Review status of supplier in asuheader.', 'asutrans', 'asuheader',
          'asutrans.apar_id IN (SELECT apar_id FROM asuheader WHERE status = "C")',
-         lambda df, frames: df['apar_id'].isin(frames.get('asuheader', pd.DataFrame())[frames.get('asuheader', pd.DataFrame())['status'] == 'C']['apar_id'])),
+         lambda df, frames: (
+             df['apar_id'].isin(
+                 frames.get('asuheader', pd.DataFrame())
+                 .loc[lambda m: m['house'] == df['house'].iloc[0]]
+                 .groupby('apar_id')['status']
+                 .agg(lambda s: (s == 'C').all())
+                 .loc[lambda x: x]
+                 .index
+             ) if not df.empty else pd.Series(False, index=df.index)
+         )),
 
 
         # ======================================================================
