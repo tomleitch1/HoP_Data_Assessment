@@ -304,6 +304,8 @@ def load_data(tab=None):
         'gl_active_accounts':     'gl_active_accounts',
         'gl_planner_accounts':    'gl_planner_accounts',
     }
+    _version = os.environ.get('DASHBOARD_VERSION', '').strip()
+
     for base_name, table in split_files.items():
         if base_name not in names_to_load:
             continue
@@ -314,7 +316,12 @@ def load_data(tab=None):
             continue
         dfs = []
         for house in ['HOC', 'HOL']:
-            path = _data_path(base_name, f'_{house}')
+            # If a version is specified, prefer the versioned file; fall back to standard.
+            if _version:
+                versioned = _data_path(base_name, f'_{house}_{_version}')
+                path = versioned if os.path.exists(versioned) else _data_path(base_name, f'_{house}')
+            else:
+                path = _data_path(base_name, f'_{house}')
             if os.path.exists(path):
                 df = pd.read_csv(path, low_memory=False, dtype=_FORCE_STR_DTYPE)
                 if base_name in house_from_filename:
