@@ -732,8 +732,8 @@ Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, perio
 | `asset_master_HOL_run.sql` | `agresso_HoL` | `asset_master_HOL.csv` |
 | `asset_depreciation_HOC_run.sql` | `Agresso_HoC` | `asset_depreciation_HOC.csv` |
 | `asset_depreciation_HOL_run.sql` | `agresso_HoL` | `asset_depreciation_HOL.csv` |
-| `asset_balances_HOC_run.sql` | `Agresso_HoC` | `asset_balances_HOC.csv` |
-| `asset_balances_HOL_run.sql` | `agresso_HoL` | `asset_balances_HOL.csv` |
+| `asset_balances_HOC_run.sql` | `Agresso_HoC` | `asset_balances_HOC.csv` — joins `aatasset` to exclude closed assets (`status != 'C'`) |
+| `asset_balances_HOL_run.sql` | `agresso_HoL` | `asset_balances_HOL.csv` — same join added but blocked by permissions on `aatasset` in HOL db (database refresh June 2026 reset permissions — needs re-granting before this can be run) |
 | `asset_groups_HOC_run.sql` | `Agresso_HoC` | `asset_groups_HOC.csv` |
 | `asset_groups_HOL_run.sql` | `agresso_HoL` | `asset_groups_HOL.csv` |
 | `asset_trans_flags_HOC_run.sql` | `Agresso_HoC` | `asset_trans_flags_HOC.csv` |
@@ -817,32 +817,39 @@ Limitations as of June 2026:
 - Amount sign convention unconfirmed — formula may double-negate depreciation
 - **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types and sign convention**
 
-### Depreciation method codes — real data does not match the spec
+### Depreciation method codes — confirmed June 2026
 
-The SQL spec and all current DQ rules were written assuming Unit4 standard method codes: `LIN`, `BAL`, `EXP`, `SYD`. **The real Parliament data uses entirely different codes: `LNA`, `LNB`, `MAN`, `NOD`.** The data dictionary does not explain what each means.
+Parliament uses four depreciation method codes across both houses:
 
-Until Parliament confirms the meaning of each code, the following checks are unreliable or will produce incorrect results:
+| Code | Meaning | Requires `lifetime` | Requires `depr_percent` | HOC | HOL |
+|------|---------|--------------------|-----------------------|-----|-----|
+| `LNA` | Net book value ÷ lifetime | Yes (`lifetime > 0`) | No | ✓ | ✓ |
+| `LNB` | Capitalised amount × fixed percentage | No | Yes (`depr_percent > 0`) | ✓ | No |
+| `MAN` | Manual (manually calculated) | Unknown | Unknown | ✓ | ✓ |
+| `NOD` | Not depreciated | No | No | ✓ | ✓ |
 
-| Check | Problem |
-|-------|---------|
-| `DQ-AD-V01` (method not in valid list) | Flags every record — the entire valid set is wrong |
-| `DQ-AG-V01` (method not in valid list at group level) | Same |
-| `DQ-AD-V04` (lifetime <= 0, method != EXP) | EXP does not exist — exclusion is meaningless |
-| `DQ-AD-C04` (lifetime null where method in LIN/SYD) | LIN/SYD do not exist — never fires |
-| `DQ-AD-C05` (depr_percent null where method = BAL) | BAL does not exist — never fires |
-| `DQ-AG-C05` (lifetime null at group level for LIN/SYD) | Same |
-| `DQ-AG-C06` (depr_percent null at group level for BAL) | Same |
+**`LNB` is HOC-only** — any HOL record with `depr_method = 'LNB'` is invalid data.
 
-**Do not update these checks until Parliament confirms:** which of LNA/LNB/MAN/NOD require `lifetime`, which require `depr_percent`, and which (if any) is the equivalent of EXP (immediate write-off with no ongoing depreciation). See QUESTIONS_FOR_PARLIAMENT.md.
+**MAN (manual):** whether `lifetime` or `depr_percent` is required for MAN is not yet confirmed. No checks on MAN-specific field requirements have been written until this is clarified.
+
+DQ checks updated to reflect confirmed codes (June 2026):
+- `DQ-AD-V04` — tightened to flag `LNA` with `lifetime <= 0` only
+- `DQ-AD-C05` — rewritten: flags `LNB` with `depr_percent <= 0`
+- `DQ-AG-V05` — rewritten: flags `LNA` with `lifetime <= 0` at group level
+- `DQ-AG-C03` — new: flags `LNB` with `depr_percent <= 0` at group level
+
+Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was wrong), `DQ-AD-C04` (duplicate of DQ-AD-V04), `DQ-AD-K03` (switch flag referenced BAL which does not exist).
 
 ### Checks requiring verification before results are reliable
 
 | Check | Dependency |
 |-------|-----------|
 | All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types and sign convention |
-| DQ-AB-V01 (unexpected trans_type) | Will fire on NF/NT/TF/TT/RF/RT/OS/WU/TC until confirmed |
 | Any check referencing `ZU` | ZU does not exist in real data |
-| DQ-AD-V01, DQ-AG-V01, DQ-AD-V04, DQ-AD-C04/C05, DQ-AG-C05/C06 | Depreciation method codes not yet confirmed — see section above |
+| DQ-AD-C05, DQ-AG-C03, DQ-AD-V04, DQ-AG-V05 | Live but unvalidated — depreciation method meanings confirmed, but no real data run yet to verify results are sensible |
+| DQ-MAN-* (any future MAN checks) | lifetime/depr_percent requirements for MAN not yet confirmed |
+
+**Note:** `DQ-AB-V01` (unexpected trans_type) was removed. `DQ-AB-K02` and `DQ-AB-K03` now treat `OS` (historical capitalisation from prior system) as equivalent to `CA` — assets with only an `OS` capitalisation record are no longer flagged.
 
 ---
 
@@ -851,7 +858,7 @@ Until Parliament confirms the meaning of each code, the following checks are unr
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
 - Customers / AR (master, open transactions, history) — full check suite live
-- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live but balance-derived checks unvalidated pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS) and amount sign convention. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3.
+- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Balance-derived checks still unvalidated pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS) and amount sign convention. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
