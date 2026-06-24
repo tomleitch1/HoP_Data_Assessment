@@ -250,12 +250,6 @@ def get_asset_checks():
          'depr_method IS NULL',
          lambda df: df['depr_method'].isna() | (df['depr_method'] == '')),
 
-        ('DQ-AD-C04', 19, 'Asset Depreciation', 'Completeness', 'High',
-         'lifetime is null or zero for LNA',
-         'Finds LNA (net book value divided by lifetime) books with no useful life. LNA requires a positive lifetime to calculate the periodic depreciation charge.',
-         'Populate lifetime.', 'asset_depreciation', None,
-         'lifetime <= 0 AND method = LNA',
-         lambda df: (df['depr_method'] == 'LNA') & (pd.to_numeric(df['lifetime'], errors='coerce').fillna(0) <= 0)),
 
         ('DQ-AD-C05', 19, 'Asset Depreciation', 'Completeness', 'High',
          'depr_percent is null or zero for LNB',
@@ -336,12 +330,6 @@ def get_asset_checks():
          lambda df: df['date_to'].notna() & (df['status'] == 'N')),
 
 
-        ('DQ-AD-K03', 19, 'Asset Depreciation', 'Consistency', 'Medium',
-         'switch = true but method != BAL',
-         'Flags books where the switch-to-straight-line flag is set but the method is not reducing balance. the switch is only applicable to BAL method assets.',
-         'Review switch.', 'asset_depreciation', None, 
-         'switch=True AND method!=BAL',
-         lambda df: (df['switch'] == True) & (df['depr_method'] != 'BAL')),
 
 
         ('DQ-AD-K05', 19, 'Asset Depreciation', 'Consistency', 'Medium',
