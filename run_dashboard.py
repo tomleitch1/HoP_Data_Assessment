@@ -37,28 +37,34 @@ _version    = None
 _port       = 8050
 
 _args = sys.argv[1:]
-for _arg in _args:
+_i = 0
+while _i < len(_args):
+    _arg = _args[_i]
     if _arg.startswith('--port='):
         try:
-            _port = int(_arg.split('=')[1])
+            _port = int(_arg.split('=', 1)[1])
         except ValueError:
             pass
-    elif _arg == '--port' and _args.index(_arg) + 1 < len(_args):
-        try:
-            _port = int(_args[_args.index(_arg) + 1])
-        except ValueError:
-            pass
+        _i += 1
+    elif _arg == '--port':
+        if _i + 1 < len(_args):
+            try:
+                _port = int(_args[_i + 1])
+            except ValueError:
+                pass
+            _i += 2  # consume both --port and the value
+        else:
+            _i += 1
     elif _arg.lower() in _VALID_TABS:
         os.environ['DASHBOARD_TAB'] = _VALID_TABS[_arg.lower()]
         _tab_label = _VALID_TABS[_arg.lower()]
+        _i += 1
     elif not _arg.startswith('--'):
         _version = _arg.lower()
         os.environ['DASHBOARD_VERSION'] = _version
-
-if _tab_label is None and any(a.lower() not in _VALID_TABS and not a.startswith('--') and a != _version for a in _args):
-    _unknown = [a for a in _args if a.lower() not in _VALID_TABS and not a.startswith('--') and a != (_version or '')]
-    if _unknown:
-        print(f"Unknown argument(s): {_unknown}. Valid tabs: {', '.join(_VALID_TABS)}. Loading all tabs.")
+        _i += 1
+    else:
+        _i += 1
 
 from dashboard.app import app
 
