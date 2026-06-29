@@ -479,8 +479,6 @@ def _render_kpi_strip(m: dict) -> html.Div:
     oldest = m['oldest_active']
     oldest_yrs = f"{oldest / 365:.1f} years" if oldest else '—'
 
-    amended_pct = f"{m['amended_any'] / m['total_hdr'] * 100:.0f}% of all POs" if m['total_hdr'] else ''
-
     return html.Div(style={
         'display': 'flex', 'gap': '16px', 'marginBottom': '24px', 'flexWrap': 'wrap',
     }, children=[
@@ -488,8 +486,6 @@ def _render_kpi_strip(m: dict) -> html.Div:
              sublabel='O, N, and A status'),
         _kpi(_fmt_val(m['active_val']), 'Active ordered value', _ACCENT,
              sublabel='Uninvoiced: ' + _fmt_val(m['active_open'])),
-        _kpi(_fmt_count(m['amended_any']), 'Amended POs', _WARN_C,
-             sublabel=amended_pct, warn=m['amended_any'] > 0),
         _kpi(oldest_yrs, 'Oldest active PO', '#dc2626',
              sublabel='Earliest O/N/A order date', warn=oldest and oldest > 730),
     ])
@@ -933,10 +929,9 @@ def render_tab(frames: dict, dq_results=None) -> html.Div:
 
     m = _compute_metrics(frames)
 
-    aging_card   = _render_aging(m)
-    amend_card   = _render_amendment_depth(m)
-    cat_chart    = _render_category_chart(m)
-    supp_chart   = _render_top_suppliers(m)
+    aging_card = _render_aging(m)
+    cat_chart  = _render_category_chart(m)
+    supp_chart = _render_top_suppliers(m)
 
     return html.Div(children=[
 
@@ -946,12 +941,10 @@ def render_tab(frames: dict, dq_results=None) -> html.Div:
         # ── KPI strip ──
         _render_kpi_strip(m),
 
-        # ── Aging + Amendments ──
-        _section_div('Commitment Age & Amendment Profile',
-                     'How old are Parliament\'s purchase orders, and how often are they being amended?'),
-        html.Div(style={
-            'display': 'flex', 'gap': '20px', 'marginBottom': '24px', 'alignItems': 'flex-start',
-        }, children=[aging_card, amend_card]),
+        # ── Age profile ──
+        _section_div('PO Age Profile',
+                     'All statuses except T · age measured from order_date'),
+        html.Div(style={'marginBottom': '24px'}, children=[aging_card]),
 
         # ── Spend by category ──
         _section_div('Spend by Category',
@@ -962,8 +955,5 @@ def render_tab(frames: dict, dq_results=None) -> html.Div:
         _section_div('Supplier Concentration',
                      'Top 15 suppliers by total ordered value across all statuses'),
         html.Div(style={'marginBottom': '24px'}, children=[supp_chart]),
-
-        # ── Policy signals ──
-        _render_policy_signals(m),
 
     ])

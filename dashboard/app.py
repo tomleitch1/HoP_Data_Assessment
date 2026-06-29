@@ -81,7 +81,7 @@ app.layout = html.Div(style={
                 dcc.Tab(label='Assets', value='assets',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='Purchase Orders', value='po',
+                dcc.Tab(label='POs', value='po',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
                 dcc.Tab(label='PBF', value='pbf',
