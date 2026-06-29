@@ -28,6 +28,7 @@ class Scope(IntEnum):
     GL_DIMENSIONS = 21
     GL_BALANCES = 22
     GL_TRANSACTIONS = 23
+    PO_ORDERS = 15
     PBF = 25
 
 class SupplierConfig:
@@ -156,6 +157,13 @@ SCOPE_CONFIG = {
         'tables':    ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags'],
         'aging':     None,
     },
+    'po': {
+        'label':     'Purchase Orders',
+        'tab_value': 'po',
+        'scope_ids': [Scope.PO_ORDERS],
+        'tables':    ['apoheader', 'apodetail'],
+        'aging':     None,
+    },
     'pbf': {
         'label':     'PBF',
         'tab_value': 'pbf',
@@ -176,6 +184,7 @@ SCOPE_LABELS = {
     Scope.GL_BALANCES: 'GL Balances',
     Scope.GL_TRANSACTIONS: 'GL Transactions',
     Scope.ASSETS: 'Assets',
+    Scope.PO_ORDERS: 'Purchase Orders',
     Scope.PBF: 'Planning, Budgeting & Forecasting',
 }
 
@@ -202,7 +211,8 @@ ALL_TABLES = [
     'asuheader', 'asutrans', 'asuhistr',
     'acuheader', 'acutrans', 'acuhistr',
     'gl_coa', 'gl_dim_values', 'gl_opening_balances', 'gl_transact_dims',
-    'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'pbf_data',
+    'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags',
+    'apoheader', 'apodetail', 'pbf_data',
 ]
 
 # Per-severity RAG thresholds (error rate %). Green = below first value, Amber = below second, Red = above.

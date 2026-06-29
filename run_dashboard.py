@@ -31,6 +31,7 @@ _VALID_TABS = {
     'customers': 'customers', 'ar': 'customers',
     'gl':        'gl',
     'assets':    'assets',
+    'po':        'po',
 }
 _tab_label = None
 _version    = None

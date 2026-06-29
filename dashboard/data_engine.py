@@ -26,6 +26,7 @@ SUBDIR = {
                   'gl_active_accounts', 'gl_planner_accounts'],
     'assets':    ['asset_master', 'asset_depreciation', 'asset_balances',
                   'asset_trans_flags', 'asset_groups'],
+    'po':        ['po_header', 'po_detail'],
 }
 # Reverse lookup: base_name -> subdirectory
 _SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
@@ -238,6 +239,7 @@ _SUBDIR_TO_SCOPE = {
     'customers': 'ar',
     'gl':        'gl',
     'assets':    'assets',
+    'po':        'po',
 }
 
 # User-friendly aliases accepted on the command line
@@ -279,6 +281,8 @@ def load_data(tab=None):
         'gl_journals',
         'gl_active_accounts',
         'gl_planner_accounts',
+        'po_header',
+        'po_detail',
     }
 
     # Load split files
@@ -303,6 +307,8 @@ def load_data(tab=None):
         'gl_journals':            'gl_journals',
         'gl_active_accounts':     'gl_active_accounts',
         'gl_planner_accounts':    'gl_planner_accounts',
+        'po_header':              'apoheader',
+        'po_detail':              'apodetail',
     }
     _version = os.environ.get('DASHBOARD_VERSION', '').strip()
 
@@ -354,7 +360,13 @@ def load_data(tab=None):
         # before any downstream pd.to_numeric calls, otherwise values >= 1000 become NaN
         numeric_cols = ['amount', 'rest_amount', 'cur_amount', 'rest_curr', 'discount',
                         'exch_rate', 'credit_limit', 'pay_delay', 'dc_flag', 'sequence_no',
-                        'update_flag', 'total_amount', 'total_cur_amount']
+                        'update_flag', 'total_amount', 'total_cur_amount',
+                        # PO-specific numeric columns
+                        'arr_amount', 'vow_amount', 'vow_val', 'arr_val', 'invoiced',
+                        'cost_amount', 'real_amount', 'forecast', 'com_amount', 'open_flag',
+                        'unit_price', 'disc_percent', 'tax_amount', 'tax_percent',
+                        'overrun_pct', 'overrun_pct_a', 'overrun_pct_o', 'amend_no',
+                        ]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(
@@ -365,6 +377,8 @@ def load_data(tab=None):
         date_cols = [
             'trans_date', 'due_date', 'voucher_date', 'last_update', 'expired_date', 'last_trans_date',
             'period_from', 'period_to',
+            # PO date columns
+            'order_date', 'deliv_date', 'confirm_date', 'obs_date', 'rev_del_date',
             # Asset date columns — arrive as Excel serial integers from SSMS/Excel export
             'cap_date_from', 'date_from', 'date_to', 'org_amt_date',
             'at_trans_date', 'max_trans_date', 'min_trans_date',
