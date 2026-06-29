@@ -66,7 +66,7 @@ app.layout = html.Div(style={
     }, children=[
         html.Div(style={'maxWidth': '1440px', 'margin': '0 auto'}, children=[
             dcc.Tabs(id='master-tabs', value='exec-summary', style={'height': '60px'}, children=[
-                dcc.Tab(label='Executive summary', value='exec-summary',
+                dcc.Tab(label='Summary', value='exec-summary',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
                 dcc.Tab(label='General Ledger', value='gl',
