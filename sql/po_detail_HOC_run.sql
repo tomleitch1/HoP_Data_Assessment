@@ -9,13 +9,13 @@
 -- Output    : po_detail_HOC.csv
 -- Place in  : data/po/
 --
--- Extracts all lines belonging to non-terminated PO headers.
--- Joins to apoheader to apply the status != 'T' filter so terminated PO
--- lines are excluded even if they carry their own status.
+-- Extracts all PO lines — all statuses included.
+-- Status meaning not yet confirmed by Parliament; Python filters as needed.
 -- Open commitment is derived in Python as: amount - arr_amount.
 -- vow_amount (receipted) and com_amount (pre-amendment committed) are
 -- included for audit trail and alternative commitment calculations.
 -- Line-level status may differ from header status — both are extracted.
+-- Joins algarticlegr to bring in art_gr_description (20 spend categories).
 -- =============================================================================
 
 USE Agresso_HoC;
@@ -76,8 +76,10 @@ SELECT
     d.dim_6,
     d.dim_7,
 
-    -- === ARTICLE / DESCRIPTION ===
+    -- === ARTICLE / CATEGORY ===
     d.article,
+    d.art_gr_id,
+    ag.description              AS art_gr_description,
     d.art_descr,
     d.sup_article,
 
@@ -100,6 +102,8 @@ FROM apodetail d
 INNER JOIN apoheader h
     ON  h.client   = d.client
     AND h.order_id = d.order_id
+LEFT JOIN algarticlegr ag
+    ON  ag.client    = d.client
+    AND ag.art_gr_id = d.art_gr_id
 WHERE d.client IN ('CA', 'CM')
-  AND h.status != 'T'
 ORDER BY d.client, d.order_id, d.line_no, d.sequence_no;

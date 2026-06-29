@@ -9,9 +9,9 @@
 -- Output    : po_header_HOC.csv
 -- Place in  : data/po/
 --
--- Extracts all non-terminated PO headers from apoheader.
--- Status T (Terminated) is excluded. All other statuses (O, N, F, C, A, P)
--- are included — Python filters to migration scope (open commitment > 0).
+-- Extracts all PO headers from apoheader — all statuses included.
+-- Status meaning not yet confirmed by Parliament (O, N, F, C, A, P, T).
+-- Python filters to the relevant population for each analysis.
 -- HoC only — no HOL equivalent (apoheadhistr confirmed empty at Parliament).
 -- wf_state is not used at Parliament so is excluded from this extract.
 -- =============================================================================
@@ -85,5 +85,4 @@ SELECT
 
 FROM apoheader h
 WHERE h.client IN ('CA', 'CM')
-  AND h.status != 'T'
 ORDER BY h.client, h.order_id;
