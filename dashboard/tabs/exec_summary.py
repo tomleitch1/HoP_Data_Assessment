@@ -28,13 +28,13 @@ def render_summary(dq: pd.DataFrame, frames: dict, master_tab=None) -> html.Div:
         ])
 
     domains = [
-        ('Suppliers',       '🏢', [Scope.SUPPLIERS, Scope.AP_INVOICES],                              _supplier_stats(frames)),
-        ('Customers',       '🏛️', [Scope.CUSTOMERS, Scope.AR_OPEN_TRANSACTIONS, Scope.AR_HISTORY],   _customer_stats(frames)),
-        ('General Ledger',  '📒', [Scope.GL_ACCOUNTS, Scope.GL_DIMENSIONS, Scope.GL_BALANCES, Scope.GL_TRANSACTIONS], _gl_stats(frames)),
-        ('Fixed Assets',    '🏗️', [Scope.ASSETS],                                                    _asset_stats(frames)),
+        ('Suppliers',       [Scope.SUPPLIERS, Scope.AP_INVOICES],                              _supplier_stats(frames)),
+        ('Customers',       [Scope.CUSTOMERS, Scope.AR_OPEN_TRANSACTIONS, Scope.AR_HISTORY],    _customer_stats(frames)),
+        ('General Ledger',  [Scope.GL_ACCOUNTS, Scope.GL_DIMENSIONS, Scope.GL_BALANCES, Scope.GL_TRANSACTIONS], _gl_stats(frames)),
+        ('Fixed Assets',    [Scope.ASSETS],                                                    _asset_stats(frames)),
     ]
 
-    cards = [_domain_card(label, icon, scope_ids, dq, stats) for label, icon, scope_ids, stats in domains]
+    cards = [_domain_card(label, scope_ids, dq, stats) for label, scope_ids, stats in domains]
 
     return html.Div(style={
         'display': 'grid', 'gridTemplateColumns': 'repeat(2, 1fr)', 'gap': '16px',
@@ -104,7 +104,9 @@ def _asset_stats(frames: dict) -> dict:
 
 # ── Domain card ────────────────────────────────────────────────────────────────
 
-def _domain_card(title: str, icon: str, scope_ids: list, dq: pd.DataFrame, stats_by_house: dict) -> html.Div:
+_CARD_HDR = '#0f2744'
+
+def _domain_card(title: str, scope_ids: list, dq: pd.DataFrame, stats_by_house: dict) -> html.Div:
     sub = dq[dq['scope_id'].isin(scope_ids)]
 
     columns = []
@@ -122,13 +124,11 @@ def _domain_card(title: str, icon: str, scope_ids: list, dq: pd.DataFrame, stats
         'boxShadow': '0 1px 4px rgba(59,26,110,0.06)',
     }, children=[
         html.Div(style={
-            'padding': '10px 18px', 'borderBottom': f"1px solid {UI['border']}",
-            'background': UI['card_bg_dark'], 'display': 'flex', 'alignItems': 'center', 'gap': '8px',
+            'padding': '10px 18px', 'background': _CARD_HDR,
         }, children=[
-            html.Span(icon, style={'fontSize': '15px'}),
             html.Span(title.upper(), style={
                 'fontSize': '12px', 'fontWeight': '800', 'letterSpacing': '1.2px',
-                'color': UI['text_primary'],
+                'color': '#ffffff',
             }),
         ]),
         html.Div(style={'display': 'flex', 'padding': '16px 18px', 'gap': '18px'}, children=columns),
