@@ -42,8 +42,16 @@ _EXCEL_MIN, _EXCEL_MAX = 20000, 55000  # approx year 1954 – 2050
 
 _CACHE_DIR = os.path.join('data', '.cache')
 
+def _version_suffix() -> str:
+    """Cache-key suffix for the active DASHBOARD_VERSION (e.g. 'v2'), empty for the
+    standard run. Every cache file below is keyed through this so a versioned run
+    (e.g. `python run_dashboard.py suppliers v2`) can never write into — or read
+    from — the plain run's cache, and vice versa."""
+    v = os.environ.get('DASHBOARD_VERSION', '').strip()
+    return f'__{v}' if v else ''
+
 def _cache_path(table: str) -> str:
-    return os.path.join(_CACHE_DIR, f'{table}.pkl')
+    return os.path.join(_CACHE_DIR, f'{table}{_version_suffix()}.pkl')
 
 def _cache_fresh(table: str, source_paths: list) -> bool:
     """True if the cached pickle exists and is newer than all source CSVs."""
@@ -113,7 +121,7 @@ def _chk_sig(check_tuple) -> str:
 
 
 def _chk_file(check_id: str, house: str, check_sig: str, engine_sig: str) -> str:
-    return os.path.join(_CHK_DIR, f'{check_id}__{house}__{check_sig}__{engine_sig}.pkl')
+    return os.path.join(_CHK_DIR, f'{check_id}__{house}__{check_sig}__{engine_sig}{_version_suffix()}.pkl')
 
 
 def _chk_fresh(cache_file: str, relevant_fps: list) -> bool:
