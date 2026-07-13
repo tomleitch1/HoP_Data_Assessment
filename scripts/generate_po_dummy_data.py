@@ -7,13 +7,14 @@ Generates two CSVs mirroring the shape of the PO SQL extract outputs (HoC only):
   - po_header_HOC.csv  (apoheader)
   - po_detail_HOC.csv  (apodetail)
 
-Status distribution matches real Parliament data proportions:
-  F: ~50%  (meaning unconfirmed — likely historical)
-  C: ~33%  (closed)
-  O: ~11%  (open / active)
-  T:  ~3%  (meaning unconfirmed)
-  N:  ~2%  (new)
-  A:  ~0.5% (approved)
+Status distribution matches real Parliament data proportions. All six codes are
+confirmed (July 2026):
+  F: ~50%  (Finished — system auto-closes once fully used)
+  C: ~33%  (Closed — manually closed, usually with funds still left on it)
+  O: ~11%  (Ordered — active)
+  T:  ~3%  (Terminated — manual, raised-in-error only, cannot be reopened)
+  N:  ~2%  (Not ordered — auto-converts to O within 15 minutes)
+  A:  ~0.5% (Confirmed — no further workflow detail given)
 
 Date range: 2009 (EPOCH) to present, matching real data.
 art_gr_description uses placeholder category names until Parliament confirms
@@ -216,6 +217,14 @@ def _gen_lines(headers: pd.DataFrame):
             vow_amount = round(amount * vow_pct, 2)
             exch       = float(h['exch_rate']) if h['exch_rate'] else 1.0
 
+            # Line-level status occasionally lags/leads the header — e.g. an individual
+            # line already fully received while the header PO is still Ordered.
+            line_status = status
+            if status == 'O' and random.random() < 0.08:
+                line_status = 'F'
+            elif status in ('F', 'C') and random.random() < 0.05:
+                line_status = 'O'
+
             rows.append({
                 'client':             h['client'],
                 'order_id':           h['order_id'],
@@ -224,7 +233,7 @@ def _gen_lines(headers: pd.DataFrame):
                 'apar_id':            h['apar_id'],
                 'voucher_no':         h['voucher_no'],
                 'voucher_type':       'PO',
-                'status':             status,
+                'status':             line_status,
                 'amend_no':           h['amend_no'],
                 'rev_status':         None,
                 'amount':             amount,

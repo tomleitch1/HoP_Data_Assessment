@@ -853,6 +853,43 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 ---
 
+## Purchase Orders (PO) Domain — Implementation Details
+
+**HoC only** — `apoheadhistr` confirmed empty at Parliament, so there is no HOL PO data. Frames: `apoheader` (`SUBDIR['po']` → `po_header_HOC.csv`) and `apodetail` (`po_detail_HOC.csv`). No DQ checks are implemented yet — `dashboard/core/rules/po_rules.py` does not exist and `get_dq_checks()` in `data_engine.py` does not import a PO rules module. The tab (`dashboard/tabs/po.py`) is volumetrics/landscape-only so far.
+
+### `apoheader.status` — confirmed codes (July 2026)
+
+| Code | Meaning |
+|------|---------|
+| `N` | Not ordered — PO raised and approved but the PO document has not yet been created. Document creation is automated; a PO changes from `N` to `O` at least every 15 minutes. A PO sitting at `N` for longer than that indicates a stuck automation job, not a normal state. |
+| `O` | Ordered — PO is active. |
+| `A` | Confirmed — the PO is confirmed. No further detail on where this sits relative to `O` in the workflow; rare (~0.5% of volume). |
+| `F` | Finished — automatically set by the system when the PO has been used completely (fully receipted/invoiced). |
+| `C` | Closed — manually closed by a user, usually while funds are still left on the PO (i.e. an intentional write-off of remaining commitment). |
+| `T` | Terminated — manually set by a user, intended only for POs raised in error. Cannot be reopened afterwards. Not recommended for general use, so a non-trivial volume of `T` is itself a process signal. |
+
+These are the only six confirmed values (no confirmed `P` status). `wf_state` is not extracted (see `PO.sql` — Parliament has not yet confirmed whether workflow is used on POs; run the `PO.sql` diagnostic query on the Parliament laptop against real data if this needs revisiting).
+
+**Active vs historical grouping used in `po.py`:**
+- Active/open commitment: `O`, `N`, `A`
+- Historical/closed: `F`, `C`, `T`
+
+**DQ signal potential per status (not yet implemented as checks):**
+- `N` older than ~1 day (well past the 15-minute auto-transition window) → stuck PO, likely an integration fault.
+- `F` (system says fully used) with a non-zero open commitment (`amount − arr_amount`) → inconsistency between the system's own "finished" determination and the ledger balance; this is a genuine DQ finding, unlike `C` where a residual balance is expected/normal.
+- `T` volume as a proportion of all POs → process-adherence signal (raised-in-error rate), not a per-record DQ failure.
+- Header (`apoheader.status`) vs detail (`apodetail.status` / `rev_status`) disagreement → line-level status can differ from header status; both are extracted separately and are now cross-checked descriptively (see below), though not yet as a formal DQ check.
+
+### PO detail (`apodetail`) status
+`apodetail.status` and `apodetail.rev_status` are extracted per line. `_compute_metrics` in `po.py` keeps the line-level status (renamed `line_status` during the header merge) alongside the header status rather than discarding it, and surfaces a line-count-by-status distribution plus a header/line mismatch rate in the "Header vs Line-Level Status" card. `rev_status` remains unpopulated in dummy data and unconfirmed on real data — not built on yet.
+
+### PO Lifecycle narrative (`po.py`)
+The tab tells a two-act story built on the confirmed status meanings, deliberately avoiding a literal flow/Sankey diagram — the data is a status **snapshot**, not a tracked per-PO transition log, so asserting a specific sequence (e.g. `N`→`A`→`O`) would overclaim precision the data can't support.
+- **"Currently Live"** — `O` + `N` + `A` (the open book): active count/value/uninvoiced balance, oldest active PO, and a stuck-`N` count/age flag.
+- **"How POs Get Resolved"** — `F` + `C` + `T` mix as a donut, plus three headline stats: released/unspent budget (sum of open commitment on `C`-status POs), clean-completion rate (`F` share of resolved POs), and error rate (`T` share of resolved POs).
+
+---
+
 ## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**

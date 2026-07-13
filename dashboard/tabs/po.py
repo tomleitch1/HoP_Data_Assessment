@@ -15,7 +15,7 @@ _HDR_BG    = '#0d1f2d'   # deep navy
 _HDR2_BG   = '#102535'
 _ACCENT    = '#0d9488'   # teal
 _ACTIVE_C  = '#16a34a'   # green  — O/N/A statuses
-_HIST_C    = '#64748b'   # slate  — F/C statuses
+_HIST_C    = '#64748b'   # slate  — F/C/T statuses
 _WARN_C    = '#d97706'   # amber
 _CARD_BG   = '#ffffff'
 _CARD_BOR  = '#e2e8f0'
@@ -24,19 +24,19 @@ _BAR_TRACK = '#1e3448'
 _BAR_TRACK_LIGHT = '#e8f0f6'
 _DIV_COL   = '#1e3650'
 
-# ── Status config (confirmed: C=Closed, O=Open; F/T meanings unconfirmed) ────
+# ── Status config (confirmed by Parliament, July 2026) ────────────────────────
 _STATUS_CFG = {
-    'O': {'color': '#16a34a', 'label': 'Open',      'group': 'active'},
-    'N': {'color': '#2563eb', 'label': 'New',        'group': 'active'},
-    'A': {'color': '#0891b2', 'label': 'Approved',   'group': 'active'},
-    'F': {'color': '#94a3b8', 'label': 'F Status',   'group': 'historical'},
-    'C': {'color': '#475569', 'label': 'Closed',     'group': 'historical'},
-    'T': {'color': '#dc2626', 'label': 'T Status',   'group': 'unknown'},
+    'N': {'color': '#2563eb', 'label': 'Not Ordered', 'group': 'active'},
+    'O': {'color': '#16a34a', 'label': 'Ordered',      'group': 'active'},
+    'A': {'color': '#0891b2', 'label': 'Confirmed',    'group': 'active'},
+    'F': {'color': '#94a3b8', 'label': 'Finished',     'group': 'historical'},
+    'C': {'color': '#475569', 'label': 'Closed',       'group': 'historical'},
+    'T': {'color': '#dc2626', 'label': 'Terminated',   'group': 'historical'},
 }
-_STATUS_ORDER = ['O', 'N', 'A', 'F', 'C', 'T']
+_STATUS_ORDER = ['N', 'O', 'A', 'F', 'C', 'T']
 
 _ACTIVE_STATUSES     = ['O', 'N', 'A']
-_HISTORICAL_STATUSES = ['F', 'C']
+_HISTORICAL_STATUSES = ['F', 'C', 'T']
 
 _AGE_BANDS = ['< 6 months', '6–12 months', '1–2 years', '2–3 years', '3–5 years', '5+ years']
 _AGE_COLORS = ['#16a34a', '#65a30d', '#d97706', '#ea580c', '#dc2626', '#7f1d1d']
@@ -116,10 +116,12 @@ def _compute_metrics(frames: dict) -> dict:
     hdr['order_date'] = pd.to_datetime(hdr['order_date'], errors='coerce')
 
     # ── Merge detail with header status/date ──
+    # Line-level status is kept (renamed to line_status) rather than discarded, so it can be
+    # compared against the header status — the two are not guaranteed to agree.
     hdr_slim = hdr[['client', 'order_id', 'status', 'order_date', 'amend_no', 'contract_id']].drop_duplicates()
     hdr_slim = hdr_slim.rename(columns={'status': 'hdr_status'})
-    dtl_nostat = dtl.drop(columns=['status'], errors='ignore')
-    merged = dtl_nostat.merge(hdr_slim, on=['client', 'order_id'], how='left')
+    dtl_for_merge = dtl.rename(columns={'status': 'line_status'}) if 'status' in dtl.columns else dtl.copy()
+    merged = dtl_for_merge.merge(hdr_slim, on=['client', 'order_id'], how='left')
     merged = merged.rename(columns={'hdr_status': 'status'})
     merged['open_commitment'] = merged['amount'] - merged['arr_amount']
 
@@ -156,6 +158,38 @@ def _compute_metrics(frames: dict) -> dict:
         oldest_active = (today - active_hdr['order_date'].min()).days
     else:
         oldest_active = None
+
+    # ── Stuck "Not Ordered" POs — N should auto-convert to O within 15 minutes ──
+    stuck_n_df = hdr[
+        (hdr['status'] == 'N') & hdr['order_date'].notna() & ((today - hdr['order_date']).dt.days > 1)
+    ]
+    stuck_n_count = int(stuck_n_df['order_id'].nunique())
+    stuck_n_avg_days = float((today - stuck_n_df['order_date']).dt.days.mean()) if not stuck_n_df.empty else 0.0
+
+    # ── Resolution mix: how POs leave the active book (F / C / T) ──
+    resolution_counts = {
+        s: int(status_df.loc[status_df['status'] == s, 'po_count'].sum()) for s in _HISTORICAL_STATUSES
+    }
+    resolution_total = sum(resolution_counts.values()) or 1
+    clean_completion_rate = resolution_counts.get('F', 0) / resolution_total * 100
+    error_rate = resolution_counts.get('T', 0) / resolution_total * 100
+
+    # ── Released budget: commitment left unspent on manually-closed (C) POs ──
+    released_budget = float(merged.loc[merged['status'] == 'C', 'open_commitment'].sum())
+
+    # ── Line-level status vs header status ──
+    if 'line_status' in merged.columns:
+        line_status_counts = (
+            merged.groupby('line_status', dropna=False).size().reset_index(name='line_count')
+        )
+        line_status_counts['line_status'] = line_status_counts['line_status'].astype(str)
+        mismatch_mask = merged['line_status'].astype(str) != merged['status'].astype(str)
+        mismatch_count = int(mismatch_mask.sum())
+        mismatch_pct = mismatch_count / len(merged) * 100 if len(merged) else 0.0
+    else:
+        line_status_counts = pd.DataFrame(columns=['line_status', 'line_count'])
+        mismatch_count = 0
+        mismatch_pct = 0.0
 
     # ── Aging of ALL non-T headers ──
     hdr_nont = hdr[hdr['status'] != 'T'].copy()
@@ -246,6 +280,16 @@ def _compute_metrics(frames: dict) -> dict:
         'active_val':      active_val,
         'active_open':     active_open,
         'oldest_active':   oldest_active,
+        'stuck_n_count':         stuck_n_count,
+        'stuck_n_avg_days':      stuck_n_avg_days,
+        'resolution_counts':     resolution_counts,
+        'resolution_total':      resolution_total,
+        'clean_completion_rate': clean_completion_rate,
+        'error_rate':            error_rate,
+        'released_budget':       released_budget,
+        'line_status_counts':    line_status_counts,
+        'mismatch_count':        mismatch_count,
+        'mismatch_pct':          mismatch_pct,
         'aging_stats':     aging_stats,
         'cat_stats':       cat_stats,
         'top_suppliers':   top_suppliers,
@@ -373,7 +417,7 @@ def _render_hero(m: dict) -> html.Div:
         html.Div(style={
             'fontSize': '10px', 'color': 'rgba(255,255,255,0.3)',
             'marginBottom': '12px', 'fontStyle': 'italic',
-        }, children='Status F and T meanings unconfirmed — Parliament confirmation pending'),
+        }, children='N converts to O automatically within 15 minutes · A ("Confirmed") has no further workflow detail — confirmed July 2026'),
         html.Div([_status_row(r) for r in status_rows_data]),
         html.Div(style={
             'marginTop': '14px', 'display': 'flex', 'gap': '16px',
@@ -384,7 +428,7 @@ def _render_hero(m: dict) -> html.Div:
             ]),
             html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
                 html.Div(style={'width': '10px', 'height': '10px', 'background': _HIST_C, 'borderRadius': '2px'}),
-                html.Span('Historical (F/C)', style={'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)'}),
+                html.Span('Historical (F/C/T)', style={'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)'}),
             ]),
         ]),
     ])
@@ -449,45 +493,184 @@ def _render_hero(m: dict) -> html.Div:
     }, children=[left, _divider_v(), html.Div(style={'width': '32px'}), middle, _divider_v(), html.Div(style={'width': '32px'}), right])
 
 
-# ── KPI strip ─────────────────────────────────────────────────────────────────
+# ── PO Lifecycle narrative ─────────────────────────────────────────────────────
 
-def _kpi(value, label, color, sublabel='', warn=False):
-    return html.Div(style={
-        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
-        'borderRadius': '12px', 'padding': '20px 24px',
-        'flex': '1', 'minWidth': '200px',
-        'boxShadow': '0 2px 8px rgba(0,0,0,0.05)',
-        'borderTop': f'3px solid {color}',
-    }, children=[
+def _stat_tile(value, label, color, sub=None):
+    return html.Div(style={'flex': '1', 'minWidth': '120px'}, children=[
         html.Div(value, style={
-            'fontSize': '32px', 'fontWeight': '800',
-            'color': _WARN_C if warn else '#1e293b',
-            'lineHeight': '1', 'fontFamily': DISPLAY_FONT,
-            'letterSpacing': '-0.5px',
+            'fontSize': '24px', 'fontWeight': '800', 'color': color,
+            'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
         }),
         html.Div(label, style={
             'fontSize': '10px', 'fontWeight': '700', 'color': '#94a3b8',
-            'textTransform': 'uppercase', 'letterSpacing': '1px', 'marginTop': '8px',
+            'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginTop': '6px',
         }),
-        html.Div(sublabel, style={
-            'fontSize': '12px', 'color': '#64748b', 'marginTop': '3px',
-        }) if sublabel else None,
+        html.Div(sub, style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '2px'}) if sub else None,
     ])
 
 
-def _render_kpi_strip(m: dict) -> html.Div:
+def _render_lifecycle(m: dict) -> html.Div:
+    """Two-act narrative built on the confirmed status codes: the open book (O/N/A)
+    and how it resolves (F/C/T). Deliberately not a literal flow/Sankey diagram —
+    the data is a status snapshot, not a tracked per-PO transition log."""
     oldest = m['oldest_active']
-    oldest_yrs = f"{oldest / 365:.1f} years" if oldest else '—'
+    oldest_str = f'{oldest / 365:.1f}y' if oldest else '—'
+    stuck_n, stuck_avg = m['stuck_n_count'], m['stuck_n_avg_days']
+
+    stuck_callout = None
+    if stuck_n > 0:
+        stuck_callout = html.Div(style={
+            'marginTop': '16px', 'padding': '10px 14px',
+            'background': '#fffbeb', 'border': '1px solid #fde68a', 'borderRadius': '8px',
+        }, children=[
+            html.Span(f'{stuck_n:,} POs', style={'fontWeight': '700', 'color': '#92400e', 'fontSize': '12px'}),
+            html.Span(f' stuck in Not Ordered status — average {stuck_avg:.0f} days overdue '
+                      '(should auto-convert to Ordered within 15 minutes)',
+                      style={'color': '#78350f', 'fontSize': '12px'}),
+        ])
+
+    card_live = html.Div(style={
+        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
+        'borderRadius': '12px', 'padding': '24px 28px', 'flex': '1',
+        'boxShadow': '0 2px 8px rgba(0,0,0,0.04)',
+    }, children=[
+        html.Div('Currently Live', style={'fontSize': '15px', 'fontWeight': '700', 'color': '#1e293b'}),
+        html.Div('The open book — O, N, and A status', style={
+            'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '18px',
+        }),
+        html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap'}, children=[
+            _stat_tile(_fmt_count(m['active_count']), 'Active POs', _ACTIVE_C),
+            _stat_tile(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
+            _stat_tile(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
+            _stat_tile(oldest_str, 'Oldest active PO', _WARN_C if oldest and oldest > 730 else '#1e293b'),
+        ]),
+        stuck_callout,
+    ])
+
+    connector = html.Div(style={
+        'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center',
+        'justifyContent': 'center', 'padding': '0 20px', 'flex': '0 0 auto',
+    }, children=[
+        html.Div('→', style={'fontSize': '28px', 'color': '#cbd5e1', 'fontWeight': '300'}),
+        html.Div('resolves as', style={
+            'fontSize': '9px', 'color': '#94a3b8', 'textTransform': 'uppercase',
+            'letterSpacing': '0.08em', 'marginTop': '2px',
+        }),
+    ])
+
+    counts = m['resolution_counts']
+    labels = [_STATUS_CFG[s]['label'] for s in _HISTORICAL_STATUSES]
+    values = [counts.get(s, 0) for s in _HISTORICAL_STATUSES]
+    colors = [_STATUS_CFG[s]['color'] for s in _HISTORICAL_STATUSES]
+
+    fig = go.Figure(data=[go.Pie(
+        labels=labels, values=values, hole=0.62,
+        marker=dict(colors=colors, line=dict(color='#ffffff', width=2)),
+        textinfo='label+percent', textfont=dict(size=11, color='#334155'),
+        hovertemplate='<b>%{label}</b><br>%{value:,} POs (%{percent})<extra></extra>',
+        sort=False,
+    )])
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=10, b=10, l=10, r=10), height=220, showlegend=False,
+        font=dict(family="'Inter', sans-serif"),
+        annotations=[dict(
+            text=_fmt_count(m['resolution_total']), showarrow=False,
+            font=dict(size=18, color='#1e293b', family=DISPLAY_FONT),
+        )],
+    )
+
+    card_resolved = html.Div(style={
+        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
+        'borderRadius': '12px', 'padding': '24px 28px', 'flex': '1',
+        'boxShadow': '0 2px 8px rgba(0,0,0,0.04)',
+    }, children=[
+        html.Div('How POs Get Resolved', style={'fontSize': '15px', 'fontWeight': '700', 'color': '#1e293b'}),
+        html.Div('F, C, and T status — the closed book', style={
+            'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '10px',
+        }),
+        html.Div(style={'display': 'flex', 'gap': '20px', 'alignItems': 'center'}, children=[
+            html.Div(
+                dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '220px', 'width': '220px'}),
+                style={'flex': '0 0 220px'},
+            ),
+            html.Div(style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'gap': '14px'}, children=[
+                _stat_tile(_fmt_val(m['released_budget']), 'Released without being spent', _WARN_C,
+                           sub='Committed value left on Closed (C) POs'),
+                _stat_tile(f"{m['clean_completion_rate']:.0f}%", 'Clean completion rate', _HIST_C,
+                           sub='Finished automatically, no manual close needed'),
+                _stat_tile(f"{m['error_rate']:.1f}%", 'Raised-in-error rate', '#dc2626',
+                           sub='Terminated POs, as a share of all resolved'),
+            ]),
+        ]),
+    ])
+
+    return html.Div(style={'display': 'flex', 'alignItems': 'stretch', 'marginBottom': '24px'},
+                     children=[card_live, connector, card_resolved])
+
+
+# ── Header vs line-level status ────────────────────────────────────────────────
+
+def _render_line_status(m: dict) -> html.Div:
+    lsc = m['line_status_counts']
+    if lsc.empty:
+        return html.Div()
+
+    total = lsc['line_count'].sum() or 1
+    rows = []
+    for _, r in lsc.sort_values('line_count', ascending=False).iterrows():
+        s = r['line_status']
+        cfg = _STATUS_CFG.get(s, {'color': '#94a3b8', 'label': s})
+        cnt = int(r['line_count'])
+        pct = cnt / total * 100
+        rows.append(html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '10px',
+            'padding': '5px 0', 'borderBottom': '1px solid #f1f5f9',
+        }, children=[
+            html.Span(cfg['label'], style={'fontSize': '11px', 'color': '#475569', 'minWidth': '90px'}),
+            html.Div(style={
+                'flex': '1', 'height': '7px', 'background': _BAR_TRACK_LIGHT,
+                'borderRadius': '4px', 'overflow': 'hidden',
+            }, children=[
+                html.Div(style={
+                    'height': '100%', 'width': f'{min(pct, 100):.1f}%',
+                    'background': cfg['color'], 'borderRadius': '4px',
+                }),
+            ]),
+            html.Span(f'{cnt:,}', style={
+                'fontSize': '12px', 'fontWeight': '700', 'color': cfg['color'],
+                'minWidth': '54px', 'textAlign': 'right',
+            }),
+            html.Span(f'{pct:.0f}%', style={'fontSize': '10px', 'color': '#94a3b8', 'minWidth': '34px'}),
+        ]))
 
     return html.Div(style={
-        'display': 'flex', 'gap': '16px', 'marginBottom': '24px', 'flexWrap': 'wrap',
+        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
+        'borderRadius': '12px', 'padding': '20px 24px', 'marginBottom': '24px',
+        'boxShadow': '0 2px 8px rgba(0,0,0,0.04)',
+        'display': 'flex', 'gap': '28px', 'flexWrap': 'wrap',
     }, children=[
-        _kpi(_fmt_count(m['active_count']), 'Active POs', _ACTIVE_C,
-             sublabel='O, N, and A status'),
-        _kpi(_fmt_val(m['active_val']), 'Active ordered value', _ACCENT,
-             sublabel='Uninvoiced: ' + _fmt_val(m['active_open'])),
-        _kpi(oldest_yrs, 'Oldest active PO', '#dc2626',
-             sublabel='Earliest O/N/A order date', warn=oldest and oldest > 730),
+        html.Div(style={'flex': '1', 'minWidth': '260px'}, children=[
+            html.Div('Line-Level Status', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b', 'marginBottom': '4px'}),
+            html.Div('apodetail.status — independent of the PO header', style={'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '14px'}),
+            html.Div(rows),
+        ]),
+        html.Div(style={
+            'flex': '0 0 220px', 'padding': '16px 18px',
+            'background': '#faf9fd', 'border': '1px solid #ede9f8', 'borderRadius': '10px',
+            'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center',
+        }, children=[
+            html.Div(f'{m["mismatch_pct"]:.1f}%', style={
+                'fontSize': '30px', 'fontWeight': '800', 'color': '#7c3aed',
+                'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+            }),
+            html.Div('of lines carry a different status to their PO header', style={
+                'fontSize': '11px', 'color': '#64748b', 'marginTop': '8px',
+            }),
+            html.Div(f'{m["mismatch_count"]:,} lines', style={
+                'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '6px',
+            }),
+        ]),
     ])
 
 
@@ -938,8 +1121,13 @@ def render_tab(frames: dict, dq_results=None) -> html.Div:
         # ── Hero ──
         _render_hero(m),
 
-        # ── KPI strip ──
-        _render_kpi_strip(m),
+        # ── PO Lifecycle ──
+        _section_div('PO Lifecycle',
+                     'What the status codes tell us — a snapshot, not a tracked transition log'),
+        _render_lifecycle(m),
+
+        # ── Header vs line-level status ──
+        _render_line_status(m),
 
         # ── Age profile ──
         _section_div('PO Age Profile',
