@@ -118,6 +118,29 @@ def _po_line_closed_account(df, frames):
     return (merged['account_status'].notna() & (merged['account_status'] != 'N')).values
 
 
+def _po_hdr_line_date_mismatch(df, frames):
+    """Flags apodetail lines whose own order_date differs from their PO
+    header's order_date — both fields are extracted independently (see
+    po_header_HOC_run.sql / po_detail_HOC_run.sql). Same open question as
+    PO_HDR_LINE_STATUS_MISMATCH about whether these are expected to always
+    match; only flags where both dates are actually present, so a blank line
+    date isn't miscounted as a mismatch."""
+    if df.empty or 'apoheader' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    hdr = frames['apoheader']
+    hdr = (
+        hdr[hdr['house'] == house][['client', 'order_id', 'order_date']]
+        .drop_duplicates(subset=['client', 'order_id'])
+        .rename(columns={'order_date': 'hdr_order_date'})
+    )
+    merged = df[['client', 'order_id', 'order_date']].merge(hdr, on=['client', 'order_id'], how='left')
+    both_present = merged['order_date'].notna() & merged['hdr_order_date'].notna()
+    differs = merged['order_date'] != merged['hdr_order_date']
+    return (both_present & differs).values
+
+
 def get_po_checks():
     return [
 
@@ -127,6 +150,17 @@ def get_po_checks():
         # Population for general completeness/validity checks excludes T
         # (Terminated = raised in error, per Parliament's own definition).
         # ---------------------------------------------------------------
+
+        ('PO_DUP_HEADER',
+         15, 'PO Header', 'Uniqueness', 'High',
+         'Duplicate purchase order — same client and order number',
+         'Every purchase order must be unique on (client, order_id), its primary key in Agresso. '
+         'A duplicate key means two header rows are competing for the same logical PO, which the new system cannot load as-is. '
+         'Duplicate keys must be resolved before the PO-level migration mapping can be trusted.',
+         'Investigate the duplicate header rows in the legacy system and determine which, if any, is the genuine record.',
+         'apoheader', None,
+         "WHERE (client, order_id) HAVING COUNT(*) > 1",
+         lambda df: df.duplicated(subset=['client', 'order_id'], keep=False)),
 
         ('PO_NO_SUPPLIER',
          15, 'PO Header', 'Completeness', 'High',
@@ -149,6 +183,16 @@ def get_po_checks():
          'apoheader', None,
          "WHERE order_date IS NULL",
          lambda df: df['order_date'].isna()),
+
+        ('PO_FUTURE_ORDER_DATE',
+         15, 'PO Header', 'Validity', 'Medium',
+         'Purchase order has a future order date',
+         "A purchase order's order_date must not be later than today's date — a PO cannot be raised in the future. "
+         'A future-dated order suggests a data entry error or a placeholder date that was never corrected.',
+         'Correct the order date on the affected purchase order in the legacy system.',
+         'apoheader', None,
+         "WHERE order_date > CURRENT_DATE",
+         lambda df: df['order_date'] > pd.Timestamp.today()),
 
         ('PO_BAD_EXCH_RATE',
          15, 'PO Header', 'Validity', 'Low',
@@ -224,6 +268,39 @@ def get_po_checks():
          "WHERE amount < 0",
          lambda df: pd.to_numeric(df['amount'], errors='coerce').fillna(0) < 0),
 
+        ('PO_TERMINATED_WITH_INVOICING',
+         15, 'PO Line', 'Consistency', 'Medium',
+         'Terminated PO line still shows real invoicing activity',
+         "A line under a Terminated (T) purchase order is expected to carry no material invoicing activity — "
+         "Parliament's own guidance is that T is reserved for POs raised in error. "
+         'A line with a genuinely non-zero arr_amount or invoiced value means real activity was processed against a PO that was later terminated, '
+         'which is worth reviewing even though the termination itself may be legitimate.',
+         'Confirm whether the invoicing activity on the affected line was reversed, reassigned, or should be investigated '
+         'further before this PO is treated as a clean error.',
+         'apodetail', None,
+         "WHERE status = 'T' AND GREATEST(COALESCE(arr_amount,0), COALESCE(invoiced,0)) <> 0",
+         lambda df: df[['arr_amount', 'invoiced']].max(axis=1).abs() > 0.01),
+
+        ('PO_ARR_EXCEEDS_AMOUNT',
+         15, 'PO Line', 'Validity', 'Medium',
+         'PO line has been invoiced for more than its ordered value',
+         "A PO line's invoiced value (whichever of arr_amount or invoiced is larger) should not exceed its ordered amount. "
+         'A line invoiced beyond what was ordered suggests over-billing, a data entry error, or an amendment that was not correctly reflected.',
+         'Investigate the affected PO line to confirm whether the over-invoicing is legitimate (e.g. a price adjustment) or an error.',
+         'apodetail', None,
+         "WHERE GREATEST(COALESCE(arr_amount,0), COALESCE(invoiced,0)) > amount",
+         lambda df: (df[['arr_amount', 'invoiced']].max(axis=1) - df['amount']) > 0.01),
+
+        ('PO_LINE_NO_CATEGORY',
+         15, 'PO Line', 'Completeness', 'Low',
+         'PO line has no spend category',
+         'Every PO line should carry a spend category (art_gr_id) so spend can be classified and reported consistently. '
+         'A line with no category cannot be included in category-level spend analysis after migration.',
+         'Add the correct spend category to the affected PO line in the legacy system.',
+         'apodetail', None,
+         "WHERE art_gr_id IS NULL OR TRIM(art_gr_id) = ''",
+         lambda df: _is_blank(df['art_gr_id'])),
+
         ('PO_LINE_NO_ACCOUNT',
          15, 'PO Line', 'Completeness', 'High',
          'PO line has no GL account code',
@@ -256,6 +333,17 @@ def get_po_checks():
          'apodetail', 'apoheader',
          "WHERE apodetail.status <> apoheader.status",
          _po_line_status_mismatch),
+
+        ('PO_HDR_LINE_DATE_MISMATCH',
+         15, 'PO Line', 'Consistency', 'Low',
+         'PO line order date differs from its header order date',
+         "A PO line's own order_date is extracted independently of its header's order_date. "
+         'The real-data meaning of a line diverging from its header has not yet been confirmed with Parliament, '
+         'same open question as the equivalent status check. A high or growing mismatch rate is worth investigating.',
+         'Confirm with Parliament whether PO line order_date is expected to diverge from header order_date, and under what circumstances.',
+         'apodetail', 'apoheader',
+         "WHERE apodetail.order_date <> apoheader.order_date",
+         _po_hdr_line_date_mismatch),
 
         # ---------------------------------------------------------------
         # PO DETAIL — cross-domain (GL)

@@ -553,7 +553,9 @@ def run_dq_analysis(frames, tab=None):
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             elif table == 'apoheader':
-                if check_id == 'PO_STUCK_NOT_ORDERED':
+                if check_id == 'PO_DUP_HEADER':
+                    h_df = df_table[df_table['house'] == house]
+                elif check_id == 'PO_STUCK_NOT_ORDERED':
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
                 elif check_id == 'PO_FINISHED_WITH_BALANCE':
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
@@ -562,7 +564,10 @@ def run_dq_analysis(frames, tab=None):
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
             elif table == 'apodetail':
-                h_df = df_table[df_table['house'] == house]
+                if check_id == 'PO_TERMINATED_WITH_INVOICING':
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'T')]
+                else:
+                    h_df = df_table[df_table['house'] == house]
             else:
                 h_df = df_table[df_table['house'] == house]
 
@@ -638,6 +643,12 @@ def get_check_columns():
         'PO_INACTIVE_SUPPLIER':        ['order_id', 'apar_id', 'status'],
         'PO_LINE_ORPHAN_ACCOUNT':      ['order_id', 'line_no', 'account'],
         'PO_LINE_CLOSED_ACCOUNT':      ['order_id', 'line_no', 'account', 'status'],
+        'PO_DUP_HEADER':               ['client', 'order_id', 'status'],
+        'PO_FUTURE_ORDER_DATE':        ['order_id', 'order_date', 'status'],
+        'PO_TERMINATED_WITH_INVOICING': ['order_id', 'line_no', 'status', 'amount', 'arr_amount', 'invoiced'],
+        'PO_ARR_EXCEEDS_AMOUNT':       ['order_id', 'line_no', 'amount', 'arr_amount', 'invoiced'],
+        'PO_LINE_NO_CATEGORY':         ['order_id', 'line_no', 'art_gr_id', 'art_gr_description'],
+        'PO_HDR_LINE_DATE_MISMATCH':   ['order_id', 'line_no', 'order_date'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
@@ -952,7 +963,9 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
     elif table == 'apoheader':
-        if check_id == 'PO_STUCK_NOT_ORDERED':
+        if check_id == 'PO_DUP_HEADER':
+            h_df = df_table[df_table['house'] == house]
+        elif check_id == 'PO_STUCK_NOT_ORDERED':
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
         elif check_id == 'PO_FINISHED_WITH_BALANCE':
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
@@ -961,7 +974,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
     elif table == 'apodetail':
-        h_df = df_table[df_table['house'] == house]
+        if check_id == 'PO_TERMINATED_WITH_INVOICING':
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'T')]
+        else:
+            h_df = df_table[df_table['house'] == house]
     else:
         h_df = df_table[df_table['house'] == house]
 
@@ -1796,6 +1812,27 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         })
         cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.status', 'apoheader.status']
         return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_HDR_LINE_DATE_MISMATCH' and 'apoheader' in frames:
+        # Same explicit (client, order_id) join as PO_HDR_LINE_STATUS_MISMATCH,
+        # applied to order_date instead of status.
+        hdr = frames['apoheader'][frames['apoheader']['house'] == house][['client', 'order_id', 'order_date']]
+        hdr = hdr.drop_duplicates(subset=['client', 'order_id']).rename(columns={'order_date': 'apoheader.order_date'})
+        failing = failing.merge(hdr, on=['client', 'order_id'], how='left')
+        failing = failing.rename(columns={
+            'order_id':  'apodetail.order_id',
+            'line_no':   'apodetail.line_no',
+            'order_date': 'apodetail.order_date',
+        })
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.order_date', 'apoheader.order_date']
+        failing = failing[[c for c in cols if c in failing.columns]]
+        # This early return bypasses the generic datetime->string formatting step
+        # further down, so apply it here too — otherwise these two date columns
+        # would render as raw Timestamps in the DataTable instead of YYYY-MM-DD.
+        for col in failing.columns:
+            if pd.api.types.is_datetime64_any_dtype(failing[col]):
+                failing[col] = failing[col].dt.strftime('%Y-%m-%d').where(failing[col].notna(), other='')
+        return failing
 
     if check_id == 'PO_FINISHED_WITH_BALANCE' and 'apodetail' in frames:
         # Explicit join on (client, order_id), same reasoning as above. Shows both
