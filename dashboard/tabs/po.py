@@ -280,36 +280,6 @@ def _compute_metrics(frames: dict) -> dict:
     )
     active_status_mix['status'] = active_status_mix['status'].astype(str)
 
-    # ── Active book scatter: age vs value vs % invoiced, one point per live PO ──
-    active_po_scatter = (
-        active_dtl.groupby(['client', 'order_id'])
-        .agg(po_value=('amount', 'sum'), po_invoiced=('arr_amount', 'sum'))
-        .reset_index()
-        .merge(active_hdr[['client', 'order_id', 'order_date', 'status', 'apar_id']],
-               on=['client', 'order_id'], how='left')
-    )
-    active_po_scatter['age_years'] = (today - active_po_scatter['order_date']).dt.days / 365
-    active_po_scatter['invoiced_pct'] = (
-        (active_po_scatter['po_invoiced'] / active_po_scatter['po_value'].replace(0, np.nan)) * 100
-    ).clip(lower=0, upper=100).fillna(0)
-    if not asuheader.empty and 'apar_name' in asuheader.columns:
-        active_po_scatter = active_po_scatter.merge(name_map, on='apar_id', how='left')
-        active_po_scatter['display_name'] = active_po_scatter['apar_name'].fillna(active_po_scatter['apar_id'].astype(str))
-    else:
-        active_po_scatter['display_name'] = active_po_scatter['apar_id'].fillna('Unknown').astype(str)
-
-    # ── Released budget by category (C-status only) — who/what drives leftover commitment ──
-    released_by_category = (
-        merged[(merged['status'] == 'C') &
-               merged['art_gr_description'].notna() &
-               (merged['art_gr_description'].astype(str).str.strip() != '')]
-        .groupby('art_gr_description')['open_commitment']
-        .sum()
-        .reset_index(name='released_value')
-        .sort_values('released_value', ascending=False)
-        .head(10)
-    )
-
     # ── Finished-with-balance: does F really mean "fully used", as Parliament defines it? ──
     # Parliament's definition of F is receipt-based ("PO has been used completely"), not
     # invoice-based — real/dummy data both show F-status lines are ~95% receipted (vow_amount)
@@ -339,16 +309,6 @@ def _compute_metrics(frames: dict) -> dict:
     finished_invoiced_pct = (
         finished_bal['po_invoiced'].sum() / finished_value_total * 100 if finished_value_total else 0.0
     )
-
-    # ── Time-to-resolution: last_update as a proxy for when F/C/T was reached ──
-    # (the extract has no explicit closure-date field, so this is an approximation)
-    resolved_hdr = hdr[hdr['status'].isin(_HISTORICAL_STATUSES)].copy()
-    resolved_hdr['last_update'] = pd.to_datetime(resolved_hdr.get('last_update'), errors='coerce')
-    resolved_hdr['days_to_resolution'] = (resolved_hdr['last_update'] - resolved_hdr['order_date']).dt.days
-    resolution_days_df = resolved_hdr.loc[
-        resolved_hdr['days_to_resolution'].notna() & (resolved_hdr['days_to_resolution'] >= 0),
-        ['status', 'days_to_resolution'],
-    ]
 
     return {
         'status_df':       status_df,
@@ -385,22 +345,22 @@ def _compute_metrics(frames: dict) -> dict:
         'pos_no_acct':     pos_no_acct,
         'total_hdr':       len(hdr),
         'active_status_mix':           active_status_mix,
-        'active_po_scatter':           active_po_scatter,
-        'released_by_category':        released_by_category,
         'finished_total_count':        finished_total_count,
         'finished_with_balance_count': finished_with_balance_count,
         'finished_with_balance_pct':   finished_with_balance_pct,
         'finished_invoiced_pct':       finished_invoiced_pct,
-        'resolution_days_df':          resolution_days_df,
     }
 
 
 # ── Hero banner ───────────────────────────────────────────────────────────────
 
 def _render_hero(m: dict) -> html.Div:
-    status_df   = m['status_df']
+    """Pure orientation — scale only. Status and active-commitment detail live
+    entirely in the PO Lifecycle section below; showing them here too was
+    duplicating the same numbers in two places."""
     total_val   = m['total_ordered']
     total_pos   = m['total_pos']
+    total_lines = m['total_lines']
 
     date_min = m['date_min']
     date_max = m['date_max']
@@ -408,179 +368,63 @@ def _render_hero(m: dict) -> html.Div:
     yr_max   = date_max.year if pd.notna(date_max) else '?'
     span_yrs = (date_max - date_min).days // 365 if pd.notna(date_min) and pd.notna(date_max) else '?'
 
-    # ── Left: Landscape overview ──────────────────────────────────────────────
-    def _big_stat(value, label):
-        return html.Div(style={'marginBottom': '18px'}, children=[
+    def _secondary_stat(value, label):
+        return html.Div(style={'minWidth': '110px'}, children=[
             html.Div(value, style={
-                'fontSize': '34px', 'fontWeight': '800',
-                'color': '#ffffff', 'lineHeight': '1',
-                'fontFamily': DISPLAY_FONT, 'letterSpacing': '-0.5px',
+                'fontSize': '22px', 'fontWeight': '800', 'color': 'rgba(255,255,255,0.92)',
+                'lineHeight': '1', 'fontFamily': DISPLAY_FONT,
             }),
             html.Div(label, style={
-                'fontSize': '10px', 'fontWeight': '700',
-                'color': 'rgba(255,255,255,0.45)',
-                'textTransform': 'uppercase', 'letterSpacing': '0.1em',
-                'marginTop': '4px',
+                'fontSize': '10px', 'fontWeight': '700', 'color': 'rgba(255,255,255,0.4)',
+                'textTransform': 'uppercase', 'letterSpacing': '0.1em', 'marginTop': '5px',
             }),
         ])
 
-    left = html.Div(style={'flex': '0 0 260px', 'paddingRight': '32px'}, children=[
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '24px'}, children=[
+    return html.Div(style={
+        'background': (
+            f'radial-gradient(ellipse 900px 420px at 12% 8%, rgba(13,148,136,0.18), transparent 60%), '
+            f'linear-gradient(155deg, {_HDR_BG}, {_HDR2_BG})'
+        ),
+        'borderRadius': '14px', 'padding': '34px 40px', 'marginBottom': '24px',
+        'boxShadow': '0 8px 32px rgba(0,0,0,0.18)',
+    }, children=[
+        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '28px'}, children=[
             _badge('SEQ 15', '#0d3347', '#7dd3fc'),
             _badge('HoC Only', '#1e3a22', '#86efac'),
         ]),
-        _big_stat(_fmt_count(total_pos), 'Purchase orders'),
-        _big_stat(_fmt_count(m['total_lines']), 'Order lines'),
-        _big_stat(_fmt_val(total_val), 'Total ordered value'),
-        html.Div(style={
-            'marginTop': '6px', 'padding': '10px 14px',
-            'background': 'rgba(255,255,255,0.05)', 'borderRadius': '8px',
-            'border': '1px solid rgba(255,255,255,0.08)',
-        }, children=[
-            html.Div(style={'display': 'flex', 'justifyContent': 'space-between'}, children=[
-                html.Span(f'{yr_min} → {yr_max}', style={
-                    'fontSize': '13px', 'fontWeight': '700', 'color': 'rgba(255,255,255,0.8)',
+        html.Div(style={'display': 'flex', 'alignItems': 'flex-end', 'gap': '48px', 'flexWrap': 'wrap'}, children=[
+            html.Div(children=[
+                html.Div('Total ordered value', style={
+                    'fontSize': '11px', 'fontWeight': '700', 'color': 'rgba(255,255,255,0.45)',
+                    'textTransform': 'uppercase', 'letterSpacing': '0.12em', 'marginBottom': '8px',
                 }),
-                html.Span(f'{span_yrs} year span', style={
-                    'fontSize': '11px', 'color': 'rgba(255,255,255,0.4)',
+                html.Div(_fmt_val(total_val), style={
+                    'fontSize': '52px', 'fontWeight': '800', 'color': '#ffffff',
+                    'lineHeight': '1', 'fontFamily': DISPLAY_FONT, 'letterSpacing': '-1.5px',
                 }),
-            ]),
-            html.Div('Data range — all statuses', style={
-                'fontSize': '10px', 'color': 'rgba(255,255,255,0.35)', 'marginTop': '3px',
-            }),
-        ]),
-    ])
-
-    # ── Middle: Status breakdown ───────────────────────────────────────────────
-    def _status_row(row):
-        s    = str(row['status'])
-        cfg  = _STATUS_CFG.get(s, {'color': '#94a3b8', 'label': s, 'group': 'unknown'})
-        cnt  = int(row['po_count'])
-        val  = float(row.get('total_ordered', 0))
-        pct  = (cnt / total_pos * 100) if total_pos > 0 else 0
-        color = cfg['color']
-        return html.Div(style={
-            'display': 'flex', 'alignItems': 'center', 'gap': '10px',
-            'padding': '6px 0', 'borderBottom': '1px solid rgba(255,255,255,0.04)',
-        }, children=[
-            html.Span(s, style={
-                'background': color + '22', 'color': color,
-                'fontSize': '10px', 'fontWeight': '800', 'letterSpacing': '0.06em',
-                'padding': '2px 7px', 'borderRadius': '3px',
-                'minWidth': '28px', 'textAlign': 'center',
-            }),
-            html.Span(cfg['label'], style={
-                'fontSize': '11px', 'color': 'rgba(255,255,255,0.5)',
-                'minWidth': '70px',
-            }),
-            html.Div(style={
-                'flex': '1', 'height': '6px', 'background': _BAR_TRACK,
-                'borderRadius': '3px', 'overflow': 'hidden',
-            }, children=[
                 html.Div(style={
-                    'height': '100%',
-                    'width': f'{min(pct, 100):.1f}%',
-                    'background': color, 'borderRadius': '3px',
-                    'minWidth': '3px' if cnt > 0 else '0',
+                    'width': '48px', 'height': '4px', 'background': _ACCENT,
+                    'borderRadius': '2px', 'marginTop': '14px',
                 }),
             ]),
-            html.Span(f'{cnt:,}', style={
-                'fontSize': '12px', 'fontWeight': '700', 'color': '#ffffff',
-                'minWidth': '48px', 'textAlign': 'right',
-            }),
-            html.Span(_fmt_val(val), style={
-                'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)',
-                'minWidth': '64px', 'textAlign': 'right',
-            }),
-        ])
-
-    ordered_statuses = [s for s in _STATUS_ORDER if s in status_df['status'].values]
-    remaining = [s for s in status_df['status'].values if s not in ordered_statuses]
-    status_rows_data = []
-    for s in ordered_statuses + remaining:
-        r = status_df[status_df['status'] == s]
-        if not r.empty:
-            status_rows_data.append(r.iloc[0])
-
-    middle = html.Div(style={'flex': '1', 'paddingRight': '32px'}, children=[
-        _label('Status breakdown'),
-        html.Div(style={
-            'fontSize': '10px', 'color': 'rgba(255,255,255,0.3)',
-            'marginBottom': '12px', 'fontStyle': 'italic',
-        }, children='N converts to O automatically within 15 minutes · A ("Confirmed") has no further workflow detail — confirmed July 2026'),
-        html.Div([_status_row(r) for r in status_rows_data]),
-        html.Div(style={
-            'marginTop': '14px', 'display': 'flex', 'gap': '16px',
-        }, children=[
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
-                html.Div(style={'width': '10px', 'height': '10px', 'background': _ACTIVE_C, 'borderRadius': '2px'}),
-                html.Span('Active (O/N/A)', style={'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)'}),
-            ]),
-            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
-                html.Div(style={'width': '10px', 'height': '10px', 'background': _HIST_C, 'borderRadius': '2px'}),
-                html.Span('Historical (F/C/T)', style={'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)'}),
+            html.Div(style={'display': 'flex', 'gap': '32px', 'paddingBottom': '6px'}, children=[
+                _secondary_stat(_fmt_count(total_pos), 'Purchase orders'),
+                _secondary_stat(_fmt_count(total_lines), 'Order lines'),
             ]),
         ]),
-    ])
-
-    # ── Right: Active commitment ───────────────────────────────────────────────
-    active_count = m['active_count']
-    active_val   = m['active_val']
-    active_open  = m['active_open']
-    oldest       = m['oldest_active']
-    oldest_str   = f'{oldest // 365}y {(oldest % 365) // 30}m' if oldest else '—'
-
-    def _active_kpi(value, label, sub=None):
-        return html.Div(style={
-            'padding': '12px 16px', 'marginBottom': '10px',
-            'background': 'rgba(255,255,255,0.06)',
-            'borderRadius': '8px',
-            'borderLeft': f'3px solid {_ACTIVE_C}',
-        }, children=[
-            html.Div(value, style={
-                'fontSize': '26px', 'fontWeight': '800', 'color': '#ffffff',
-                'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-            }),
-            html.Div(label, style={
-                'fontSize': '10px', 'fontWeight': '700',
-                'color': 'rgba(255,255,255,0.45)',
-                'textTransform': 'uppercase', 'letterSpacing': '0.1em',
-                'marginTop': '4px',
-            }),
-            html.Div(sub, style={'fontSize': '11px', 'color': 'rgba(255,255,255,0.35)', 'marginTop': '2px'}) if sub else None,
-        ])
-
-    right = html.Div(style={'flex': '0 0 220px'}, children=[
-        _label('Active commitment (O · N · A)'),
-        _active_kpi(_fmt_count(active_count), 'Active POs'),
-        _active_kpi(_fmt_val(active_val), 'Ordered value'),
-        _active_kpi(_fmt_val(active_open), 'Uninvoiced balance', sub='amount − arr_amount'),
         html.Div(style={
-            'padding': '10px 14px',
-            'background': 'rgba(255,255,255,0.04)',
-            'borderRadius': '8px',
-            'border': '1px solid rgba(255,255,255,0.07)',
+            'marginTop': '26px', 'paddingTop': '18px',
+            'borderTop': '1px solid rgba(255,255,255,0.08)',
+            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'flexWrap': 'wrap', 'gap': '8px',
         }, children=[
-            html.Div('Oldest active PO', style={
-                'fontSize': '10px', 'color': 'rgba(255,255,255,0.4)',
-                'textTransform': 'uppercase', 'letterSpacing': '0.08em',
+            html.Span("Across every status — what's live vs. resolved is below", style={
+                'fontSize': '11px', 'color': 'rgba(255,255,255,0.35)',
             }),
-            html.Div(oldest_str, style={
-                'fontSize': '18px', 'fontWeight': '700', 'color': _WARN_C,
-                'fontFamily': DISPLAY_FONT, 'marginTop': '4px',
+            html.Span(f'{yr_min} → {yr_max} · {span_yrs} year span', style={
+                'fontSize': '12px', 'fontWeight': '600', 'color': 'rgba(255,255,255,0.65)',
             }),
         ]),
     ])
-
-    return html.Div(style={
-        'background': _HDR_BG,
-        'borderRadius': '14px',
-        'padding': '32px 36px',
-        'marginBottom': '24px',
-        'display': 'flex',
-        'gap': '0',
-        'boxShadow': '0 8px 32px rgba(0,0,0,0.18)',
-    }, children=[left, _divider_v(), html.Div(style={'width': '32px'}), middle, _divider_v(), html.Div(style={'width': '32px'}), right])
 
 
 # ── PO Lifecycle narrative ─────────────────────────────────────────────────────
@@ -641,58 +485,6 @@ def _render_active_composition(m: dict) -> html.Div:
     ])
 
 
-def _render_active_scatter(m: dict) -> html.Div:
-    """One point per live PO: age vs ordered value, colored by % invoiced so far.
-    Old + large (top-right) is where migration/write-off risk concentrates; color
-    adds invoicing progress without redundantly re-encoding value or age."""
-    df = m['active_po_scatter'].dropna(subset=['age_years', 'po_value'])
-    if df.empty:
-        return html.Div()
-
-    top = df.sort_values('po_value', ascending=False).head(5)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['age_years'], y=df['po_value'], mode='markers',
-        marker=dict(
-            size=10, color=df['invoiced_pct'],
-            colorscale=[[0, '#ccfbf1'], [1, '#0d9488']], cmin=0, cmax=100,
-            line=dict(width=2, color='#ffffff'),
-            colorbar=dict(title=dict(text='% invoiced', font=dict(size=10, color='#94a3b8')),
-                          thickness=12, len=0.85, tickfont=dict(size=9, color='#94a3b8')),
-        ),
-        customdata=list(zip(df['display_name'], df['invoiced_pct'], df['status'].map(lambda s: _STATUS_CFG.get(s, {}).get('label', s)))),
-        hovertemplate=(
-            '<b>%{customdata[0]}</b><br>Age: %{x:.1f}y · Value: £%{y:,.0f}<br>'
-            'Invoiced: %{customdata[1]:.0f}% · Status: %{customdata[2]}<extra></extra>'
-        ),
-    ))
-    for _, r in top.iterrows():
-        fig.add_annotation(
-            x=r['age_years'], y=r['po_value'], text=str(r['display_name'])[:22],
-            showarrow=True, arrowhead=0, arrowcolor='#cbd5e1', arrowwidth=1, ax=24, ay=-18,
-            font=dict(size=9, color='#475569'), bgcolor='rgba(255,255,255,0.85)',
-        )
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=10, b=40, l=60, r=10), height=340, showlegend=False,
-        xaxis=dict(title=dict(text='Age (years since order_date)', font=dict(size=11, color='#94a3b8')),
-                   showgrid=True, gridcolor='#f1f5f9', zeroline=False, tickfont=dict(size=10)),
-        yaxis=dict(title=dict(text='Ordered value (£)', font=dict(size=11, color='#94a3b8')),
-                   showgrid=True, gridcolor='#f1f5f9', zeroline=False, tickfont=dict(size=10)),
-        font=dict(family="'Inter', sans-serif"),
-    )
-
-    return html.Div(style={'marginTop': '22px'}, children=[
-        html.Div('Where the Live Book Sits', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b'}),
-        html.Div('Each point is one active PO — old and large (top-right) is where risk concentrates; '
-                  'color shows invoicing progress so far', style={
-            'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '8px',
-        }),
-        dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '340px'}),
-    ])
-
-
 def _render_finished_balance_callout(m: dict) -> html.Div:
     """Validates Parliament's own definition of F ('used up completely') against
     receipt (vow_amount) — the correct basis, not invoicing (see finished_invoiced_pct
@@ -719,94 +511,39 @@ def _render_finished_balance_callout(m: dict) -> html.Div:
     ])
 
 
-def _render_released_by_category(m: dict) -> html.Div:
-    cats = m['released_by_category']
-    if cats.empty:
-        return html.Div()
-
-    cats = cats.sort_values('released_value', ascending=True)
-    labels = cats['art_gr_description'].tolist()
-    values = cats['released_value'].tolist()
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=labels, x=values, orientation='h',
-        marker=dict(color=_WARN_C, opacity=0.85, line=dict(width=0)),
-        text=[_fmt_val(v) for v in values], textposition='outside', textfont=dict(size=10, color='#475569'),
-        hovertemplate='<b>%{y}</b><br>£%{x:,.0f} released<extra></extra>',
-    ))
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=10, b=30, l=10, r=70), height=max(240, len(labels) * 26), showlegend=False,
-        xaxis=dict(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=10, color='#94a3b8'), zeroline=False),
-        yaxis=dict(showgrid=False, tickfont=dict(size=11, color='#475569')),
-        font=dict(family="'Inter', sans-serif"),
-    )
-
-    return html.Div(style={'flex': '1', 'minWidth': '320px'}, children=[
-        html.Div('Released Budget by Category', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b'}),
-        html.Div('Top categories driving unspent commitment on Closed (C) POs', style={
-            'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '8px',
-        }),
-        dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': f'{max(240, len(labels) * 26)}px'}),
-    ])
-
-
-def _render_resolution_time(m: dict) -> html.Div:
-    df = m['resolution_days_df']
-    if df.empty:
-        return html.Div()
-
-    fig = go.Figure()
-    for s in _HISTORICAL_STATUSES:
-        sub = df[df['status'] == s]
-        if sub.empty:
-            continue
-        cfg = _STATUS_CFG[s]
-        fig.add_trace(go.Box(
-            x=sub['days_to_resolution'], name=cfg['label'], orientation='h', boxpoints=False,
-            marker=dict(color=cfg['color']), line=dict(color=cfg['color']),
-            hovertemplate=f"<b>{cfg['label']}</b><br>%{{x}} days<extra></extra>",
-        ))
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=10, b=30, l=10, r=10), height=240, showlegend=False,
-        xaxis=dict(title=dict(text='Days from order to last update', font=dict(size=11, color='#94a3b8')),
-                   showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=10), zeroline=False),
-        yaxis=dict(showgrid=False, tickfont=dict(size=11, color='#475569')),
-        font=dict(family="'Inter', sans-serif"),
-    )
-
-    return html.Div(style={'flex': '1', 'minWidth': '320px'}, children=[
-        html.Div('Time to Resolution', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b'}),
-        html.Div('last_update − order_date, by outcome — a proxy for resolution date, not an exact one', style={
-            'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '8px',
-        }),
-        dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '240px'}),
-    ])
-
-
 def _render_lifecycle(m: dict) -> html.Div:
     """Two-act narrative built on the confirmed status codes: the open book (O/N/A)
     and how it resolves (F/C/T). Deliberately not a literal flow/Sankey diagram —
-    the data is a status snapshot, not a tracked per-PO transition log. Each act is a
-    full-width card (stat row + deep-dive visuals) rather than squeezed side by side,
-    so the supporting charts have room to breathe."""
+    the data is a status snapshot, not a tracked per-PO transition log."""
     oldest = m['oldest_active']
-    oldest_str = f'{oldest / 365:.1f}y' if oldest else '—'
+    oldest_str = f'{oldest / 365:.1f} years' if oldest else '—'
     stuck_n, stuck_avg = m['stuck_n_count'], m['stuck_n_avg_days']
 
-    stuck_callout = None
-    if stuck_n > 0:
-        stuck_callout = html.Div(style={
-            'marginTop': '16px', 'padding': '10px 14px',
-            'background': '#fffbeb', 'border': '1px solid #fde68a', 'borderRadius': '8px',
-        }, children=[
+    # One combined health line rather than a separate callout per signal — both
+    # answer the same underlying question ("is anything wrong with what's just sitting here").
+    health_items = []
+    flagged = stuck_n > 0
+    if flagged:
+        health_items.append(html.Div(style={'flex': '1', 'minWidth': '260px'}, children=[
             html.Span(f'{stuck_n:,} POs', style={'fontWeight': '700', 'color': '#92400e', 'fontSize': '12px'}),
-            html.Span(f' stuck in Not Ordered status — average {stuck_avg:.0f} days overdue '
-                      '(should auto-convert to Ordered within 15 minutes)',
+            html.Span(f' stuck in Not Ordered — avg {stuck_avg:.0f} days overdue '
+                      '(should auto-convert within 15 minutes)',
                       style={'color': '#78350f', 'fontSize': '12px'}),
-        ])
+        ]))
+    health_items.append(html.Div(style={'flex': '1', 'minWidth': '220px'}, children=[
+        html.Span(oldest_str, style={
+            'fontWeight': '700', 'color': '#92400e' if flagged else '#334155', 'fontSize': '12px',
+        }),
+        html.Span(' — oldest live commitment still on the books', style={
+            'color': '#78350f' if flagged else '#64748b', 'fontSize': '12px',
+        }),
+    ]))
+    health_line = html.Div(style={
+        'marginTop': '16px', 'padding': '10px 14px', 'borderRadius': '8px',
+        'background': '#fffbeb' if flagged else '#f8fafc',
+        'border': f"1px solid {'#fde68a' if flagged else '#e2e8f0'}",
+        'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap',
+    }, children=health_items)
 
     card_live = html.Div(style={
         'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
@@ -821,11 +558,9 @@ def _render_lifecycle(m: dict) -> html.Div:
             _stat_tile(_fmt_count(m['active_count']), 'Active POs', _ACTIVE_C),
             _stat_tile(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
             _stat_tile(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
-            _stat_tile(oldest_str, 'Oldest active PO', _WARN_C if oldest and oldest > 730 else '#1e293b'),
         ]),
-        stuck_callout,
+        health_line,
         _render_active_composition(m),
-        _render_active_scatter(m),
     ])
 
     connector = html.Div(style={
@@ -885,10 +620,6 @@ def _render_lifecycle(m: dict) -> html.Div:
             ]),
         ]),
         _render_finished_balance_callout(m),
-        html.Div(style={'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap', 'marginTop': '22px'}, children=[
-            _render_released_by_category(m),
-            _render_resolution_time(m),
-        ]),
     ])
 
     return html.Div(style={'marginBottom': '24px'}, children=[card_live, connector, card_resolved])
