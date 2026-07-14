@@ -138,3 +138,28 @@ Until we understand what each code means, several data quality checks cannot be 
 **Checks affected:** `DQ-AD-V01`, `DQ-AG-V01`, `DQ-AD-V04`, `DQ-AD-C04`, `DQ-AD-C05`, `DQ-AG-C05`, `DQ-AG-C06`
 
 ---
+
+## 5. PO Line Invoicing Fields — `arr_amount`/`arr_val` vs `invoiced` disagree
+
+**Context:** `apodetail` carries three fields that all appear, per the extract's own documentation, to represent "how much has been invoiced" on a PO line: `arr_amount` (invoice received, local currency), `arr_val` (invoice received, order currency), and `invoiced` (invoiced at the order's exchange rate). Inspecting real HoC PO line records shows these disagreeing in opposite directions on different lines, not just failing to match numerically:
+
+| Example | amount | com_amount | vow_amount | vow_val | arr_amount | arr_val | invoiced |
+|---|---|---|---|---|---|---|---|
+| Line 1 (O status) | 1740 | 1740 | 1740 | 200 | 1740 | 200 | **0** |
+| Line 2 | 90.63 | 90.63 | 90.63 | 12 | — | **0** | **75.3** |
+
+- Line 1: `arr_amount`/`arr_val` say the line is fully invoiced; `invoiced` says nothing has been invoiced.
+- Line 2: `arr_val` says nothing has been invoiced; `invoiced` shows a real, partial, non-zero figure.
+
+If these were simple currency-conversion duplicates of the same underlying fact, they couldn't disagree in opposite directions like this. Working hypothesis (unconfirmed): `invoiced` may be period-specific ("invoiced this period") rather than a cumulative running total the way `arr_amount`/`arr_val` appear to be — which would explain a historically-fully-invoiced line reading `0` if all its invoicing happened in an earlier period.
+
+This has a direct, practical impact: the PO tab's "Fulfilment of the Live Book" breakdown uses `arr_amount` as the definitive invoiced figure. If `invoiced` sometimes reflects real invoicing progress that `arr_amount` misses (as in Line 2), that breakdown could understate invoicing progress on some POs.
+
+**Questions:**
+- What does the `invoiced` field represent, and how does it differ from `arr_amount`/`arr_val`? Is it a period figure rather than a cumulative one?
+- Which field should be treated as authoritative for "how much of this PO line has been invoiced"?
+- Separately: `vow_val`/`arr_val` (order currency) are consistently ~8–9x smaller than `vow_amount`/`arr_amount` (local currency) on both example lines — is that a real FX rate, and if so, what currency/rate produces that ratio?
+
+**Affects:** PO tab "Fulfilment of the Live Book" breakdown (`dashboard/tabs/po.py`, `_render_active_fulfilment`), any future PO invoicing-progress DQ checks.
+
+---
