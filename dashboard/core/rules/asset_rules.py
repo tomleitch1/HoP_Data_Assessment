@@ -368,8 +368,8 @@ def get_asset_checks():
          'cap_date_from mismatch',
          'Finds books where the capitalisation date disagrees with the asset master record. the two tables must be consistent for accurate depreciation.',
          'Align dates.', 'asset_depreciation', 'asset_master',
-         'status != C AND depr.cap_date_from != master.cap_date_from',
-         lambda df, frames: (df['status'] != 'C') & (df['cap_date_from'] != df['asset_id'].map(frames.get('asset_master', pd.DataFrame()).drop_duplicates('asset_id').set_index('asset_id')['cap_date_from'])) if 'asset_master' in frames else pd.Series(False, index=df.index)),
+         'status != C AND master.status != C AND depr.cap_date_from != master.cap_date_from',
+         lambda df, frames: (df['status'] != 'C') & (df['asset_id'].map(frames.get('asset_master', pd.DataFrame()).drop_duplicates('asset_id').set_index('asset_id')['status']) != 'C') & (df['cap_date_from'] != df['asset_id'].map(frames.get('asset_master', pd.DataFrame()).drop_duplicates('asset_id').set_index('asset_id')['cap_date_from'])) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AD-X04', 19, 'Asset Depreciation', 'Referential Integrity', 'Medium',
          'res_value > org_amount',
