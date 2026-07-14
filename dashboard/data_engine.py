@@ -12,6 +12,7 @@ from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks
 from dashboard.core.rules.gl_rules import get_gl_checks
+from dashboard.core.rules.po_rules import get_po_checks
 
 DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
@@ -436,6 +437,7 @@ def get_dq_checks():
     checks.extend(get_ar_checks())
     checks.extend(get_asset_checks())
     checks.extend(get_gl_checks())
+    checks.extend(get_po_checks())
     return checks
 
 def run_dq_analysis(frames, tab=None):
@@ -550,9 +552,18 @@ def run_dq_analysis(frames, tab=None):
                 h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'apoheader':
+                if check_id == 'PO_STUCK_NOT_ORDERED':
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+                elif check_id == 'PO_FINISHED_WITH_BALANCE':
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
+                else:
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
+            elif table == 'apodetail':
+                h_df = df_table[df_table['house'] == house]
             else:
                 h_df = df_table[df_table['house'] == house]
-            
+
             total = len(h_df)
             if total == 0:
                 continue
@@ -610,6 +621,17 @@ def run_dq_analysis(frames, tab=None):
 def get_check_columns():
     """Returns a map of check_id to the columns relevant for that check."""
     return {
+
+        # Purchase Orders (apoheader / apodetail)
+        'PO_NO_SUPPLIER':             ['order_id', 'apar_id', 'status'],
+        'PO_INVALID_ORDER_DATE':      ['order_id', 'order_date', 'status'],
+        'PO_BAD_EXCH_RATE':           ['order_id', 'currency', 'exch_rate', 'status'],
+        'PO_STUCK_NOT_ORDERED':       ['order_id', 'apar_id', 'status', 'order_date'],
+        'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status'],
+        'PO_LINE_NEG_AMOUNT':         ['order_id', 'line_no', 'amount', 'status'],
+        'PO_LINE_NO_ACCOUNT':         ['order_id', 'line_no', 'account', 'status'],
+        'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
+        'PO_HDR_LINE_STATUS_MISMATCH': ['order_id', 'line_no', 'status'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
@@ -922,6 +944,15 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     elif table == 'gl_journals':
         h_df = df_table[df_table['house'] == house]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
+        h_df = df_table[df_table['house'] == house]
+    elif table == 'apoheader':
+        if check_id == 'PO_STUCK_NOT_ORDERED':
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+        elif check_id == 'PO_FINISHED_WITH_BALANCE':
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
+        else:
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
+    elif table == 'apodetail':
         h_df = df_table[df_table['house'] == house]
     else:
         h_df = df_table[df_table['house'] == house]

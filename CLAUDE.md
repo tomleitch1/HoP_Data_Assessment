@@ -855,7 +855,7 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 ## Purchase Orders (PO) Domain — Implementation Details
 
-**HoC only** — `apoheadhistr` confirmed empty at Parliament, so there is no HOL PO data. Frames: `apoheader` (`SUBDIR['po']` → `po_header_HOC.csv`) and `apodetail` (`po_detail_HOC.csv`). No DQ checks are implemented yet — `dashboard/core/rules/po_rules.py` does not exist and `get_dq_checks()` in `data_engine.py` does not import a PO rules module. The tab (`dashboard/tabs/po.py`) is volumetrics/landscape-only so far.
+**HoC only** — `apoheadhistr` confirmed empty at Parliament, so there is no HOL PO data. Frames: `apoheader` (`SUBDIR['po']` → `po_header_HOC.csv`) and `apodetail` (`po_detail_HOC.csv`). 9 DQ checks are live in `dashboard/core/rules/po_rules.py` (`get_po_checks()`, scope 15), covering Completeness/Validity/Consistency/Uniqueness across both tables — see below. The tab (`dashboard/tabs/po.py`) follows the same pattern as every other domain: volumetrics/story sections first, then `render_dimension_scorecard()` + `render_dimension_grid()` (from `dashboard/shared/dimensions.py`) at the bottom, driving the same modal drill-down as Suppliers/GL/Assets. `render_tab(dq_results, frames)` — note the argument order matches `gl.py`/`suppliers.py`/`customers.py`, not the `(frames, dq_results)` order used earlier in the PO tab's own volumetrics-only phase. Cross-domain checks (PO → Suppliers via `apar_id`, PO → GL via `account`/dimension values) are not yet implemented — that's the next phase.
 
 ### `apoheader.status` — confirmed codes (July 2026)
 
@@ -874,11 +874,23 @@ These are the only six confirmed values (no confirmed `P` status). `wf_state` is
 - Active/open commitment: `O`, `N`, `A`
 - Historical/closed: `F`, `C`, `T`
 
-**DQ signal potential per status (not yet implemented as checks):**
-- `N` older than ~1 day (well past the 15-minute auto-transition window) → stuck PO, likely an integration fault.
-- `F` (system says fully used) with a non-zero open commitment (`amount − arr_amount`) → inconsistency between the system's own "finished" determination and the ledger balance; this is a genuine DQ finding, unlike `C` where a residual balance is expected/normal.
-- `T` volume as a proportion of all POs → process-adherence signal (raised-in-error rate), not a per-record DQ failure.
-- Header (`apoheader.status`) vs detail (`apodetail.status` / `rev_status`) disagreement → line-level status can differ from header status; both are extracted separately and are now cross-checked descriptively (see below), though not yet as a formal DQ check.
+**DQ checks implemented in `po_rules.py` (9 total):**
+
+| Check ID | Table | Dimension | Severity | Population | Logic |
+|---|---|---|---|---|---|
+| `PO_NO_SUPPLIER` | apoheader | Completeness | High | status != T | `apar_id` blank |
+| `PO_INVALID_ORDER_DATE` | apoheader | Validity | Medium | status != T | `order_date` null |
+| `PO_BAD_EXCH_RATE` | apoheader | Validity | Low | status != T | `exch_rate` <= 0 |
+| `PO_STUCK_NOT_ORDERED` | apoheader | Consistency | Medium | status == N | `order_date` > 1 day old |
+| `PO_FINISHED_WITH_BALANCE` | apoheader (joins apodetail) | Consistency | Medium | status == F | >5% of ordered value still unreceived (`vow_amount`) — same materiality threshold as the tab's `finished_with_balance` stat |
+| `PO_LINE_NEG_AMOUNT` | apodetail | Validity | Medium | all rows | `amount` < 0 (no confirmed credit-note category for PO lines, unlike AP/AR) |
+| `PO_LINE_NO_ACCOUNT` | apodetail | Completeness | High | all rows | `account` blank |
+| `PO_DUP_LINE` | apodetail | Uniqueness | High | all rows | duplicate `(client, order_id, line_no, sequence_no)` |
+| `PO_HDR_LINE_STATUS_MISMATCH` | apodetail (joins apoheader) | Consistency | Low | all rows | line's own `status` != its header's `status` — severity kept Low since the real-data meaning of this divergence isn't confirmed |
+
+The two join checks use named helper functions in `po_rules.py` (`_po_finished_with_balance`, `_po_line_status_mismatch`) rather than inline lambdas, mirroring the exact vectorized pandas logic already proven in `po.py`'s `_compute_metrics` (`finished_bal` and `mismatch_mask` respectively). Population filtering for `apoheader` is a per-check_id branch in both `run_dq_analysis()` and `get_failing_records()` in `data_engine.py` (same dual-location pattern as every other domain's per-check population overrides): default excludes `T` (raised in error), with `PO_STUCK_NOT_ORDERED` scoped to `N` only and `PO_FINISHED_WITH_BALANCE` scoped to `F` only.
+
+Not yet implemented: cross-domain checks (PO → Suppliers via `apar_id`, PO → GL via `account`/dimension values) and a `T`-proportion process-adherence signal (that one doesn't fit the per-record DQ model and lives in the tab's own Resolved-book stats instead, not as a formal check).
 
 ### PO detail (`apodetail`) status
 `apodetail.status` and `apodetail.rev_status` are extracted per line. `_compute_metrics` in `po.py` keeps the line-level status (renamed `line_status` during the header merge) alongside the header status rather than discarding it, and surfaces a line-count-by-status distribution plus a header/line mismatch rate in the "Header vs Line-Level Status" card. `rev_status` remains unpopulated in dummy data and unconfirmed on real data — not built on yet.
@@ -911,6 +923,12 @@ The tab tells a two-act story built on the confirmed status meanings, deliberate
 - Deferred: `GL_ACC_BFLAG_CON` — bflag reconciliation bit not yet confirmed from real data
 - Skipped: `GL_BAL_FX_MISSING` (currency always GBP), `GL_BAL_TOTAL_NET` (aggregate, does not fit row-level model), `GL_DIM_WF_STUCK` (wf_state not used at Parliament), voucher balance integrity check (status filter makes it unreliable — see GL Journals section above)
 - Next: DQ checks on `gl_journals` — completeness (missing account, description, dim_1), validity (future trans_date), orphan account cross-reference
+
+**PO tab — DQ checks live, not yet run against real data:**
+- 9 checks in `dashboard/core/rules/po_rules.py` (scope 15) — see PO Domain section above for the full list
+- Tab wired with `render_dimension_scorecard()` + `render_dimension_grid()` matching every other domain's modal drill-down
+- Built and verified against dummy data only this session — needs a run on the Parliament laptop to confirm real-data behaviour, same caution as GL/Assets checks built ahead of real-data confirmation
+- Cross-domain checks (PO → Suppliers, PO → GL) not yet built
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)

@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from dashboard.core.theme import UI, DISPLAY_FONT, PLOTLY_HOVER_CONFIG, PLOTLY_STATIC_CONFIG
+from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid
 
 # ── Design tokens ─────────────────────────────────────────────────────────────
 _HDR_BG    = '#0d1f2d'   # deep navy
@@ -1379,7 +1380,7 @@ def _section_div(title, subtitle=''):
 
 # ── Main renderer ─────────────────────────────────────────────────────────────
 
-def render_tab(frames: dict, dq_results=None) -> html.Div:
+def render_tab(dq_results, frames: dict) -> html.Div:
     hdr = frames.get('apoheader', pd.DataFrame())
     if hdr.empty:
         return html.Div('No PO data loaded. Run po_header_HOC_run.sql and po_detail_HOC_run.sql then restart.', style={
@@ -1419,5 +1420,11 @@ def render_tab(frames: dict, dq_results=None) -> html.Div:
         _section_div('Supplier Concentration',
                      'Top 15 suppliers by total ordered value across all statuses'),
         html.Div(style={'marginBottom': '24px'}, children=[supp_chart]),
+
+        # ── Data Quality Checks ──
+        _section_div('Data Quality Checks',
+                     'DQ rules applied against the extracted population'),
+        render_dimension_scorecard(dq_results),
+        render_dimension_grid(dq_results),
 
     ])
