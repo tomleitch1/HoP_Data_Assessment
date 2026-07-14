@@ -8,22 +8,27 @@ def _is_blank(s):
 
 def _po_finished_with_balance(df, frames):
     """Flags Finished (F) POs where more than 5% of ordered value is still
-    unreceived (vow_amount). Parliament's own definition of F is receipt-based
-    ('used up completely'), not invoice-based — same materiality threshold as
-    the PO tab's finished_with_balance stat in dashboard/tabs/po.py."""
+    unaccounted for by invoicing. Real PO line data shows arr_amount and
+    invoiced disagreeing about invoicing status in both directions (see
+    QUESTIONS_FOR_PARLIAMENT.md #5) — one field is sometimes zero while the
+    other genuinely shows the line as invoiced. Taking whichever of the two
+    is larger per line avoids under-counting real progress because of that
+    field ambiguity, rather than trusting either one alone. Same materiality
+    threshold as the PO tab's finished_with_balance stat in dashboard/tabs/po.py."""
     if df.empty or 'apodetail' not in frames:
         return pd.Series(False, index=df.index)
 
     house = df['house'].iloc[0]
     dtl = frames['apodetail']
-    dtl = dtl[dtl['house'] == house]
+    dtl = dtl[dtl['house'] == house].copy()
+    dtl['effective_invoiced'] = dtl[['arr_amount', 'invoiced']].max(axis=1)
     agg = dtl.groupby(['client', 'order_id']).agg(
-        po_value=('amount', 'sum'), po_received=('vow_amount', 'sum'),
+        po_value=('amount', 'sum'), po_invoiced=('effective_invoiced', 'sum'),
     ).reset_index()
-    agg['unreceived_pct'] = (
-        (agg['po_value'] - agg['po_received']) / agg['po_value'].replace(0, np.nan)
+    agg['uninvoiced_pct'] = (
+        (agg['po_value'] - agg['po_invoiced']) / agg['po_value'].replace(0, np.nan)
     ) * 100
-    flagged = agg.loc[agg['unreceived_pct'] > 5, ['client', 'order_id']].assign(_flag=True)
+    flagged = agg.loc[agg['uninvoiced_pct'] > 5, ['client', 'order_id']].assign(_flag=True)
 
     merged = df[['client', 'order_id']].merge(flagged, on=['client', 'order_id'], how='left')
     return merged['_flag'].eq(True).values
@@ -103,13 +108,13 @@ def get_po_checks():
 
         ('PO_FINISHED_WITH_BALANCE',
          15, 'PO Header', 'Consistency', 'Medium',
-         'Finished PO still has a material unreceived balance',
+         'Finished PO still has a material amount unaccounted for by invoicing',
          'A purchase order marked Finished (F) is set automatically only once the system determines it has been used completely. '
-         'Its ordered value should therefore already be received in full (vow_amount). '
-         "A Finished PO with more than 5% of its value still unreceived contradicts the system's own completion signal.",
-         "Review the affected purchase order's receipt history and confirm whether it is genuinely complete.",
+         'Its ordered value should therefore already be reflected in either arr_amount or invoiced, whichever field is populated for that line. '
+         "A Finished PO with more than 5% of its value unaccounted for by both measures contradicts the system's own completion signal.",
+         "Review the affected purchase order's invoicing history (both arr_amount and invoiced) and confirm whether it is genuinely complete.",
          'apoheader', 'apodetail',
-         "WHERE status = 'F' AND (amount - vow_amount) / NULLIF(amount, 0) > 0.05",
+         "WHERE status = 'F' AND (amount - GREATEST(COALESCE(arr_amount,0), COALESCE(invoiced,0))) / NULLIF(amount, 0) > 0.05",
          _po_finished_with_balance),
 
         # ---------------------------------------------------------------

@@ -627,7 +627,7 @@ def get_check_columns():
         'PO_INVALID_ORDER_DATE':      ['order_id', 'order_date', 'status'],
         'PO_BAD_EXCH_RATE':           ['order_id', 'currency', 'exch_rate', 'status'],
         'PO_STUCK_NOT_ORDERED':       ['order_id', 'apar_id', 'status', 'order_date'],
-        'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status', 'SUM(amount)', 'SUM(vow_amount)', 'unreceived_pct'],
+        'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status', 'SUM(amount)', 'SUM(arr_amount)', 'SUM(invoiced)', 'uninvoiced_pct'],
         'PO_LINE_NEG_AMOUNT':         ['order_id', 'line_no', 'amount', 'status'],
         'PO_LINE_NO_ACCOUNT':         ['order_id', 'line_no', 'account', 'status'],
         'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
@@ -1790,20 +1790,26 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'PO_FINISHED_WITH_BALANCE' and 'apodetail' in frames:
-        # Explicit join on (client, order_id), same reasoning as above — this also
-        # surfaces the actual amount/vow_amount figures behind the >5% threshold,
-        # not just a status value, so the flagged rows can be checked by hand.
-        dtl = frames['apodetail'][frames['apodetail']['house'] == house]
+        # Explicit join on (client, order_id), same reasoning as above. Shows both
+        # arr_amount and invoiced (not just the coalesced result), since real data
+        # shows the two disagreeing about invoicing status in both directions
+        # (QUESTIONS_FOR_PARLIAMENT.md #5) — the reviewer needs to see why the
+        # GREATEST-of-the-two logic decided what it did, not just trust the outcome.
+        dtl = frames['apodetail'][frames['apodetail']['house'] == house].copy()
+        dtl['effective_invoiced'] = dtl[['arr_amount', 'invoiced']].max(axis=1)
         agg = dtl.groupby(['client', 'order_id']).agg(
-            po_value=('amount', 'sum'), po_received=('vow_amount', 'sum'),
+            po_value=('amount', 'sum'), po_arr=('arr_amount', 'sum'),
+            po_invoiced_field=('invoiced', 'sum'), po_effective=('effective_invoiced', 'sum'),
         ).reset_index()
-        agg['unreceived_pct'] = (
-            (agg['po_value'] - agg['po_received']) / agg['po_value'].replace(0, np.nan) * 100
+        agg['uninvoiced_pct'] = (
+            (agg['po_value'] - agg['po_effective']) / agg['po_value'].replace(0, np.nan) * 100
         ).round(2)
         agg = agg.rename(columns={
-            'po_value':    'apodetail.SUM(amount)',
-            'po_received': 'apodetail.SUM(vow_amount)',
+            'po_value':          'apodetail.SUM(amount)',
+            'po_arr':            'apodetail.SUM(arr_amount)',
+            'po_invoiced_field': 'apodetail.SUM(invoiced)',
         })
+        agg = agg.drop(columns=['po_effective'])
         failing = failing.merge(agg, on=['client', 'order_id'], how='left')
         failing = failing.rename(columns={
             'order_id': 'apoheader.order_id',
@@ -1811,7 +1817,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'status':   'apoheader.status',
         })
         cols = ['apoheader.order_id', 'apoheader.apar_id', 'apoheader.status',
-                'apodetail.SUM(amount)', 'apodetail.SUM(vow_amount)', 'unreceived_pct']
+                'apodetail.SUM(amount)', 'apodetail.SUM(arr_amount)', 'apodetail.SUM(invoiced)',
+                'uninvoiced_pct']
         return failing[[c for c in cols if c in failing.columns]]
 
     # Generic Join Logic for Referential Integrity
