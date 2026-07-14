@@ -14,8 +14,6 @@ from dashboard.core.theme import UI, DISPLAY_FONT, PLOTLY_HOVER_CONFIG, PLOTLY_S
 _HDR_BG    = '#0d1f2d'   # deep navy
 _HDR2_BG   = '#102535'
 _ACCENT    = '#0d9488'   # teal
-_ACTIVE_C  = '#16a34a'   # green  — O/N/A statuses
-_HIST_C    = '#64748b'   # slate  — F/C/T statuses
 _WARN_C    = '#d97706'   # amber
 _CARD_BG   = '#ffffff'
 _CARD_BOR  = '#e2e8f0'
@@ -443,9 +441,16 @@ def _stat_tile(value, label, color, sub=None):
     ])
 
 
+# O/N/A are all "the live book" — one hue family, shade by weight, rather than three
+# unrelated identity colors. O (the dominant status) takes the card's own accent so
+# the composition rows read as sub-groups of the stat tiles above, not a separate palette.
+_LIVE_COMPOSITION_COLORS = {'O': _ACCENT, 'N': '#5eead4', 'A': '#99f6e4'}
+
+
 def _render_active_composition(m: dict) -> html.Div:
-    """Part-to-whole bar showing how the active book actually splits across O/N/A —
-    that composition is currently hidden inside one combined 'Active POs' number."""
+    """Row breakdown of how the live book splits across O/N/A — same label/bar/count
+    pattern as Amendment Depth and Line-Level Status elsewhere on this tab, so identity
+    reads from one row at a time rather than cross-referencing a separate legend."""
     mix = m['active_status_mix']
     if mix.empty:
         return html.Div()
@@ -453,35 +458,41 @@ def _render_active_composition(m: dict) -> html.Div:
     order = [s for s in ['O', 'N', 'A'] if s in mix['status'].values]
     total_val = mix['value'].sum() or 1
 
-    bar_children = []
-    legend_items = []
-    for i, s in enumerate(order):
+    rows = []
+    for s in order:
         row = mix[mix['status'] == s].iloc[0]
-        cfg = _STATUS_CFG[s]
+        color = _LIVE_COMPOSITION_COLORS[s]
         pct = row['value'] / total_val * 100
-        if i > 0:
-            bar_children.append(html.Div(style={'width': '2px', 'background': _CARD_BG}))
-        bar_children.append(html.Div(style={
-            'width': f'{pct:.2f}%', 'height': '100%', 'background': cfg['color'],
-            'minWidth': '3px' if pct > 0 else '0',
-        }))
-        legend_items.append(html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
-            html.Div(style={'width': '9px', 'height': '9px', 'borderRadius': '2px', 'background': cfg['color']}),
-            html.Span(f"{cfg['label']} — {int(row['po_count']):,} POs · {_fmt_val(row['value'])}", style={
-                'fontSize': '11px', 'color': '#475569',
+        rows.append(html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '10px',
+            'padding': '6px 0', 'borderBottom': '1px solid #f1f5f9',
+        }, children=[
+            html.Span(_STATUS_CFG[s]['label'], style={'fontSize': '12px', 'color': '#475569', 'minWidth': '92px'}),
+            html.Div(style={
+                'flex': '1', 'height': '8px', 'background': _BAR_TRACK_LIGHT,
+                'borderRadius': '4px', 'overflow': 'hidden',
+            }, children=[
+                html.Div(style={
+                    'height': '100%', 'width': f'{min(pct, 100):.1f}%',
+                    'background': color, 'borderRadius': '4px',
+                    'minWidth': '3px' if pct > 0 else '0',
+                }),
+            ]),
+            html.Span(f"{int(row['po_count']):,}", style={
+                'fontSize': '13px', 'fontWeight': '700', 'color': color,
+                'minWidth': '34px', 'textAlign': 'right',
+            }),
+            html.Span(_fmt_val(row['value']), style={
+                'fontSize': '11px', 'color': '#94a3b8', 'minWidth': '64px', 'textAlign': 'right',
             }),
         ]))
 
     return html.Div(style={'marginTop': '18px'}, children=[
         html.Div('Composition of the live book', style={
             'fontSize': '11px', 'fontWeight': '700', 'color': '#94a3b8',
-            'textTransform': 'uppercase', 'letterSpacing': '0.06em', 'marginBottom': '8px',
+            'textTransform': 'uppercase', 'letterSpacing': '0.06em', 'marginBottom': '10px',
         }),
-        html.Div(style={
-            'display': 'flex', 'height': '14px', 'borderRadius': '7px', 'overflow': 'hidden',
-            'background': _BAR_TRACK_LIGHT,
-        }, children=bar_children),
-        html.Div(style={'display': 'flex', 'gap': '20px', 'marginTop': '10px', 'flexWrap': 'wrap'}, children=legend_items),
+        html.Div(rows),
     ])
 
 
@@ -555,7 +566,7 @@ def _render_lifecycle(m: dict) -> html.Div:
             'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '18px',
         }),
         html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap'}, children=[
-            _stat_tile(_fmt_count(m['active_count']), 'Active POs', _ACTIVE_C),
+            _stat_tile(_fmt_count(m['active_count']), 'Active POs', '#1e293b'),
             _stat_tile(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
             _stat_tile(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
         ]),
