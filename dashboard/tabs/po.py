@@ -153,6 +153,14 @@ def _compute_metrics(frames: dict) -> dict:
     active_inv   = float(active_dtl['arr_amount'].sum())
     active_open  = active_val - active_inv
 
+    # ── Fulfilment pipeline: Ordered -> Received (vow_amount) -> Invoiced (arr_amount) ──
+    # Independently-maintained running totals (receiving vs. AP invoice matching), not
+    # derived from each other — so "received, not yet invoiced" is not guaranteed >= 0
+    # on every line, only reliable as an aggregate.
+    active_received = float(active_dtl['vow_amount'].sum())
+    active_received_not_invoiced = max(active_received - active_inv, 0.0)
+    active_not_received = max(active_val - active_received, 0.0)
+
     # ── Oldest active PO ──
     if not active_hdr.empty and active_hdr['order_date'].notna().any():
         oldest_active = (today - active_hdr['order_date'].min()).days
@@ -312,6 +320,10 @@ def _compute_metrics(frames: dict) -> dict:
         'active_count':    active_count,
         'active_val':      active_val,
         'active_open':     active_open,
+        'active_invoiced':             active_inv,
+        'active_received':             active_received,
+        'active_received_not_invoiced': active_received_not_invoiced,
+        'active_not_received':          active_not_received,
         'oldest_active':   oldest_active,
         'resolution_counts':     resolution_counts,
         'resolution_total':      resolution_total,
@@ -487,6 +499,68 @@ def _render_active_composition(m: dict) -> html.Div:
     ])
 
 
+# Invoiced is furthest along (darkest), not-yet-received hasn't started (neutral grey) —
+# reads as a fill gradient rather than three competing identities.
+_FULFILMENT_COLORS = {
+    'invoiced':              _ACCENT,    # #0d9488
+    'received_not_invoiced': '#5eead4',  # teal-300 — reused from the N composition shade
+    'not_received':          '#cbd5e1',  # slate-300 — hasn't happened yet, not "teal-lite"
+}
+
+
+def _render_active_fulfilment(m: dict) -> html.Div:
+    """Breaks 'Ordered value' into where it actually stands: amount -> vow_amount
+    (received) -> arr_amount (invoiced). Distinguishes 'received, paperwork hasn't
+    caught up yet' (low risk) from 'genuinely still awaited from the supplier' (the
+    real open commitment) — both were invisible inside one Uninvoiced Balance figure.
+    Same row pattern as Composition of the Live Book above."""
+    total = m['active_val']
+    if not total:
+        return html.Div()
+
+    segments = [
+        ('invoiced', 'Invoiced', m['active_invoiced']),
+        ('received_not_invoiced', 'Received, not yet invoiced', m['active_received_not_invoiced']),
+        ('not_received', 'Not yet received', m['active_not_received']),
+    ]
+
+    rows = []
+    for key, label, value in segments:
+        color = _FULFILMENT_COLORS[key]
+        pct = value / total * 100 if total else 0
+        rows.append(html.Div(style={
+            'display': 'flex', 'alignItems': 'center', 'gap': '10px',
+            'padding': '6px 0', 'borderBottom': '1px solid #f1f5f9',
+        }, children=[
+            html.Span(label, style={'fontSize': '12px', 'color': '#475569', 'minWidth': '190px'}),
+            html.Div(style={
+                'flex': '1', 'height': '8px', 'background': _BAR_TRACK_LIGHT,
+                'borderRadius': '4px', 'overflow': 'hidden',
+            }, children=[
+                html.Div(style={
+                    'height': '100%', 'width': f'{min(pct, 100):.1f}%',
+                    'background': color, 'borderRadius': '4px',
+                    'minWidth': '3px' if pct > 0 else '0',
+                }),
+            ]),
+            html.Span(_fmt_val(value), style={
+                'fontSize': '13px', 'fontWeight': '700', 'color': color,
+                'minWidth': '58px', 'textAlign': 'right',
+            }),
+            html.Span(f'{pct:.0f}%', style={
+                'fontSize': '11px', 'color': '#94a3b8', 'minWidth': '34px', 'textAlign': 'right',
+            }),
+        ]))
+
+    return html.Div(style={'marginTop': '22px', 'paddingTop': '18px', 'borderTop': '1px solid #f1f5f9'}, children=[
+        html.Div('Fulfilment of the live book', style={
+            'fontSize': '11px', 'fontWeight': '700', 'color': '#94a3b8',
+            'textTransform': 'uppercase', 'letterSpacing': '0.06em', 'marginBottom': '10px',
+        }),
+        html.Div(rows),
+    ])
+
+
 def _render_finished_balance_callout(m: dict) -> html.Div:
     """Validates Parliament's own definition of F ('used up completely') against
     receipt (vow_amount) — the correct basis, not invoicing (see finished_invoiced_pct
@@ -560,6 +634,7 @@ def _render_lifecycle(m: dict) -> html.Div:
             _stat_box(oldest_str, 'Oldest Live Commitment', sub='Still on the books' if oldest else 'No active POs'),
         ]),
         _render_active_composition(m),
+        _render_active_fulfilment(m),
     ])
 
     connector = html.Div(style={
