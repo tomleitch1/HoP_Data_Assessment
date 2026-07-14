@@ -1804,6 +1804,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         agg['uninvoiced_pct'] = (
             (agg['po_value'] - agg['po_effective']) / agg['po_value'].replace(0, np.nan) * 100
         ).round(2)
+        agg[['po_value', 'po_arr', 'po_invoiced_field']] = agg[['po_value', 'po_arr', 'po_invoiced_field']].round(2)
         agg = agg.rename(columns={
             'po_value':          'apodetail.SUM(amount)',
             'po_arr':            'apodetail.SUM(arr_amount)',
