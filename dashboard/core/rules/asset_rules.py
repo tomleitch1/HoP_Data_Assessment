@@ -144,9 +144,9 @@ def get_asset_checks():
         ('DQ-AM-V06', 19, 'Asset Master', 'Timeliness', 'Medium',
          'org_amt_date differs from cap_date_from by > 365 days',
          'Finds assets where the cost recording date differs from the capitalisation date by more than a year. a large gap suggests one of the dates may be incorrect.',
-         'Review dates.', 'asset_master', None, 
-         'ABS(org_amt_date - cap_date_from) > 365',
-         lambda df: pd.to_datetime(df['org_amt_date'], errors='coerce').notna() & pd.to_datetime(df['cap_date_from'], errors='coerce').notna() & ((pd.to_datetime(df['org_amt_date'], errors='coerce') - pd.to_datetime(df['cap_date_from'], errors='coerce')).dt.days.abs() > 365)),
+         'Review dates.', 'asset_master', None,
+         'status != C AND ABS(org_amt_date - cap_date_from) > 365',
+         lambda df: (df['status'] != 'C') & pd.to_datetime(df['org_amt_date'], errors='coerce').notna() & pd.to_datetime(df['cap_date_from'], errors='coerce').notna() & ((pd.to_datetime(df['org_amt_date'], errors='coerce') - pd.to_datetime(df['cap_date_from'], errors='coerce')).dt.days.abs() > 365)),
 
         ('DQ-AM-T01', 19, 'Asset Master', 'Timeliness', 'Medium',
          'last_update is in the future',
