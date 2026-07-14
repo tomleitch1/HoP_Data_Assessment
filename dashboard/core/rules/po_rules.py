@@ -52,6 +52,72 @@ def _po_line_status_mismatch(df, frames):
     return (merged['status'].astype(str) != merged['hdr_status'].astype(str)).values
 
 
+def _po_orphaned_supplier(df, frames):
+    """Flags POs whose apar_id doesn't exist in the supplier master (asuheader)
+    for the same (client, apar_id) — asuheader's real unique key, since the same
+    apar_id can appear under multiple HOC client codes. Blank apar_id is
+    PO_NO_SUPPLIER's concern, not this one."""
+    if df.empty or 'asuheader' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    sup = (
+        frames['asuheader'][frames['asuheader']['house'] == house][['client', 'apar_id']]
+        .drop_duplicates().assign(_exists=True)
+    )
+    merged = df[['client', 'apar_id']].merge(sup, on=['client', 'apar_id'], how='left')
+    orphaned = merged['_exists'].isna().values
+    return orphaned & ~_is_blank(df['apar_id']).values
+
+
+def _po_inactive_supplier(df, frames):
+    """Flags active POs (O/N/A) whose supplier is Closed in the supplier master —
+    an active commitment sitting against a supplier that's since been marked
+    inactive. Joins on (client, apar_id), the real asuheader key."""
+    if df.empty or 'asuheader' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    sup = (
+        frames['asuheader'][frames['asuheader']['house'] == house][['client', 'apar_id', 'status']]
+        .drop_duplicates(subset=['client', 'apar_id'])
+        .rename(columns={'status': 'supplier_status'})
+    )
+    merged = df[['client', 'apar_id']].merge(sup, on=['client', 'apar_id'], how='left')
+    return (merged['supplier_status'] == 'C').values
+
+
+def _po_line_orphan_account(df, frames):
+    """Flags PO lines whose account doesn't exist in the chart of accounts
+    (aglaccounts) for the same house. Matches on account alone (not client) —
+    same convention as GL_BAL_ORPHAN_ACC, since HOC account codes are shared
+    across its client codes. Blank account is PO_LINE_NO_ACCOUNT's concern."""
+    if df.empty or 'aglaccounts' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    valid_accounts = frames['aglaccounts'][frames['aglaccounts']['house'] == house]['account']
+    orphaned = ~df['account'].isin(valid_accounts)
+    return orphaned & ~_is_blank(df['account'])
+
+
+def _po_line_closed_account(df, frames):
+    """Flags PO lines posting to a GL account that exists but is Closed
+    (status != 'N') in the chart of accounts. Orphaned accounts (not found at
+    all) are PO_LINE_ORPHAN_ACCOUNT's concern, not this one."""
+    if df.empty or 'aglaccounts' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    coa = (
+        frames['aglaccounts'][frames['aglaccounts']['house'] == house][['account', 'status']]
+        .drop_duplicates(subset=['account'])
+        .rename(columns={'status': 'account_status'})
+    )
+    merged = df[['account']].merge(coa, on='account', how='left')
+    return (merged['account_status'].notna() & (merged['account_status'] != 'N')).values
+
+
 def get_po_checks():
     return [
 
@@ -118,6 +184,31 @@ def get_po_checks():
          _po_finished_with_balance),
 
         # ---------------------------------------------------------------
+        # PO HEADER — cross-domain (Suppliers)
+        # ---------------------------------------------------------------
+
+        ('PO_ORPHANED_SUPPLIER',
+         15, 'PO Header', 'Consistency', 'High',
+         'Purchase order references a supplier that does not exist',
+         "Every purchase order's apar_id must match a real supplier record in the supplier master (asuheader). "
+         'A PO referencing a supplier that cannot be found has no route to payment and no matching AP invoice path. '
+         'This PO cannot be migrated correctly until its supplier reference is corrected.',
+         'Correct the apar_id on the affected purchase order to reference a valid, existing supplier.',
+         'apoheader', 'asuheader',
+         "WHERE apar_id NOT IN (SELECT apar_id FROM asuheader WHERE client = apoheader.client)",
+         _po_orphaned_supplier),
+
+        ('PO_INACTIVE_SUPPLIER',
+         15, 'PO Header', 'Consistency', 'Medium',
+         'Active PO references a supplier that has been closed',
+         'An active purchase order (O, N, or A status) should reference a supplier that is still active in the supplier master. '
+         'A PO still open against a supplier marked Closed suggests either the PO or the supplier record needs review before cutover.',
+         'Confirm whether the affected purchase order should still be open, or whether the supplier record needs reactivating.',
+         'apoheader', 'asuheader',
+         "WHERE apoheader.status IN ('O','N','A') AND asuheader.status = 'C'",
+         _po_inactive_supplier),
+
+        # ---------------------------------------------------------------
         # PO DETAIL — apodetail
         # HoC only. All statuses included.
         # ---------------------------------------------------------------
@@ -165,4 +256,29 @@ def get_po_checks():
          'apodetail', 'apoheader',
          "WHERE apodetail.status <> apoheader.status",
          _po_line_status_mismatch),
+
+        # ---------------------------------------------------------------
+        # PO DETAIL — cross-domain (GL)
+        # ---------------------------------------------------------------
+
+        ('PO_LINE_ORPHAN_ACCOUNT',
+         15, 'PO Line', 'Consistency', 'High',
+         'PO line references a GL account that does not exist',
+         "Every PO line's account must match a real account code in the chart of accounts (aglaccounts). "
+         'A line referencing an account that cannot be found cannot be posted or migrated correctly.',
+         'Correct the account code on the affected PO line, or add the missing account to the chart of accounts if it should exist.',
+         'apodetail', 'aglaccounts',
+         "WHERE account NOT IN (SELECT account FROM aglaccounts WHERE house = apodetail.house)",
+         _po_line_orphan_account),
+
+        ('PO_LINE_CLOSED_ACCOUNT',
+         15, 'PO Line', 'Consistency', 'Medium',
+         'PO line posts to a GL account that has been closed',
+         "A PO line's account should still be active (status = N) in the chart of accounts. "
+         'A line coded to an account that has since been closed cannot be posted against that account going forward '
+         'and needs review before the commitment is migrated.',
+         'Recode the affected PO line to an active account, or confirm the account closure was made in error.',
+         'apodetail', 'aglaccounts',
+         "WHERE account IN (SELECT account FROM aglaccounts WHERE status != 'N')",
+         _po_line_closed_account),
     ]

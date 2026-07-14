@@ -874,7 +874,7 @@ These are the only six confirmed values (no confirmed `P` status). `wf_state` is
 - Active/open commitment: `O`, `N`, `A`
 - Historical/closed: `F`, `C`, `T`
 
-**DQ checks implemented in `po_rules.py` (9 total):**
+**DQ checks implemented in `po_rules.py` (13 total):**
 
 | Check ID | Table | Dimension | Severity | Population | Logic |
 |---|---|---|---|---|---|
@@ -883,12 +883,20 @@ These are the only six confirmed values (no confirmed `P` status). `wf_state` is
 | `PO_BAD_EXCH_RATE` | apoheader | Validity | Low | status != T | `exch_rate` <= 0 |
 | `PO_STUCK_NOT_ORDERED` | apoheader | Consistency | Medium | status == N | `order_date` > 1 day old |
 | `PO_FINISHED_WITH_BALANCE` | apoheader (joins apodetail) | Consistency | Medium | status == F | >5% of ordered value unaccounted for by invoicing, using `GREATEST(arr_amount, invoiced)` per line — not `vow_amount` (receipt); see below for why |
+| `PO_ORPHANED_SUPPLIER` | apoheader (joins asuheader) | Consistency | High | status != T | `apar_id` not found in the supplier master on `(client, apar_id)` |
+| `PO_INACTIVE_SUPPLIER` | apoheader (joins asuheader) | Consistency | Medium | status in (O,N,A) | matched supplier's own `status = 'C'` |
 | `PO_LINE_NEG_AMOUNT` | apodetail | Validity | Medium | all rows | `amount` < 0 (no confirmed credit-note category for PO lines, unlike AP/AR) |
 | `PO_LINE_NO_ACCOUNT` | apodetail | Completeness | High | all rows | `account` blank |
 | `PO_DUP_LINE` | apodetail | Uniqueness | High | all rows | duplicate `(client, order_id, line_no, sequence_no)` |
 | `PO_HDR_LINE_STATUS_MISMATCH` | apodetail (joins apoheader) | Consistency | Low | all rows | line's own `status` != its header's `status` — severity kept Low since the real-data meaning of this divergence isn't confirmed |
+| `PO_LINE_ORPHAN_ACCOUNT` | apodetail (joins aglaccounts) | Consistency | High | all rows | `account` not found in the chart of accounts (house-scoped, no client key — same convention as `GL_BAL_ORPHAN_ACC`) |
+| `PO_LINE_CLOSED_ACCOUNT` | apodetail (joins aglaccounts) | Consistency | Medium | all rows | matched account's own `status != 'N'` |
 
-The two join checks use named helper functions in `po_rules.py` (`_po_finished_with_balance`, `_po_line_status_mismatch`) rather than inline lambdas, mirroring the exact vectorized pandas logic already proven in `po.py`'s `_compute_metrics` (`finished_bal` and `mismatch_mask` respectively). Population filtering for `apoheader` is a per-check_id branch in both `run_dq_analysis()` and `get_failing_records()` in `data_engine.py` (same dual-location pattern as every other domain's per-check population overrides): default excludes `T` (raised in error), with `PO_STUCK_NOT_ORDERED` scoped to `N` only and `PO_FINISHED_WITH_BALANCE` scoped to `F` only.
+All join checks use named helper functions in `po_rules.py` rather than inline lambdas (`_po_finished_with_balance`, `_po_line_status_mismatch`, `_po_orphaned_supplier`, `_po_inactive_supplier`, `_po_line_orphan_account`, `_po_line_closed_account`). The first two mirror the exact vectorized pandas logic already proven in `po.py`'s `_compute_metrics` (`finished_bal` and `mismatch_mask` respectively). Population filtering for `apoheader` is a per-check_id branch in both `run_dq_analysis()` and `get_failing_records()` in `data_engine.py` (same dual-location pattern as every other domain's per-check population overrides): default excludes `T` (raised in error), with `PO_STUCK_NOT_ORDERED` scoped to `N` only, `PO_FINISHED_WITH_BALANCE` scoped to `F` only, and `PO_INACTIVE_SUPPLIER` scoped to `O`/`N`/`A` only.
+
+**Cross-domain join correctness (July 2026):** every cross-domain check has an explicit, named join in both the check lambda and `get_failing_records()`'s evidence enrichment — never the generic "referential integrity" auto-join in `get_failing_records()` (a hardcoded candidate-key mechanism built for GL/Assets that resolves PO's real `(client, order_id)` header/detail relationship to the wrong `(house, apar_id, voucher_no)` by coincidence, since `client`/`order_id` aren't in its candidate list). Supplier joins use `(client, apar_id)` — `asuheader`'s real unique key, since the same `apar_id` can appear under multiple HOC client codes. Account joins use `account` alone, house-scoped, no client key — matching `GL_BAL_ORPHAN_ACC`'s own existing convention (HOC account codes are shared across its client codes). The two orphan checks (`PO_ORPHANED_SUPPLIER`, `PO_LINE_ORPHAN_ACCOUNT`) need no enrichment beyond bypassing the generic join — showing the raw identifier that doesn't resolve is the evidence for an absence. The two "still references something, but it's inactive" checks (`PO_INACTIVE_SUPPLIER`, `PO_LINE_CLOSED_ACCOUNT`) explicitly merge in the matched supplier's/account's own status so the claim is directly checkable, same standard as `PO_HDR_LINE_STATUS_MISMATCH`.
+
+**Known dummy-data limitation (cross-domain checks):** `generate_po_dummy_data.py`, `generate_ap_dummy_data.py`, and `generate_gl_dummy_data.py` were built independently and use disjoint ID ranges — PO's dummy `apar_id` values (plain 4-digit numbers) never match Supplier's dummy `apar_id` values (`SUP00xx`-prefixed), and PO's dummy `account` values (3000s–4500s) mostly don't match the GL dummy chart of accounts sample. This makes `PO_ORPHANED_SUPPLIER` and `PO_LINE_ORPHAN_ACCOUNT` show artificially high failure rates (100% and ~89%) against dummy data — a generator-consistency gap, not a logic bug (verified by calling the check functions directly and cross-checking the raw ID overlap by hand). Real Parliament data pulls all three domains from the same live Agresso database, so this should not occur there. Not fixed in the generators — real-data validation matters more here than synchronising three independent dummy generators after the fact.
 
 **`PO_FINISHED_WITH_BALANCE`'s basis changed from `vow_amount` to `GREATEST(arr_amount, invoiced)` (revised July 2026).** The check originally compared `amount` against `vow_amount` (receipt), reasoning that Parliament's definition of F ("used up completely") is a receipt concept and that `arr_amount` alone lags receipt by design. Real PO line inspection then showed `arr_amount` and `invoiced` disagreeing about invoicing status in *both* directions on genuine records — one fully-invoiced line read `arr_amount=1740, invoiced=0`; one partially-invoiced line read `arr_amount=0, invoiced=75.3` (see `QUESTIONS_FOR_PARLIAMENT.md` #5). A concrete real example surfaced during review: a 2-line PO with `amount` totalling 217, `vow_amount` totalling 205 (94.5% received, so the receipt-based check flagged it), but `arr_amount=0` and `invoiced=217` on both lines — fully accounted for by the `invoiced` field alone. Since neither field can be trusted in isolation, the check now takes `GREATEST(arr_amount, invoiced)` per line before summing, so a genuinely invoiced line isn't missed just because one of the two fields happened to read zero. `dashboard/tabs/po.py`'s own `_compute_metrics` (`finished_bal`) and the "Finished-with-balance" callout use the identical logic, with the old `vow_amount`-based figure kept as a secondary, contrasting `finished_received_pct` stat rather than the primary check.
 
@@ -929,10 +937,10 @@ The tab tells a two-act story built on the confirmed status meanings, deliberate
 - Next: DQ checks on `gl_journals` — completeness (missing account, description, dim_1), validity (future trans_date), orphan account cross-reference
 
 **PO tab — DQ checks live, not yet run against real data:**
-- 9 checks in `dashboard/core/rules/po_rules.py` (scope 15) — see PO Domain section above for the full list
+- 13 checks in `dashboard/core/rules/po_rules.py` (scope 15), including 4 cross-domain checks against Suppliers (`asuheader`) and GL (`aglaccounts`) — see PO Domain section above for the full list
 - Tab wired with `render_dimension_scorecard()` + `render_dimension_grid()` matching every other domain's modal drill-down
 - Built and verified against dummy data only this session — needs a run on the Parliament laptop to confirm real-data behaviour, same caution as GL/Assets checks built ahead of real-data confirmation
-- Cross-domain checks (PO → Suppliers, PO → GL) not yet built
+- The two orphan cross-domain checks show inflated failure rates against dummy data (disjoint dummy ID ranges across domains, not a logic bug — see PO Domain section above)
 
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)

@@ -557,6 +557,8 @@ def run_dq_analysis(frames, tab=None):
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
                 elif check_id == 'PO_FINISHED_WITH_BALANCE':
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
+                elif check_id == 'PO_INACTIVE_SUPPLIER':
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
             elif table == 'apodetail':
@@ -632,6 +634,10 @@ def get_check_columns():
         'PO_LINE_NO_ACCOUNT':         ['order_id', 'line_no', 'account', 'status'],
         'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
         'PO_HDR_LINE_STATUS_MISMATCH': ['order_id', 'line_no', 'status'],
+        'PO_ORPHANED_SUPPLIER':        ['order_id', 'apar_id', 'status', 'client'],
+        'PO_INACTIVE_SUPPLIER':        ['order_id', 'apar_id', 'status'],
+        'PO_LINE_ORPHAN_ACCOUNT':      ['order_id', 'line_no', 'account'],
+        'PO_LINE_CLOSED_ACCOUNT':      ['order_id', 'line_no', 'account', 'status'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
@@ -950,6 +956,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
         elif check_id == 'PO_FINISHED_WITH_BALANCE':
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
+        elif check_id == 'PO_INACTIVE_SUPPLIER':
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
     elif table == 'apodetail':
@@ -1820,6 +1828,59 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['apoheader.order_id', 'apoheader.apar_id', 'apoheader.status',
                 'apodetail.SUM(amount)', 'apodetail.SUM(arr_amount)', 'apodetail.SUM(invoiced)',
                 'uninvoiced_pct']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_ORPHANED_SUPPLIER':
+        # No enrichment needed — the evidence here is the absence of a match, which
+        # showing the raw apar_id already proves. Bypasses the generic join below,
+        # which would join on (house, apar_id) only, not the real (client, apar_id)
+        # asuheader key, and could show a misleading match from the wrong client.
+        failing = failing.rename(columns={
+            'client':   'apoheader.client',
+            'order_id': 'apoheader.order_id',
+            'apar_id':  'apoheader.apar_id',
+            'status':   'apoheader.status',
+        })
+        cols = ['apoheader.client', 'apoheader.order_id', 'apoheader.apar_id', 'apoheader.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_INACTIVE_SUPPLIER' and 'asuheader' in frames:
+        # Explicit join on (client, apar_id) — asuheader's real unique key — so the
+        # supplier's own status is shown next to the PO's, proving the claim.
+        sup = frames['asuheader'][frames['asuheader']['house'] == house][['client', 'apar_id', 'status']]
+        sup = sup.drop_duplicates(subset=['client', 'apar_id']).rename(columns={'status': 'asuheader.status'})
+        failing = failing.merge(sup, on=['client', 'apar_id'], how='left')
+        failing = failing.rename(columns={
+            'order_id': 'apoheader.order_id',
+            'apar_id':  'apoheader.apar_id',
+            'status':   'apoheader.status',
+        })
+        cols = ['apoheader.order_id', 'apoheader.apar_id', 'apoheader.status', 'asuheader.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_LINE_ORPHAN_ACCOUNT':
+        # No enrichment needed, same reasoning as PO_ORPHANED_SUPPLIER — the
+        # account's absence from the chart of accounts is the evidence.
+        failing = failing.rename(columns={
+            'order_id': 'apodetail.order_id',
+            'line_no':  'apodetail.line_no',
+            'account':  'apodetail.account',
+        })
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_LINE_CLOSED_ACCOUNT' and 'aglaccounts' in frames:
+        # Explicit join on account (house-scoped, matching GL_BAL_ORPHAN_ACC's own
+        # convention) so the account's own status is shown next to the PO line.
+        coa = frames['aglaccounts'][frames['aglaccounts']['house'] == house][['account', 'status']]
+        coa = coa.drop_duplicates(subset=['account']).rename(columns={'status': 'aglaccounts.status'})
+        failing = failing.merge(coa, on='account', how='left')
+        failing = failing.rename(columns={
+            'order_id': 'apodetail.order_id',
+            'line_no':  'apodetail.line_no',
+            'account':  'apodetail.account',
+        })
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account', 'aglaccounts.status']
         return failing[[c for c in cols if c in failing.columns]]
 
     # Generic Join Logic for Referential Integrity
