@@ -159,13 +159,6 @@ def _compute_metrics(frames: dict) -> dict:
     else:
         oldest_active = None
 
-    # ── Stuck "Not Ordered" POs — N should auto-convert to O within 15 minutes ──
-    stuck_n_df = hdr[
-        (hdr['status'] == 'N') & hdr['order_date'].notna() & ((today - hdr['order_date']).dt.days > 1)
-    ]
-    stuck_n_count = int(stuck_n_df['order_id'].nunique())
-    stuck_n_avg_days = float((today - stuck_n_df['order_date']).dt.days.mean()) if not stuck_n_df.empty else 0.0
-
     # ── Resolution mix: how POs leave the active book (F / C / T) ──
     resolution_counts = {
         s: int(status_df.loc[status_df['status'] == s, 'po_count'].sum()) for s in _HISTORICAL_STATUSES
@@ -320,8 +313,6 @@ def _compute_metrics(frames: dict) -> dict:
         'active_val':      active_val,
         'active_open':     active_open,
         'oldest_active':   oldest_active,
-        'stuck_n_count':         stuck_n_count,
-        'stuck_n_avg_days':      stuck_n_avg_days,
         'resolution_counts':     resolution_counts,
         'resolution_total':      resolution_total,
         'clean_completion_rate': clean_completion_rate,
@@ -522,56 +513,36 @@ def _render_finished_balance_callout(m: dict) -> html.Div:
     ])
 
 
+def _stat_box(value, label, color=None, sub=None):
+    """A boxed stat card — used for the Currently Live headline row. Color is only
+    given to figures that are money (teal accent); plain counts/facts stay neutral,
+    so the accent means one thing across the row rather than decorating every box."""
+    accent = color or '#e2e8f0'
+    return html.Div(style={
+        'flex': '1', 'minWidth': '150px',
+        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
+        'borderTop': f'3px solid {accent}',
+        'borderRadius': '10px', 'padding': '16px 18px',
+        'boxShadow': '0 2px 6px rgba(0,0,0,0.03)',
+    }, children=[
+        html.Div(value, style={
+            'fontSize': '24px', 'fontWeight': '800', 'color': color or '#1e293b',
+            'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+        }),
+        html.Div(label, style={
+            'fontSize': '10px', 'fontWeight': '700', 'color': '#94a3b8',
+            'textTransform': 'uppercase', 'letterSpacing': '0.07em', 'marginTop': '8px',
+        }),
+        html.Div(sub, style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '3px'}) if sub else None,
+    ])
+
+
 def _render_lifecycle(m: dict) -> html.Div:
     """Two-act narrative built on the confirmed status codes: the open book (O/N/A)
     and how it resolves (F/C/T). Deliberately not a literal flow/Sankey diagram —
     the data is a status snapshot, not a tracked per-PO transition log."""
     oldest = m['oldest_active']
     oldest_str = f'{oldest / 365:.1f}y' if oldest else '—'
-    stuck_n, stuck_avg = m['stuck_n_count'], m['stuck_n_avg_days']
-    stuck_flagged = stuck_n > 0
-    oldest_flagged = bool(oldest and oldest > 730)
-
-    def _health_stat(value, label, sub, flagged):
-        color = _WARN_C if flagged else '#1e293b'
-        return html.Div(style={
-            'flex': '1', 'minWidth': '160px',
-            'background': '#fffbeb' if flagged else '#f8fafc',
-            'border': f"1px solid {'#fde68a' if flagged else '#e2e8f0'}",
-            'borderTop': f'3px solid {color}',
-            'borderRadius': '10px', 'padding': '14px 16px',
-        }, children=[
-            html.Div(value, style={
-                'fontSize': '22px', 'fontWeight': '800', 'color': color,
-                'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-            }),
-            html.Div(label, style={
-                'fontSize': '10px', 'fontWeight': '700',
-                'color': '#92400e' if flagged else '#94a3b8',
-                'textTransform': 'uppercase', 'letterSpacing': '0.07em', 'marginTop': '8px',
-            }),
-            html.Div(sub, style={
-                'fontSize': '11px', 'color': '#78350f' if flagged else '#64748b', 'marginTop': '3px',
-            }),
-        ])
-
-    health_row = html.Div(style={'display': 'flex', 'gap': '14px', 'marginTop': '18px', 'flexWrap': 'wrap'}, children=[
-        _health_stat(
-            f'{stuck_n:,}', 'Stuck in Not Ordered',
-            'Should auto-convert within 15 min' if stuck_flagged else 'None currently overdue',
-            stuck_flagged,
-        ),
-        _health_stat(
-            f'{stuck_avg:.0f}' if stuck_n > 0 else '—', 'Avg Days Overdue',
-            'Across the stuck POs above' if stuck_flagged else 'No stuck POs to measure',
-            stuck_flagged,
-        ),
-        _health_stat(
-            oldest_str, 'Oldest Live Commitment',
-            'Still on the books' if oldest else 'No active POs',
-            oldest_flagged,
-        ),
-    ])
 
     card_live = html.Div(style={
         'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
@@ -582,12 +553,12 @@ def _render_lifecycle(m: dict) -> html.Div:
         html.Div('The open book — O, N, and A status', style={
             'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '18px',
         }),
-        html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap'}, children=[
-            _stat_tile(_fmt_count(m['active_count']), 'Active POs', '#1e293b'),
-            _stat_tile(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
-            _stat_tile(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
+        html.Div(style={'display': 'flex', 'gap': '14px', 'flexWrap': 'wrap'}, children=[
+            _stat_box(_fmt_count(m['active_count']), 'Active POs'),
+            _stat_box(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
+            _stat_box(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
+            _stat_box(oldest_str, 'Oldest Live Commitment', sub='Still on the books' if oldest else 'No active POs'),
         ]),
-        health_row,
         _render_active_composition(m),
     ])
 
