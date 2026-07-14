@@ -527,34 +527,51 @@ def _render_lifecycle(m: dict) -> html.Div:
     and how it resolves (F/C/T). Deliberately not a literal flow/Sankey diagram —
     the data is a status snapshot, not a tracked per-PO transition log."""
     oldest = m['oldest_active']
-    oldest_str = f'{oldest / 365:.1f} years' if oldest else '—'
+    oldest_str = f'{oldest / 365:.1f}y' if oldest else '—'
     stuck_n, stuck_avg = m['stuck_n_count'], m['stuck_n_avg_days']
+    stuck_flagged = stuck_n > 0
+    oldest_flagged = bool(oldest and oldest > 730)
 
-    # One combined health line rather than a separate callout per signal — both
-    # answer the same underlying question ("is anything wrong with what's just sitting here").
-    health_items = []
-    flagged = stuck_n > 0
-    if flagged:
-        health_items.append(html.Div(style={'flex': '1', 'minWidth': '260px'}, children=[
-            html.Span(f'{stuck_n:,} POs', style={'fontWeight': '700', 'color': '#92400e', 'fontSize': '12px'}),
-            html.Span(f' stuck in Not Ordered — avg {stuck_avg:.0f} days overdue '
-                      '(should auto-convert within 15 minutes)',
-                      style={'color': '#78350f', 'fontSize': '12px'}),
-        ]))
-    health_items.append(html.Div(style={'flex': '1', 'minWidth': '220px'}, children=[
-        html.Span(oldest_str, style={
-            'fontWeight': '700', 'color': '#92400e' if flagged else '#334155', 'fontSize': '12px',
-        }),
-        html.Span(' — oldest live commitment still on the books', style={
-            'color': '#78350f' if flagged else '#64748b', 'fontSize': '12px',
-        }),
-    ]))
-    health_line = html.Div(style={
-        'marginTop': '16px', 'padding': '10px 14px', 'borderRadius': '8px',
-        'background': '#fffbeb' if flagged else '#f8fafc',
-        'border': f"1px solid {'#fde68a' if flagged else '#e2e8f0'}",
-        'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap',
-    }, children=health_items)
+    def _health_stat(value, label, sub, flagged):
+        color = _WARN_C if flagged else '#1e293b'
+        return html.Div(style={
+            'flex': '1', 'minWidth': '160px',
+            'background': '#fffbeb' if flagged else '#f8fafc',
+            'border': f"1px solid {'#fde68a' if flagged else '#e2e8f0'}",
+            'borderTop': f'3px solid {color}',
+            'borderRadius': '10px', 'padding': '14px 16px',
+        }, children=[
+            html.Div(value, style={
+                'fontSize': '22px', 'fontWeight': '800', 'color': color,
+                'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
+            }),
+            html.Div(label, style={
+                'fontSize': '10px', 'fontWeight': '700',
+                'color': '#92400e' if flagged else '#94a3b8',
+                'textTransform': 'uppercase', 'letterSpacing': '0.07em', 'marginTop': '8px',
+            }),
+            html.Div(sub, style={
+                'fontSize': '11px', 'color': '#78350f' if flagged else '#64748b', 'marginTop': '3px',
+            }),
+        ])
+
+    health_row = html.Div(style={'display': 'flex', 'gap': '14px', 'marginTop': '18px', 'flexWrap': 'wrap'}, children=[
+        _health_stat(
+            f'{stuck_n:,}', 'Stuck in Not Ordered',
+            'Should auto-convert within 15 min' if stuck_flagged else 'None currently overdue',
+            stuck_flagged,
+        ),
+        _health_stat(
+            f'{stuck_avg:.0f}' if stuck_n > 0 else '—', 'Avg Days Overdue',
+            'Across the stuck POs above' if stuck_flagged else 'No stuck POs to measure',
+            stuck_flagged,
+        ),
+        _health_stat(
+            oldest_str, 'Oldest Live Commitment',
+            'Still on the books' if oldest else 'No active POs',
+            oldest_flagged,
+        ),
+    ])
 
     card_live = html.Div(style={
         'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
@@ -570,7 +587,7 @@ def _render_lifecycle(m: dict) -> html.Div:
             _stat_tile(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
             _stat_tile(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
         ]),
-        health_line,
+        health_row,
         _render_active_composition(m),
     ])
 
