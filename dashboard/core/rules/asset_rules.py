@@ -297,9 +297,9 @@ def get_asset_checks():
         ('DQ-AD-V05', 19, 'Asset Depreciation', 'Timeliness', 'High',
          'date_from is after date_to',
          'Finds books where the ownership end date is before the start date. a logical impossibility indicating a data entry error.',
-         'Correct dates.', 'asset_depreciation', None, 
-         'date_from > date_to',
-         lambda df: pd.to_datetime(df['date_from'], errors='coerce').notna() & pd.to_datetime(df['date_to'], errors='coerce').notna() & (pd.to_datetime(df['date_from'], errors='coerce') > pd.to_datetime(df['date_to'], errors='coerce'))),
+         'Correct dates.', 'asset_depreciation', None,
+         'status != C AND date_from > date_to',
+         lambda df: (df['status'] != 'C') & pd.to_datetime(df['date_from'], errors='coerce').notna() & pd.to_datetime(df['date_to'], errors='coerce').notna() & (pd.to_datetime(df['date_from'], errors='coerce') > pd.to_datetime(df['date_to'], errors='coerce'))),
 
         ('DQ-AD-V06', 19, 'Asset Depreciation', 'Timeliness', 'Medium',
          'cap_date_from is before date_from',
