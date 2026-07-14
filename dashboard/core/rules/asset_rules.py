@@ -441,10 +441,10 @@ def get_asset_checks():
 
         ('DQ-AB-K03', 19, 'Asset Balances', 'Consistency', 'High',
          'Depreciation without capitalisation',
-         'Identifies assets with depreciation transactions (ND, ED, FD) but no capitalisation (CA or OS). OS indicates an asset capitalised in a prior system before migration and is treated as equivalent to CA.',
+         'Identifies assets with depreciation transactions (ND, ED, FD) but no capitalisation (CA or OS). OS indicates an asset capitalised in a prior system before migration and is treated as equivalent to CA. For HoL, TC is also treated as a capitalisation type.',
          'Review history.', 'asset_balances', None,
-         'Depr exists, CA/OS missing',
-         lambda df: df.index.isin(df.groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: g['trans_type'].isin(['ND','ED','FD']).any() and not g['trans_type'].isin(['CA', 'OS']).any()).index)),
+         'Depr exists, CA/OS/TC(HoL) missing',
+         lambda df: df.index.isin(df.groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: g['trans_type'].isin(['ND','ED','FD']).any() and not g['trans_type'].isin(['CA', 'OS'] + (['TC'] if (g['house'] == 'HOL').all() else [])).any()).index)),
 
         ('DQ-AB-K04', 19, 'Asset Balances', 'Consistency', 'Low',
          'NBV=0 and no disposal',
