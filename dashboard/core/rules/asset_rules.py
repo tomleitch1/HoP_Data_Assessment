@@ -336,8 +336,8 @@ def get_asset_checks():
          'res_value > base_amount on master',
          'Flags books where the residual value exceeds the asset base amount. a residual cannot be greater than what the asset cost to acquire.',
          'Review res_value.', 'asset_depreciation', 'asset_master',
-         'res_value > base_amount',
-         lambda df, frames: pd.to_numeric(df['res_value'], errors='coerce').fillna(0) > pd.to_numeric(df['asset_id'].map(frames.get('asset_master', pd.DataFrame()).drop_duplicates('asset_id').set_index('asset_id')['base_amount']), errors='coerce').fillna(float('inf')) if 'asset_master' in frames else pd.Series(False, index=df.index)),
+         'status != C AND res_value > base_amount',
+         lambda df, frames: (df['status'] != 'C') & (pd.to_numeric(df['res_value'], errors='coerce').fillna(0) > pd.to_numeric(df['asset_id'].map(frames.get('asset_master', pd.DataFrame()).drop_duplicates('asset_id').set_index('asset_id')['base_amount']), errors='coerce').fillna(float('inf'))) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AD-D01', 19, 'Asset Depreciation', 'Uniqueness', 'Critical',
          'Duplicate composite key',
