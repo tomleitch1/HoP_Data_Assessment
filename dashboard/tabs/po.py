@@ -203,6 +203,39 @@ def _compute_metrics(frames: dict) -> dict:
 
     # ── Released budget: commitment left unspent on manually-closed (C) POs ──
     released_budget = float(merged.loc[merged['status'] == 'C', 'open_commitment'].sum())
+    resolved_count = sum(resolution_counts.values())
+
+    # ── Fulfilment of the resolved book: same pipeline as the live book, but a closed
+    # PO ideally should already be near-fully received/invoiced — a gap here is more
+    # notable than the same gap on a still-open PO. ──
+    resolved_dtl = merged[merged['status'].isin(_HISTORICAL_STATUSES)]
+    resolved_val      = float(resolved_dtl['amount'].sum())
+    resolved_invoiced = float(resolved_dtl['arr_amount'].sum())
+    resolved_received = float(resolved_dtl['vow_amount'].sum())
+    resolved_received_not_invoiced = max(resolved_received - resolved_invoiced, 0.0)
+    resolved_not_received = max(resolved_val - resolved_received, 0.0)
+
+    # ── Invoicing signal agreement, same check as the live book, scoped to resolved lines ──
+    r_arr_has = resolved_dtl['arr_amount'] > _EPS
+    r_inv_has = resolved_dtl['invoiced'] > _EPS
+    _resolved_agreement_masks = [
+        ('both_nonzero',  'Both agree — invoiced',                      r_arr_has & r_inv_has),
+        ('both_zero',     'Both agree — not yet invoiced',              ~r_arr_has & ~r_inv_has),
+        ('arr_only',      'arr_amount says invoiced, invoiced says no', r_arr_has & ~r_inv_has),
+        ('invoiced_only', 'invoiced says invoiced, arr_amount says no', ~r_arr_has & r_inv_has),
+    ]
+    resolved_agreement = pd.DataFrame([
+        {
+            'bucket': key, 'label': label,
+            'line_count': int(mask.sum()),
+            'value': float(resolved_dtl.loc[mask, 'amount'].sum()),
+        }
+        for key, label, mask in _resolved_agreement_masks
+    ])
+    resolved_disagreement_count = int((r_arr_has != r_inv_has).sum())
+    resolved_disagreement_pct = (
+        resolved_disagreement_count / len(resolved_dtl) * 100 if len(resolved_dtl) else 0.0
+    )
 
     # ── Line-level status vs header status ──
     if 'line_status' in merged.columns:
@@ -359,6 +392,13 @@ def _compute_metrics(frames: dict) -> dict:
         'clean_completion_rate': clean_completion_rate,
         'error_rate':            error_rate,
         'released_budget':       released_budget,
+        'resolved_count':                resolved_count,
+        'resolved_received_not_invoiced': resolved_received_not_invoiced,
+        'resolved_not_received':          resolved_not_received,
+        'resolved_invoiced':              resolved_invoiced,
+        'resolved_agreement':             resolved_agreement,
+        'resolved_disagreement_count':    resolved_disagreement_count,
+        'resolved_disagreement_pct':      resolved_disagreement_pct,
         'line_status_counts':    line_status_counts,
         'mismatch_count':        mismatch_count,
         'mismatch_pct':          mismatch_pct,
@@ -459,19 +499,6 @@ def _render_hero(m: dict) -> html.Div:
 
 # ── PO Lifecycle narrative ─────────────────────────────────────────────────────
 
-def _stat_tile(value, label, color, sub=None):
-    return html.Div(style={'flex': '1', 'minWidth': '120px'}, children=[
-        html.Div(value, style={
-            'fontSize': '24px', 'fontWeight': '800', 'color': color,
-            'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-        }),
-        html.Div(label, style={
-            'fontSize': '10px', 'fontWeight': '700', 'color': '#94a3b8',
-            'textTransform': 'uppercase', 'letterSpacing': '0.08em', 'marginTop': '6px',
-        }),
-        html.Div(sub, style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '2px'}) if sub else None,
-    ])
-
 
 # O/N/A are all "the live book" — one hue family, shade by weight, rather than three
 # unrelated identity colors. O (the dominant status) takes the card's own accent so
@@ -530,32 +557,39 @@ def _render_active_composition(m: dict) -> html.Div:
 
 # Invoiced is furthest along (darkest), not-yet-received hasn't started (neutral grey) —
 # reads as a fill gradient rather than three competing identities.
+# Live book: teal family, darkest = furthest along. Resolved book: slate family —
+# a closed PO ideally should already be fully received/invoiced, so this isn't the
+# "healthy in-progress" teal, it's a neutral "should be settled by now" tone.
 _FULFILMENT_COLORS = {
     'invoiced':              _ACCENT,    # #0d9488
     'received_not_invoiced': '#5eead4',  # teal-300 — reused from the N composition shade
     'not_received':          '#cbd5e1',  # slate-300 — hasn't happened yet, not "teal-lite"
 }
+_RESOLVED_FULFILMENT_COLORS = {
+    'invoiced':              '#475569',  # slate-600
+    'received_not_invoiced': '#94a3b8',  # slate-400
+    'not_received':          '#cbd5e1',  # slate-300 — same "not yet" neutral as the live book
+}
 
 
-def _render_active_fulfilment(m: dict) -> html.Div:
-    """Breaks 'Ordered value' into where it actually stands: amount -> vow_amount
-    (received) -> arr_amount (invoiced). Distinguishes 'received, paperwork hasn't
-    caught up yet' (low risk) from 'genuinely still awaited from the supplier' (the
-    real open commitment) — both were invisible inside one Uninvoiced Balance figure.
-    Same row pattern as Composition of the Live Book above."""
-    total = m['active_val']
+def _render_fulfilment_rows(title, total, invoiced, received_not_invoiced, not_received, colors):
+    """Breaks an Ordered-value total into where it actually stands: amount ->
+    vow_amount (received) -> arr_amount (invoiced). Distinguishes 'received,
+    paperwork hasn't caught up yet' (low risk) from 'genuinely still awaited from
+    the supplier' (the real open commitment) — both are invisible inside one
+    Uninvoiced Balance figure. Same row pattern as Composition of the Live Book."""
     if not total:
         return html.Div()
 
     segments = [
-        ('invoiced', 'Invoiced', m['active_invoiced']),
-        ('received_not_invoiced', 'Received, not yet invoiced', m['active_received_not_invoiced']),
-        ('not_received', 'Not yet received', m['active_not_received']),
+        ('invoiced', 'Invoiced', invoiced),
+        ('received_not_invoiced', 'Received, not yet invoiced', received_not_invoiced),
+        ('not_received', 'Not yet received', not_received),
     ]
 
     rows = []
     for key, label, value in segments:
-        color = _FULFILMENT_COLORS[key]
+        color = colors[key]
         pct = value / total * 100 if total else 0
         rows.append(html.Div(style={
             'display': 'flex', 'alignItems': 'center', 'gap': '10px',
@@ -582,7 +616,7 @@ def _render_active_fulfilment(m: dict) -> html.Div:
         ]))
 
     return html.Div(style={'marginTop': '22px', 'paddingTop': '18px', 'borderTop': '1px solid #f1f5f9'}, children=[
-        html.Div('Fulfilment of the live book', style={
+        html.Div(title, style={
             'fontSize': '11px', 'fontWeight': '700', 'color': '#94a3b8',
             'textTransform': 'uppercase', 'letterSpacing': '0.06em', 'marginBottom': '10px',
         }),
@@ -590,32 +624,54 @@ def _render_active_fulfilment(m: dict) -> html.Div:
     ])
 
 
-# Agreement = teal/neutral (matches Fulfilment's own "resolved"/"not yet" language);
-# disagreement gets its own hue (purple, reused from the Line-Level Status mismatch
-# stat) since it isn't a health signal like the amber warnings elsewhere — it's an
-# open question about which field to trust, not a process problem.
+def _render_active_fulfilment(m: dict) -> html.Div:
+    return _render_fulfilment_rows(
+        'Fulfilment of the live book', m['active_val'],
+        m['active_invoiced'], m['active_received_not_invoiced'], m['active_not_received'],
+        _FULFILMENT_COLORS,
+    )
+
+
+def _render_resolved_fulfilment(m: dict) -> html.Div:
+    total = m['resolved_invoiced'] + m['resolved_received_not_invoiced'] + m['resolved_not_received']
+    return _render_fulfilment_rows(
+        'Fulfilment of the resolved book', total,
+        m['resolved_invoiced'], m['resolved_received_not_invoiced'], m['resolved_not_received'],
+        _RESOLVED_FULFILMENT_COLORS,
+    )
+
+
+# Agreement = the book's own accent/neutral (matches each Fulfilment's "resolved"/
+# "not yet" language); disagreement always gets purple regardless of book, since
+# it's the same underlying field ambiguity either way — an open question about
+# which field to trust, not a health signal like the amber warnings elsewhere.
 _AGREEMENT_COLORS = {
     'both_nonzero':  _ACCENT,
     'both_zero':     '#cbd5e1',
     'arr_only':      '#7c3aed',
-    'invoiced_only':  '#c4b5fd',
+    'invoiced_only': '#c4b5fd',
+}
+_RESOLVED_AGREEMENT_COLORS = {
+    'both_nonzero':  '#475569',
+    'both_zero':     '#cbd5e1',
+    'arr_only':      '#7c3aed',
+    'invoiced_only': '#c4b5fd',
 }
 
 
-def _render_invoicing_agreement(m: dict) -> html.Div:
+def _render_agreement_rows(agreement, disagreement_pct, disagreement_count, population_label, colors):
     """Does arr_amount agree with invoiced about whether a line's been invoiced?
     Real data shows these disagreeing in both directions (QUESTIONS_FOR_PARLIAMENT.md
     #5) — this makes the size of that ambiguity visible rather than just asserting it
     in a comment. Dummy data always agrees (generator sets invoiced = arr_amount), so
     this only becomes informative once run against real Parliament data."""
-    agreement = m['invoicing_agreement']
     if agreement.empty:
         return html.Div()
 
     total = agreement['line_count'].sum() or 1
     rows = []
     for _, r in agreement.iterrows():
-        color = _AGREEMENT_COLORS[r['bucket']]
+        color = colors[r['bucket']]
         pct = r['line_count'] / total * 100
         rows.append(html.Div(style={
             'display': 'flex', 'alignItems': 'center', 'gap': '10px',
@@ -657,18 +713,32 @@ def _render_invoicing_agreement(m: dict) -> html.Div:
             'background': '#faf5ff', 'border': '1px solid #e9d5ff', 'borderRadius': '10px',
             'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center',
         }, children=[
-            html.Div(f"{m['disagreement_pct']:.1f}%", style={
+            html.Div(f"{disagreement_pct:.1f}%", style={
                 'fontSize': '28px', 'fontWeight': '800', 'color': '#7c3aed',
                 'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
             }),
-            html.Div('of active lines disagree on invoicing status', style={
+            html.Div(f'of {population_label} lines disagree on invoicing status', style={
                 'fontSize': '11px', 'color': '#64748b', 'marginTop': '8px',
             }),
-            html.Div(f"{m['disagreement_count']:,} lines", style={
+            html.Div(f"{disagreement_count:,} lines", style={
                 'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '6px',
             }),
         ]),
     ])
+
+
+def _render_invoicing_agreement(m: dict) -> html.Div:
+    return _render_agreement_rows(
+        m['invoicing_agreement'], m['disagreement_pct'], m['disagreement_count'],
+        'active', _AGREEMENT_COLORS,
+    )
+
+
+def _render_resolved_agreement(m: dict) -> html.Div:
+    return _render_agreement_rows(
+        m['resolved_agreement'], m['resolved_disagreement_pct'], m['resolved_disagreement_count'],
+        'resolved', _RESOLVED_AGREEMENT_COLORS,
+    )
 
 
 def _render_finished_balance_callout(m: dict) -> html.Div:
@@ -790,20 +860,25 @@ def _render_lifecycle(m: dict) -> html.Div:
         html.Div('F, C, and T status — the closed book', style={
             'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '10px',
         }),
-        html.Div(style={'display': 'flex', 'gap': '20px', 'alignItems': 'center'}, children=[
+        html.Div(style={'display': 'flex', 'gap': '20px', 'alignItems': 'center', 'flexWrap': 'wrap'}, children=[
             html.Div(
                 dcc.Graph(figure=donut, config=PLOTLY_HOVER_CONFIG, style={'height': '220px', 'width': '220px'}),
                 style={'flex': '0 0 220px'},
             ),
-            html.Div(style={'flex': '1', 'display': 'flex', 'flexDirection': 'column', 'gap': '14px'}, children=[
-                _stat_tile(_fmt_val(m['released_budget']), 'Released without being spent', _WARN_C,
-                           sub='Committed value left on Closed (C) POs'),
-                _stat_tile(f"{m['clean_completion_rate']:.0f}%", 'Clean completion rate', _STATUS_CFG['F']['color'],
-                           sub='Finished automatically, no manual close needed'),
-                _stat_tile(f"{m['error_rate']:.1f}%", 'Raised-in-error rate', _STATUS_CFG['T']['color'],
-                           sub='Terminated POs, as a share of all resolved'),
+            html.Div(style={
+                'flex': '1', 'minWidth': '280px', 'display': 'flex', 'gap': '14px', 'flexWrap': 'wrap',
+            }, children=[
+                _stat_box(_fmt_count(m['resolved_count']), 'Resolved POs'),
+                _stat_box(_fmt_val(m['released_budget']), 'Released, not spent', _WARN_C,
+                          sub='Left on Closed (C) POs'),
+                _stat_box(f"{m['clean_completion_rate']:.0f}%", 'Clean completion', _STATUS_CFG['F']['color'],
+                          sub='Finished automatically'),
+                _stat_box(f"{m['error_rate']:.1f}%", 'Raised in error', _STATUS_CFG['T']['color'],
+                          sub='Terminated, share of resolved'),
             ]),
         ]),
+        _render_resolved_fulfilment(m),
+        _render_resolved_agreement(m),
         _render_finished_balance_callout(m),
     ])
 
