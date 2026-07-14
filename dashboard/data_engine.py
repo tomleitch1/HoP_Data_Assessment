@@ -627,7 +627,7 @@ def get_check_columns():
         'PO_INVALID_ORDER_DATE':      ['order_id', 'order_date', 'status'],
         'PO_BAD_EXCH_RATE':           ['order_id', 'currency', 'exch_rate', 'status'],
         'PO_STUCK_NOT_ORDERED':       ['order_id', 'apar_id', 'status', 'order_date'],
-        'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status'],
+        'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status', 'SUM(amount)', 'SUM(vow_amount)', 'unreceived_pct'],
         'PO_LINE_NEG_AMOUNT':         ['order_id', 'line_no', 'amount', 'status'],
         'PO_LINE_NO_ACCOUNT':         ['order_id', 'line_no', 'account', 'status'],
         'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
@@ -1771,6 +1771,48 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         master = master.drop_duplicates(subset=join_cols)
         master.columns = join_cols + ['Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=join_cols, how='left')
+
+    if check_id == 'PO_HDR_LINE_STATUS_MISMATCH' and 'apoheader' in frames:
+        # Explicit join on (client, order_id) — the real apoheader/apodetail key.
+        # The generic referential-integrity join below would instead resolve to
+        # (house, apar_id, voucher_no), since client/order_id aren't in its
+        # candidate key list — that's a different, unverified relationship, not
+        # the actual PO composite key, so this check bypasses it entirely.
+        hdr = frames['apoheader'][frames['apoheader']['house'] == house][['client', 'order_id', 'status']]
+        hdr = hdr.drop_duplicates(subset=['client', 'order_id']).rename(columns={'status': 'apoheader.status'})
+        failing = failing.merge(hdr, on=['client', 'order_id'], how='left')
+        failing = failing.rename(columns={
+            'order_id': 'apodetail.order_id',
+            'line_no':  'apodetail.line_no',
+            'status':   'apodetail.status',
+        })
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.status', 'apoheader.status']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'PO_FINISHED_WITH_BALANCE' and 'apodetail' in frames:
+        # Explicit join on (client, order_id), same reasoning as above — this also
+        # surfaces the actual amount/vow_amount figures behind the >5% threshold,
+        # not just a status value, so the flagged rows can be checked by hand.
+        dtl = frames['apodetail'][frames['apodetail']['house'] == house]
+        agg = dtl.groupby(['client', 'order_id']).agg(
+            po_value=('amount', 'sum'), po_received=('vow_amount', 'sum'),
+        ).reset_index()
+        agg['unreceived_pct'] = (
+            (agg['po_value'] - agg['po_received']) / agg['po_value'].replace(0, np.nan) * 100
+        ).round(2)
+        agg = agg.rename(columns={
+            'po_value':    'apodetail.SUM(amount)',
+            'po_received': 'apodetail.SUM(vow_amount)',
+        })
+        failing = failing.merge(agg, on=['client', 'order_id'], how='left')
+        failing = failing.rename(columns={
+            'order_id': 'apoheader.order_id',
+            'apar_id':  'apoheader.apar_id',
+            'status':   'apoheader.status',
+        })
+        cols = ['apoheader.order_id', 'apoheader.apar_id', 'apoheader.status',
+                'apodetail.SUM(amount)', 'apodetail.SUM(vow_amount)', 'unreceived_pct']
+        return failing[[c for c in cols if c in failing.columns]]
 
     # Generic Join Logic for Referential Integrity
     if joined_table and joined_table in frames:
