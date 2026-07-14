@@ -209,7 +209,7 @@ def export_evidence(tab_key: str, house: str, dq_results: pd.DataFrame,
         dimension = row['dimension']
 
         try:
-            records = get_failing_records(check_id, house, frames)
+            records = get_failing_records(check_id, house, frames, for_export=True)
         except Exception as exc:
             print(f"  [WARN] Could not retrieve records for {check_id}: {exc}")
             continue
