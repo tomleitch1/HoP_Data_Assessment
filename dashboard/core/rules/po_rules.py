@@ -465,4 +465,37 @@ def get_po_checks():
          'apodetail', None,
          "WHERE status NOT IN ('T','C','F') AND deliv_date < CURRENT_DATE - 30",
          _po_line_stale_unresolved),
+
+        # ---------------------------------------------------------------
+        # PO DETAIL — calculation integrity (August 2026). value_1 is not
+        # extracted in po_detail_HOC_run.sql, so the invoiced-quantity
+        # variant of this test (invoiced <> value_1 * unit_price) cannot be
+        # built — there is no invoiced-quantity field in this extract.
+        # ---------------------------------------------------------------
+
+        ('PO_LINE_VOW_CALC_MISMATCH',
+         15, 'PO Line', 'Validity', 'Medium',
+         'Received value does not equal received quantity times unit price',
+         'A PO line’s received value (vow_amount) is expected to equal its received quantity (vow_val) multiplied by the unit price. '
+         'A mismatch here points to raw data corruption in one of the three stored fields, not a process or timing issue — '
+         'the fields simply do not agree with their own arithmetic relationship.',
+         'Investigate which of vow_amount, vow_val, or unit_price is wrong on the affected line, and correct the underlying record.',
+         'apodetail', None,
+         "WHERE ABS(vow_amount - (vow_val * unit_price)) > 0.01",
+         lambda df: (pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)
+                     - pd.to_numeric(df['vow_val'], errors='coerce').fillna(0)
+                     * pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)).abs() > 0.01),
+
+        ('PO_LINE_ARR_CALC_MISMATCH',
+         15, 'PO Line', 'Validity', 'Medium',
+         'Matched value does not equal matched quantity times unit price',
+         'A PO line’s matched value (arr_amount) is expected to equal its matched quantity (arr_val) multiplied by the unit price. '
+         'A mismatch here points to raw data corruption in one of the three stored fields, not a process or timing issue — '
+         'the fields simply do not agree with their own arithmetic relationship.',
+         'Investigate which of arr_amount, arr_val, or unit_price is wrong on the affected line, and correct the underlying record.',
+         'apodetail', None,
+         "WHERE ABS(arr_amount - (arr_val * unit_price)) > 0.01",
+         lambda df: (pd.to_numeric(df['arr_amount'], errors='coerce').fillna(0)
+                     - pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
+                     * pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)).abs() > 0.01),
     ]

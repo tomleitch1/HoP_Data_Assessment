@@ -667,6 +667,8 @@ def get_check_columns():
         'PO_LINE_INVOICED_AHEAD_OF_RECEIPT': ['order_id', 'line_no', 'status', 'vow_amount', 'invoiced'],
         'PO_LINE_AMENDED_VALUE_MISMATCH': ['order_id', 'line_no', 'amend_no', 'com_amount', 'amount'],
         'PO_LINE_STALE_UNRESOLVED':   ['order_id', 'line_no', 'status', 'deliv_date'],
+        'PO_LINE_VOW_CALC_MISMATCH':  ['order_id', 'line_no', 'vow_amount', 'vow_val', 'unit_price'],
+        'PO_LINE_ARR_CALC_MISMATCH':  ['order_id', 'line_no', 'arr_amount', 'arr_val', 'unit_price'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
