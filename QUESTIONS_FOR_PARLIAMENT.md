@@ -162,4 +162,10 @@ This has a direct, practical impact: the PO tab's "Fulfilment of the Live Book" 
 
 **Affects:** PO tab "Fulfilment of the Live Book" breakdown (`dashboard/tabs/po.py`, `_render_active_fulfilment`), any future PO invoicing-progress DQ checks.
 
+**Update (July 2026) — `vow_val`/`arr_val` may be quantities, not order-currency values.** A further real line found during manual Excel review directly contradicts the FX-ratio hypothesis above: `amount = 37.5`, `unit_price = 7.5`, `vow_val = 5` — and `37.5 / 7.5 = 5` exactly, implying `vow_val` here is a received **quantity**, not a value in order currency as the SQL extract's own column comment states (`d.vow_val, -- goods receipted value (order currency)`). This may mean the "8–9x smaller" ratio observed on the two lines above was coincidental rather than a real FX rate. The new DQ check `PO_LINE_MATCH_EXCEEDS_RECEIPT` (`arr_val > vow_val`) was built without resolving this ambiguity — the sequencing logic holds whether the fields are quantities or values, since matched should never exceed received in either unit — but the *label* on the column is now in question.
+
+**Questions (addendum):**
+- Are `vow_val` and `arr_val` quantities (units received/matched) or values in order currency? The two pieces of evidence above point in different directions.
+- If they are quantities, is there a separate field carrying the received/matched value in order currency, and is it currently extracted?
+
 ---

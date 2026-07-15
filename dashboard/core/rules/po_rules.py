@@ -118,6 +118,33 @@ def _po_line_closed_account(df, frames):
     return (merged['account_status'].notna() & (merged['account_status'] != 'N')).values
 
 
+def _po_line_never_matched(df):
+    """Flags Finished (F) lines with clear evidence of activity (received
+    and/or invoiced) but where the matching-specific fields (arr_amount,
+    arr_val) are completely zero. Distinct from PO_FINISHED_WITH_BALANCE,
+    which aggregates across a whole PO and only fires above a 5% threshold —
+    a single old line like this can wash out of that aggregate if the rest
+    of the PO reconciled normally. Population is scoped to status == 'F' in
+    data_engine.py, so df here is already Finished lines only."""
+    vow = pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)
+    invoiced = pd.to_numeric(df['invoiced'], errors='coerce').fillna(0)
+    arr_amount = pd.to_numeric(df['arr_amount'], errors='coerce').fillna(0)
+    arr_val = pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
+    has_activity = (vow.abs() > 0.01) | (invoiced.abs() > 0.01)
+    never_matched = (arr_amount.abs() <= 0.01) & (arr_val.abs() <= 0.01)
+    return has_activity & never_matched
+
+
+def _po_line_stale_unresolved(df):
+    """Flags lines still genuinely open (population excludes T/C/F in
+    data_engine.py) whose deliv_date is more than 30 days old — delivered
+    but stalled before progressing to invoice or close. Blank deliv_date is
+    a separate completeness question, not staleness, so it is not flagged
+    here."""
+    days = (pd.Timestamp.today() - df['deliv_date']).dt.days
+    return (days > 30).fillna(False)
+
+
 def _po_hdr_line_date_mismatch(df, frames):
     """Flags apodetail lines whose own order_date differs from their PO
     header's order_date — both fields are extracted independently (see
@@ -369,4 +396,73 @@ def get_po_checks():
          'apodetail', 'aglaccounts',
          "WHERE account IN (SELECT account FROM aglaccounts WHERE status != 'N')",
          _po_line_closed_account),
+
+        # ---------------------------------------------------------------
+        # PO DETAIL — added from direct Excel exploration of real PO lines
+        # (July 2026). Population overrides for these five live in
+        # data_engine.py's run_dq_analysis()/get_failing_records() apodetail
+        # branch, same dual-location pattern as every other PO population
+        # override.
+        # ---------------------------------------------------------------
+
+        ('PO_LINE_NEVER_MATCHED',
+         15, 'PO Line', 'Consistency', 'High',
+         'Finished line shows real activity but was never matched',
+         'A PO line marked Finished should have gone through invoice matching by the time it reaches that status. '
+         'A Finished line with a received or invoiced value but a completely zero arr_amount and arr_val means the matching step '
+         'itself never ran against this line, even though other fields show it was actioned. '
+         'This is a distinct root cause from a partially-reconciled Finished PO — the matching process was bypassed entirely, not just incomplete.',
+         'Investigate why matching never ran against the affected line, and whether it was closed manually without going through the normal process.',
+         'apodetail', None,
+         "WHERE status = 'F' AND (vow_amount <> 0 OR invoiced <> 0) AND arr_amount = 0 AND arr_val = 0",
+         _po_line_never_matched),
+
+        ('PO_LINE_MATCH_EXCEEDS_RECEIPT',
+         15, 'PO Line', 'Validity', 'Medium',
+         'PO line has been matched for more than was received',
+         'A PO line’s matched value (arr_val) should never exceed its received value (vow_val) — a line cannot be matched '
+         'against goods or services that were never receipted. '
+         'A line where arr_val exceeds vow_val suggests either the receipt was under-recorded or the matching module has attributed value to the wrong line.',
+         'Review the affected PO line’s receipt and matching history to confirm which figure is wrong.',
+         'apodetail', None,
+         "WHERE arr_val > vow_val",
+         lambda df: (pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
+                     - pd.to_numeric(df['vow_val'], errors='coerce').fillna(0)) > 0.01),
+
+        ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT',
+         15, 'PO Line', 'Consistency', 'Low',
+         'PO line has been invoiced for more than was received',
+         'A PO line is expected to be invoiced no more than it has been received (vow_amount), since invoicing normally follows receipt. '
+         'A line invoiced ahead of its recorded receipt may simply reflect a timing difference between the invoice and goods-receipt processes rather than an error, '
+         'so this is worth reviewing rather than treated as a confirmed defect until Parliament confirms the expected sequencing.',
+         'Confirm with Parliament whether invoicing ahead of receipt is an expected in-flight state for this PO process, or a control gap.',
+         'apodetail', None,
+         "WHERE status <> 'T' AND invoiced > vow_amount",
+         lambda df: (pd.to_numeric(df['invoiced'], errors='coerce').fillna(0)
+                     - pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)) > 0.01),
+
+        ('PO_LINE_AMENDED_VALUE_MISMATCH',
+         15, 'PO Line', 'Validity', 'Low',
+         'Amended PO line has no actual change in committed value',
+         'An amended PO line (amend_no > 0) is expected to carry a different amount from its pre-amendment committed value (com_amount) — '
+         'that divergence is the point of an amendment. '
+         'Checking amend_no > 0 AND amount <> com_amount was tried first and always fires, since a genuine amendment is defined by changing the value — '
+         'on 340 real amended dummy lines the minimum divergence was £4.07 and none were zero, confirming this. '
+         'The actual anomaly is the opposite: an amendment number was incremented but the committed value never moved at all — a no-op amendment.',
+         'Confirm with the legacy system owner whether the affected amendment was applied correctly, or whether amend_no was incremented without an intended value change.',
+         'apodetail', None,
+         "WHERE amend_no > 0 AND ABS(amount - com_amount) <= 0.01",
+         lambda df: (pd.to_numeric(df['amount'], errors='coerce')
+                     - pd.to_numeric(df['com_amount'], errors='coerce')).abs() <= 0.01),
+
+        ('PO_LINE_STALE_UNRESOLVED',
+         15, 'PO Line', 'Consistency', 'Medium',
+         'Line delivered over 30 days ago but still open',
+         'A PO line that has been delivered is expected to progress to invoicing and closure within a reasonable time. '
+         'A line still open (not Terminated, Closed, or Finished) more than 30 days after its delivery date has stalled somewhere between receipt and closure. '
+         'Population excludes Terminated, Closed, and Finished lines, so this only counts lines genuinely still in progress.',
+         'Investigate why the affected line has not progressed to invoicing or closure since delivery.',
+         'apodetail', None,
+         "WHERE status NOT IN ('T','C','F') AND deliv_date < CURRENT_DATE - 30",
+         _po_line_stale_unresolved),
     ]
