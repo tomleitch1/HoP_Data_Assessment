@@ -659,6 +659,11 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
 
     if not is_xhouse and not is_prefixed:
         key_fields = ['asset_id', 'apar_id', 'account', 'voucher_no', 'client', 'sequence_no', 'status', 'BRIDGE_Asset_Group']
+        if table_name == 'apodetail':
+            # Standard financial fields always shown for PO line checks, so the
+            # reviewer can assess the full amount/receipt/match/invoice picture
+            # regardless of which specific field triggered the check.
+            key_fields = key_fields + ['amount', 'vow_amount', 'vow_val', 'arr_amount', 'arr_val', 'invoiced', 'unit_price']
         evidence_cols = []
         
         for c in df.columns:

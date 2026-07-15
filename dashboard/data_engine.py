@@ -18,6 +18,11 @@ DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
 SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Invoices'}
 
+# Standard financial fields always surfaced in the modal for every apodetail
+# (PO Line) check, regardless of which field actually triggered it, so the
+# reviewer can assess the full amount/receipt/match/invoice picture in one view.
+_PO_LINE_STANDARD_FIELDS = ['amount', 'vow_amount', 'vow_val', 'arr_amount', 'arr_val', 'invoiced', 'unit_price']
+
 # Subdirectory for each data domain within DATA_DIR
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
@@ -1830,8 +1835,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'order_id': 'apodetail.order_id',
             'line_no':  'apodetail.line_no',
             'status':   'apodetail.status',
+            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
         })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.status', 'apoheader.status']
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.status', 'apoheader.status'] + \
+               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'PO_HDR_LINE_DATE_MISMATCH' and 'apoheader' in frames:
@@ -1844,8 +1851,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'order_id':  'apodetail.order_id',
             'line_no':   'apodetail.line_no',
             'order_date': 'apodetail.order_date',
+            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
         })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.order_date', 'apoheader.order_date']
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.order_date', 'apoheader.order_date'] + \
+               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
         failing = failing[[c for c in cols if c in failing.columns]]
         # This early return bypasses the generic datetime->string formatting step
         # further down, so apply it here too — otherwise these two date columns
@@ -1923,8 +1932,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'order_id': 'apodetail.order_id',
             'line_no':  'apodetail.line_no',
             'account':  'apodetail.account',
+            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
         })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account']
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account'] + \
+               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'PO_LINE_CLOSED_ACCOUNT' and 'aglaccounts' in frames:
@@ -1937,8 +1948,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'order_id': 'apodetail.order_id',
             'line_no':  'apodetail.line_no',
             'account':  'apodetail.account',
+            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
         })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account', 'aglaccounts.status']
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.account', 'aglaccounts.status'] + \
+               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
         return failing[[c for c in cols if c in failing.columns]]
 
     # Generic Join Logic for Referential Integrity
