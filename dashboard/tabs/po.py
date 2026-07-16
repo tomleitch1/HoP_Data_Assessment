@@ -152,7 +152,10 @@ def _compute_metrics(frames: dict) -> dict:
     active_count = int(active_hdr['order_id'].nunique())
     active_val   = float(active_dtl['amount'].sum())
     active_inv   = float(active_dtl['arr_amount'].sum())
-    active_open  = active_val - active_inv
+    # Uninvoiced balance stat uses the invoiced field directly (not arr_amount, which
+    # drives the Fulfilment breakdown below) — kept as its own figure rather than
+    # changing active_inv, so the Fulfilment breakdown's own basis is untouched.
+    active_open  = active_val - float(active_dtl['invoiced'].sum())
 
     # ── Fulfilment pipeline: Ordered -> Received (vow_amount) -> Invoiced (arr_amount) ──
     # Independently-maintained running totals (receiving vs. AP invoice matching), not
@@ -597,7 +600,7 @@ def _render_lifecycle(m: dict) -> html.Div:
         html.Div(style={'display': 'flex', 'gap': '14px', 'flexWrap': 'wrap'}, children=[
             _stat_box(_fmt_count(m['active_count']), 'Active POs'),
             _stat_box(_fmt_val(m['active_val']), 'Ordered value', _ACCENT),
-            _stat_box(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − arr_amount'),
+            _stat_box(_fmt_val(m['active_open']), 'Uninvoiced balance', _ACCENT, sub='amount − invoiced'),
             _stat_box(oldest_str, 'Oldest Live Commitment', sub='Still on the books' if oldest else 'No active POs'),
         ]),
         _render_active_composition(m),
