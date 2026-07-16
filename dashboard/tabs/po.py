@@ -162,32 +162,6 @@ def _compute_metrics(frames: dict) -> dict:
     active_received_not_invoiced = max(active_received - active_inv, 0.0)
     active_not_received = max(active_val - active_received, 0.0)
 
-    # ── Invoicing signal agreement: does arr_amount agree with invoiced? ──
-    # Real PO line inspection showed these disagreeing in both directions — a fully
-    # invoiced line reading invoiced=0, a partially invoiced line reading arr_val=0
-    # (see QUESTIONS_FOR_PARLIAMENT.md #5). Not simple currency-conversion duplicates
-    # of the same fact. Dummy data always agrees (generator sets invoiced=arr_amount),
-    # so this is only informative once run against real data.
-    _EPS = 0.01
-    arr_has = active_dtl['arr_amount'] > _EPS
-    inv_has = active_dtl['invoiced'] > _EPS
-    _agreement_masks = [
-        ('both_nonzero',  'Both agree — invoiced',                        arr_has & inv_has),
-        ('both_zero',     'Both agree — not yet invoiced',                ~arr_has & ~inv_has),
-        ('arr_only',      'arr_amount says invoiced, invoiced says no',   arr_has & ~inv_has),
-        ('invoiced_only', 'invoiced says invoiced, arr_amount says no',   ~arr_has & inv_has),
-    ]
-    invoicing_agreement = pd.DataFrame([
-        {
-            'bucket': key, 'label': label,
-            'line_count': int(mask.sum()),
-            'value': float(active_dtl.loc[mask, 'amount'].sum()),
-        }
-        for key, label, mask in _agreement_masks
-    ])
-    disagreement_count = int((arr_has != inv_has).sum())
-    disagreement_pct = disagreement_count / len(active_dtl) * 100 if len(active_dtl) else 0.0
-
     # ── Oldest active PO ──
     if not active_hdr.empty and active_hdr['order_date'].notna().any():
         oldest_active = (today - active_hdr['order_date'].min()).days
@@ -215,28 +189,6 @@ def _compute_metrics(frames: dict) -> dict:
     resolved_received = float(resolved_dtl['vow_amount'].sum())
     resolved_received_not_invoiced = max(resolved_received - resolved_invoiced, 0.0)
     resolved_not_received = max(resolved_val - resolved_received, 0.0)
-
-    # ── Invoicing signal agreement, same check as the live book, scoped to resolved lines ──
-    r_arr_has = resolved_dtl['arr_amount'] > _EPS
-    r_inv_has = resolved_dtl['invoiced'] > _EPS
-    _resolved_agreement_masks = [
-        ('both_nonzero',  'Both agree — invoiced',                      r_arr_has & r_inv_has),
-        ('both_zero',     'Both agree — not yet invoiced',              ~r_arr_has & ~r_inv_has),
-        ('arr_only',      'arr_amount says invoiced, invoiced says no', r_arr_has & ~r_inv_has),
-        ('invoiced_only', 'invoiced says invoiced, arr_amount says no', ~r_arr_has & r_inv_has),
-    ]
-    resolved_agreement = pd.DataFrame([
-        {
-            'bucket': key, 'label': label,
-            'line_count': int(mask.sum()),
-            'value': float(resolved_dtl.loc[mask, 'amount'].sum()),
-        }
-        for key, label, mask in _resolved_agreement_masks
-    ])
-    resolved_disagreement_count = int((r_arr_has != r_inv_has).sum())
-    resolved_disagreement_pct = (
-        resolved_disagreement_count / len(resolved_dtl) * 100 if len(resolved_dtl) else 0.0
-    )
 
     # ── Line-level status vs header status ──
     if 'line_status' in merged.columns:
@@ -388,9 +340,6 @@ def _compute_metrics(frames: dict) -> dict:
         'active_received':             active_received,
         'active_received_not_invoiced': active_received_not_invoiced,
         'active_not_received':          active_not_received,
-        'invoicing_agreement':          invoicing_agreement,
-        'disagreement_count':           disagreement_count,
-        'disagreement_pct':             disagreement_pct,
         'oldest_active':   oldest_active,
         'resolution_counts':     resolution_counts,
         'resolution_total':      resolution_total,
@@ -401,9 +350,6 @@ def _compute_metrics(frames: dict) -> dict:
         'resolved_received_not_invoiced': resolved_received_not_invoiced,
         'resolved_not_received':          resolved_not_received,
         'resolved_invoiced':              resolved_invoiced,
-        'resolved_agreement':             resolved_agreement,
-        'resolved_disagreement_count':    resolved_disagreement_count,
-        'resolved_disagreement_pct':      resolved_disagreement_pct,
         'line_status_counts':    line_status_counts,
         'mismatch_count':        mismatch_count,
         'mismatch_pct':          mismatch_pct,
@@ -646,106 +592,6 @@ def _render_resolved_fulfilment(m: dict) -> html.Div:
     )
 
 
-# Agreement = the book's own accent/neutral (matches each Fulfilment's "resolved"/
-# "not yet" language); disagreement always gets purple regardless of book, since
-# it's the same underlying field ambiguity either way — an open question about
-# which field to trust, not a health signal like the amber warnings elsewhere.
-_AGREEMENT_COLORS = {
-    'both_nonzero':  _ACCENT,
-    'both_zero':     '#cbd5e1',
-    'arr_only':      '#7c3aed',
-    'invoiced_only': '#c4b5fd',
-}
-_RESOLVED_AGREEMENT_COLORS = {
-    'both_nonzero':  '#475569',
-    'both_zero':     '#cbd5e1',
-    'arr_only':      '#7c3aed',
-    'invoiced_only': '#c4b5fd',
-}
-
-
-def _render_agreement_rows(agreement, disagreement_pct, disagreement_count, population_label, colors):
-    """Does arr_amount agree with invoiced about whether a line's been invoiced?
-    Real data shows these disagreeing in both directions (QUESTIONS_FOR_PARLIAMENT.md
-    #5) — this makes the size of that ambiguity visible rather than just asserting it
-    in a comment. Dummy data always agrees (generator sets invoiced = arr_amount), so
-    this only becomes informative once run against real Parliament data."""
-    if agreement.empty:
-        return html.Div()
-
-    total = agreement['line_count'].sum() or 1
-    rows = []
-    for _, r in agreement.iterrows():
-        color = colors[r['bucket']]
-        pct = r['line_count'] / total * 100
-        rows.append(html.Div(style={
-            'display': 'flex', 'alignItems': 'center', 'gap': '10px',
-            'padding': '6px 0', 'borderBottom': '1px solid #f1f5f9',
-        }, children=[
-            html.Span(r['label'], style={'fontSize': '12px', 'color': '#475569', 'flex': '1'}),
-            html.Div(style={
-                'flex': '1', 'height': '8px', 'background': _BAR_TRACK_LIGHT,
-                'borderRadius': '4px', 'overflow': 'hidden',
-            }, children=[
-                html.Div(style={
-                    'height': '100%', 'width': f'{min(pct, 100):.1f}%',
-                    'background': color, 'borderRadius': '4px',
-                    'minWidth': '3px' if pct > 0 else '0',
-                }),
-            ]),
-            html.Span(f"{int(r['line_count']):,}", style={
-                'fontSize': '13px', 'fontWeight': '700', 'color': color,
-                'minWidth': '34px', 'textAlign': 'right',
-            }),
-            html.Span(_fmt_val(r['value']), style={
-                'fontSize': '11px', 'color': '#94a3b8', 'minWidth': '64px', 'textAlign': 'right',
-            }),
-        ]))
-
-    return html.Div(style={
-        'marginTop': '22px', 'paddingTop': '18px', 'borderTop': '1px solid #f1f5f9',
-        'display': 'flex', 'gap': '24px', 'flexWrap': 'wrap',
-    }, children=[
-        html.Div(style={'flex': '1', 'minWidth': '280px'}, children=[
-            html.Div('Invoicing signal agreement — arr_amount vs. invoiced', style={
-                'fontSize': '11px', 'fontWeight': '700', 'color': '#94a3b8',
-                'textTransform': 'uppercase', 'letterSpacing': '0.06em', 'marginBottom': '10px',
-            }),
-            html.Div(rows),
-        ]),
-        html.Div(style={
-            'flex': '0 0 200px', 'padding': '16px 18px',
-            'background': '#faf5ff', 'border': '1px solid #e9d5ff', 'borderRadius': '10px',
-            'display': 'flex', 'flexDirection': 'column', 'justifyContent': 'center',
-        }, children=[
-            html.Div(f"{disagreement_pct:.1f}%", style={
-                'fontSize': '28px', 'fontWeight': '800', 'color': '#7c3aed',
-                'fontFamily': DISPLAY_FONT, 'lineHeight': '1',
-            }),
-            html.Div(f'of {population_label} lines disagree on invoicing status', style={
-                'fontSize': '11px', 'color': '#64748b', 'marginTop': '8px',
-            }),
-            html.Div(f"{disagreement_count:,} lines", style={
-                'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '6px',
-            }),
-        ]),
-    ])
-
-
-def _render_invoicing_agreement(m: dict) -> html.Div:
-    return _render_agreement_rows(
-        m['invoicing_agreement'], m['disagreement_pct'], m['disagreement_count'],
-        'active', _AGREEMENT_COLORS,
-    )
-
-
-def _render_resolved_agreement(m: dict) -> html.Div:
-    return _render_agreement_rows(
-        m['resolved_agreement'], m['resolved_disagreement_pct'], m['resolved_disagreement_count'],
-        'resolved', _RESOLVED_AGREEMENT_COLORS,
-    )
-
-
 def _render_finished_balance_callout(m: dict) -> html.Div:
     """Validates Parliament's own definition of F ('used up completely') against
     invoicing — using whichever of arr_amount/invoiced is larger per line, since
@@ -824,7 +670,6 @@ def _render_lifecycle(m: dict) -> html.Div:
         ]),
         _render_active_composition(m),
         _render_active_fulfilment(m),
-        _render_invoicing_agreement(m),
     ])
 
     connector = html.Div(style={
@@ -887,7 +732,6 @@ def _render_lifecycle(m: dict) -> html.Div:
             ]),
         ]),
         _render_resolved_fulfilment(m),
-        _render_resolved_agreement(m),
         _render_finished_balance_callout(m),
     ])
 
