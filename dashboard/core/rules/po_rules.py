@@ -390,15 +390,15 @@ def get_po_checks():
 
         ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT',
          15, 'PO Line', 'Consistency', 'Low',
-         'PO line has been invoiced for more than was received',
-         'A PO line is expected to be invoiced no more than it has been received (vow_amount), since invoicing normally follows receipt. '
-         'A line invoiced ahead of its recorded receipt may simply reflect a timing difference between the invoice and goods-receipt processes rather than an error, '
+         'Open PO line has been invoiced more than £100 ahead of what was received',
+         'An open PO line (O, N, or A status) is expected to be invoiced no more than it has been received (vow_amount), since invoicing normally follows receipt. '
+         'A line invoiced ahead of its recorded receipt by more than a small materiality threshold may simply reflect a timing difference between the invoice and goods-receipt processes rather than an error, '
          'so this is worth reviewing rather than treated as a confirmed defect until Parliament confirms the expected sequencing.',
          'Confirm with Parliament whether invoicing ahead of receipt is an expected in-flight state for this PO process, or a control gap.',
          'apodetail', None,
-         "WHERE status <> 'T' AND invoiced > vow_amount",
+         "WHERE status IN ('O','N','A') AND (invoiced - vow_amount) > 100",
          lambda df: (pd.to_numeric(df['invoiced'], errors='coerce').fillna(0)
-                     - pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)) > 0.01),
+                     - pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)) > 100),
 
         ('PO_LINE_AMENDED_VALUE_MISMATCH',
          15, 'PO Line', 'Validity', 'Low',

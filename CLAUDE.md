@@ -899,7 +899,7 @@ These are the only six confirmed values (no confirmed `P` status). `wf_state` is
 | `PO_LINE_ORPHAN_ACCOUNT` | apodetail (joins aglaccounts) | Consistency | High | all rows | `account` not found in the chart of accounts (house-scoped, no client key — same convention as `GL_BAL_ORPHAN_ACC`) |
 | `PO_LINE_CLOSED_ACCOUNT` | apodetail (joins aglaccounts) | Consistency | Medium | all rows | matched account's own `status != 'N'` |
 | `PO_LINE_MATCH_EXCEEDS_RECEIPT` | apodetail | Validity | Medium | all rows | `arr_val` > `vow_val` — matched more than was received |
-| `PO_LINE_INVOICED_AHEAD_OF_RECEIPT` | apodetail | Consistency | Low | status != T | `invoiced` > `vow_amount` — invoiced ahead of recorded receipt; kept Low pending Parliament confirming expected sequencing |
+| `PO_LINE_INVOICED_AHEAD_OF_RECEIPT` | apodetail | Consistency | Low | status IN (O,N,A) | `invoiced - vow_amount` > £100 — invoiced materially ahead of recorded receipt on an open PO; kept Low pending Parliament confirming expected sequencing |
 | `PO_LINE_AMENDED_VALUE_MISMATCH` | apodetail | Validity | Low | amend_no > 0 | `amount` == `com_amount` — an amendment was recorded but the committed value never actually changed (a no-op amendment); see below for why this is the inverse of the first version tried |
 | `PO_LINE_UNINVOICED_RECEIPT_OVER3M` | apodetail | Consistency | Medium | shared base pop. (see below) | days since `deliv_date` ≥ 90 |
 | `PO_LINE_VOW_CALC_MISMATCH` | apodetail | Validity | Medium | all rows | `vow_amount` ≠ `vow_val * unit_price` — raw data corruption in one of the three fields, not a process issue |

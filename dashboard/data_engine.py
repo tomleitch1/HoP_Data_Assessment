@@ -587,7 +587,7 @@ def run_dq_analysis(frames, tab=None):
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
             elif table == 'apodetail':
                 if check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
+                    h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
                 elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
                     h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
                 elif check_id in _PO_UNMATCHED_RECEIPT_CHECKS:
@@ -1006,7 +1006,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
     elif table == 'apodetail':
         if check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
+            h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
         elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
             h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
         elif check_id in _PO_UNMATCHED_RECEIPT_CHECKS:
