@@ -135,14 +135,17 @@ def _po_line_never_matched(df):
     return has_activity & never_matched
 
 
-def _po_line_stale_unresolved(df):
-    """Flags lines still genuinely open (population excludes T/C/F in
-    data_engine.py) whose deliv_date is more than 30 days old — delivered
-    but stalled before progressing to invoice or close. Blank deliv_date is
-    a separate completeness question, not staleness, so it is not flagged
-    here."""
-    days = (pd.Timestamp.today() - df['deliv_date']).dt.days
-    return (days > 30).fillna(False)
+def _po_unmatched_receipt_age_tier(min_days, max_days=None):
+    """Returns a check lambda for one age tier of the 'unmatched open
+    receipt' population (goods/services received but not invoiced by either
+    measure, population scoped in data_engine.py). Blank deliv_date can't be
+    aged, so it never matches any tier rather than defaulting into one."""
+    def _check(df):
+        days = (pd.Timestamp.today() - df['deliv_date']).dt.days
+        if max_days is None:
+            return (days >= min_days).fillna(False)
+        return ((days >= min_days) & (days < max_days)).fillna(False)
+    return _check
 
 
 def _po_hdr_line_date_mismatch(df, frames):
@@ -455,16 +458,49 @@ def get_po_checks():
          lambda df: (pd.to_numeric(df['amount'], errors='coerce')
                      - pd.to_numeric(df['com_amount'], errors='coerce')).abs() <= 0.01),
 
-        ('PO_LINE_STALE_UNRESOLVED',
-         15, 'PO Line', 'Consistency', 'Medium',
-         'Line delivered over 30 days ago but still open',
-         'A PO line that has been delivered is expected to progress to invoicing and closure within a reasonable time. '
-         'A line still open (not Terminated, Closed, or Finished) more than 30 days after its delivery date has stalled somewhere between receipt and closure. '
-         'Population excludes Terminated, Closed, and Finished lines, so this only counts lines genuinely still in progress.',
-         'Investigate why the affected line has not progressed to invoicing or closure since delivery.',
+        # ---------------------------------------------------------------
+        # PO DETAIL — unmatched open receipt, aged into three tiers (August
+        # 2026). Replaces the original 30-day PO_LINE_STALE_UNRESOLVED, which
+        # the user judged too blunt: a line 30 days past delivery can easily
+        # still be a normal in-flight receipt awaiting invoice. Shared base
+        # population (scoped in data_engine.py's apodetail branch) is: status
+        # not in (F,C,T), vow_amount > 0 (genuinely received), and
+        # GREATEST(arr_amount, invoiced) = 0 (unmatched by either measure —
+        # not invoiced alone, since the two disagree in both directions on
+        # real data, QUESTIONS_FOR_PARLIAMENT.md #5). Each tier below is a
+        # mutually exclusive age slice of that same population, so together
+        # they read as an aging profile of the whole unresolved-receipt book.
+        # ---------------------------------------------------------------
+
+        ('PO_LINE_UNINVOICED_RECEIPT_3TO6M',
+         15, 'PO Line', 'Consistency', 'Low',
+         'Line received but not invoiced, 3–6 months since delivery',
+         'A PO line that has been received (vow_amount > 0) but not invoiced by either measure is expected to progress to invoicing within a few months. '
+         'A line 3–6 months past delivery is still routine in-flight timing, not yet a concern — this tier exists for volume monitoring, not action.',
+         'No action required at this tier. Monitor for lines progressing into the 6–12 month tier without being invoiced.',
          'apodetail', None,
-         "WHERE status NOT IN ('T','C','F') AND deliv_date < CURRENT_DATE - 30",
-         _po_line_stale_unresolved),
+         "WHERE status NOT IN ('F','C','T') AND vow_amount > 0 AND GREATEST(arr_amount, invoiced) = 0 AND deliv_date BETWEEN CURRENT_DATE - 180 AND CURRENT_DATE - 90",
+         _po_unmatched_receipt_age_tier(90, 180)),
+
+        ('PO_LINE_UNINVOICED_RECEIPT_6TO12M',
+         15, 'PO Line', 'Consistency', 'Medium',
+         'Line received but not invoiced, 6–12 months since delivery',
+         'A PO line received but not invoiced by either measure for 6–12 months has gone beyond routine timing and should be getting chased operationally. '
+         'This tier is worth surfacing to stakeholders as an active concern, even though it is not yet migration-blocking.',
+         'Confirm with the business owner whether the affected line is still expected to be invoiced, or should be escalated.',
+         'apodetail', None,
+         "WHERE status NOT IN ('F','C','T') AND vow_amount > 0 AND GREATEST(arr_amount, invoiced) = 0 AND deliv_date BETWEEN CURRENT_DATE - 365 AND CURRENT_DATE - 180",
+         _po_unmatched_receipt_age_tier(180, 365)),
+
+        ('PO_LINE_UNINVOICED_RECEIPT_OVER12M',
+         15, 'PO Line', 'Consistency', 'High',
+         'Line received but not invoiced for over 12 months',
+         'A PO line received but not invoiced by either measure for over a year is highly unlikely to still be routine timing. '
+         'This is the highest-risk slice of the unresolved-receipt population and needs a decision before cutover — write it off, correct the record, or confirm it is genuinely still owed.',
+         'Review the affected line with the business owner and decide: write off, correct the underlying record, or confirm the amount is genuinely still owed.',
+         'apodetail', None,
+         "WHERE status NOT IN ('F','C','T') AND vow_amount > 0 AND GREATEST(arr_amount, invoiced) = 0 AND deliv_date < CURRENT_DATE - 365",
+         _po_unmatched_receipt_age_tier(365)),
 
         # ---------------------------------------------------------------
         # PO DETAIL — calculation integrity (August 2026). value_1 is not

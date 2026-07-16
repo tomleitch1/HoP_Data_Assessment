@@ -23,6 +23,25 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 # reviewer can assess the full amount/receipt/match/invoice picture in one view.
 _PO_LINE_STANDARD_FIELDS = ['amount', 'vow_amount', 'vow_val', 'arr_amount', 'arr_val', 'invoiced', 'unit_price']
 
+_PO_UNMATCHED_RECEIPT_CHECKS = [
+    'PO_LINE_UNINVOICED_RECEIPT_3TO6M', 'PO_LINE_UNINVOICED_RECEIPT_6TO12M', 'PO_LINE_UNINVOICED_RECEIPT_OVER12M',
+]
+
+
+def _po_unmatched_receipt_population(df_table, house):
+    """Shared base population for the three unmatched-open-receipt age-tier
+    checks: status not in (F,C,T), genuinely received (vow_amount > 0), and
+    unmatched by either invoicing measure. Uses GREATEST(arr_amount,
+    invoiced), not invoiced alone — see QUESTIONS_FOR_PARLIAMENT.md #5."""
+    vow = pd.to_numeric(df_table['vow_amount'], errors='coerce').fillna(0)
+    eff_invoiced = df_table[['arr_amount', 'invoiced']].apply(pd.to_numeric, errors='coerce').fillna(0).max(axis=1)
+    return df_table[
+        (df_table['house'] == house)
+        & (~df_table['status'].isin(['F', 'C', 'T']))
+        & (vow > 0.01)
+        & (eff_invoiced <= 0.01)
+    ]
+
 # Subdirectory for each data domain within DATA_DIR
 SUBDIR = {
     'suppliers': ['supplier_master', 'supplier_open_trans', 'supplier_history'],
@@ -577,8 +596,8 @@ def run_dq_analysis(frames, tab=None):
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
                 elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
                     h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
-                elif check_id == 'PO_LINE_STALE_UNRESOLVED':
-                    h_df = df_table[(df_table['house'] == house) & (~df_table['status'].isin(['T', 'C', 'F']))]
+                elif check_id in _PO_UNMATCHED_RECEIPT_CHECKS:
+                    h_df = _po_unmatched_receipt_population(df_table, house)
                 else:
                     h_df = df_table[df_table['house'] == house]
             else:
@@ -666,9 +685,11 @@ def get_check_columns():
         'PO_LINE_MATCH_EXCEEDS_RECEIPT': ['order_id', 'line_no', 'vow_val', 'arr_val'],
         'PO_LINE_INVOICED_AHEAD_OF_RECEIPT': ['order_id', 'line_no', 'status', 'vow_amount', 'invoiced'],
         'PO_LINE_AMENDED_VALUE_MISMATCH': ['order_id', 'line_no', 'amend_no', 'com_amount', 'amount'],
-        'PO_LINE_STALE_UNRESOLVED':   ['order_id', 'line_no', 'status', 'deliv_date'],
         'PO_LINE_VOW_CALC_MISMATCH':  ['order_id', 'line_no', 'vow_amount', 'vow_val', 'unit_price'],
         'PO_LINE_ARR_CALC_MISMATCH':  ['order_id', 'line_no', 'arr_amount', 'arr_val', 'unit_price'],
+        'PO_LINE_UNINVOICED_RECEIPT_3TO6M':    ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
+        'PO_LINE_UNINVOICED_RECEIPT_6TO12M':   ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
+        'PO_LINE_UNINVOICED_RECEIPT_OVER12M':  ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
@@ -1002,8 +1023,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
         elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
             h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
-        elif check_id == 'PO_LINE_STALE_UNRESOLVED':
-            h_df = df_table[(df_table['house'] == house) & (~df_table['status'].isin(['T', 'C', 'F']))]
+        elif check_id in _PO_UNMATCHED_RECEIPT_CHECKS:
+            h_df = _po_unmatched_receipt_population(df_table, house)
         else:
             h_df = df_table[df_table['house'] == house]
     else:
@@ -1024,6 +1045,12 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return failing
 
     # Enrich with context for better inspection
+    if check_id in _PO_UNMATCHED_RECEIPT_CHECKS:
+        # Computed column, not an early return — the full apodetail row still
+        # flows through the generic tail below (source-column prefixing,
+        # datetime formatting), this just adds one extra field to it.
+        failing['days_since_delivery'] = (pd.Timestamp.today() - failing['deliv_date']).dt.days
+
     if check_id == 'GL_DIM_DUP_DESC' and 'aglaccounts' in frames:
         coa = frames['aglaccounts'][frames['aglaccounts']['house'] == house][['client', 'account', 'account_grp']].drop_duplicates(subset=['client', 'account'])
         failing = failing.merge(coa.rename(columns={'account': 'dim_value'}), on=['client', 'dim_value'], how='left')
