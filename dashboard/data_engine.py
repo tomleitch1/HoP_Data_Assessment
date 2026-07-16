@@ -23,9 +23,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 # reviewer can assess the full amount/receipt/match/invoice picture in one view.
 _PO_LINE_STANDARD_FIELDS = ['amount', 'vow_amount', 'vow_val', 'arr_amount', 'arr_val', 'invoiced', 'unit_price']
 
-_PO_UNMATCHED_RECEIPT_CHECKS = [
-    'PO_LINE_UNINVOICED_RECEIPT_3TO6M', 'PO_LINE_UNINVOICED_RECEIPT_6TO12M', 'PO_LINE_UNINVOICED_RECEIPT_OVER12M',
-]
+_PO_UNMATCHED_RECEIPT_CHECKS = ['PO_LINE_UNINVOICED_RECEIPT_OVER3M']
 
 
 def _po_unmatched_receipt_population(df_table, house):
@@ -681,9 +679,7 @@ def get_check_columns():
         'PO_LINE_AMENDED_VALUE_MISMATCH': ['order_id', 'line_no', 'amend_no', 'com_amount', 'amount'],
         'PO_LINE_VOW_CALC_MISMATCH':  ['order_id', 'line_no', 'vow_amount', 'vow_val', 'unit_price'],
         'PO_LINE_ARR_CALC_MISMATCH':  ['order_id', 'line_no', 'arr_amount', 'arr_val', 'unit_price'],
-        'PO_LINE_UNINVOICED_RECEIPT_3TO6M':    ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
-        'PO_LINE_UNINVOICED_RECEIPT_6TO12M':   ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
-        'PO_LINE_UNINVOICED_RECEIPT_OVER12M':  ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
+        'PO_LINE_UNINVOICED_RECEIPT_OVER3M':   ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
 
         # GL Dimension Values (agldimvalue)
         'GL_DIM_DESC_MISSING':   ['dim_value', 'description', 'attribute_id', 'dim_position'],
