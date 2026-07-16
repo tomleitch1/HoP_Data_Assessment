@@ -118,23 +118,6 @@ def _po_line_closed_account(df, frames):
     return (merged['account_status'].notna() & (merged['account_status'] != 'N')).values
 
 
-def _po_line_never_matched(df):
-    """Flags Finished (F) lines with clear evidence of activity (received
-    and/or invoiced) but where the matching-specific fields (arr_amount,
-    arr_val) are completely zero. Distinct from PO_FINISHED_WITH_BALANCE,
-    which aggregates across a whole PO and only fires above a 5% threshold —
-    a single old line like this can wash out of that aggregate if the rest
-    of the PO reconciled normally. Population is scoped to status == 'F' in
-    data_engine.py, so df here is already Finished lines only."""
-    vow = pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)
-    invoiced = pd.to_numeric(df['invoiced'], errors='coerce').fillna(0)
-    arr_amount = pd.to_numeric(df['arr_amount'], errors='coerce').fillna(0)
-    arr_val = pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
-    has_activity = (vow.abs() > 0.01) | (invoiced.abs() > 0.01)
-    never_matched = (arr_amount.abs() <= 0.01) & (arr_val.abs() <= 0.01)
-    return has_activity & never_matched
-
-
 def _po_unmatched_receipt_age_tier(min_days, max_days=None):
     """Returns a check lambda for one age tier of the 'unmatched open
     receipt' population (goods/services received but not invoiced by either
@@ -298,19 +281,6 @@ def get_po_checks():
          "WHERE amount < 0",
          lambda df: pd.to_numeric(df['amount'], errors='coerce').fillna(0) < 0),
 
-        ('PO_TERMINATED_WITH_INVOICING',
-         15, 'PO Line', 'Consistency', 'Medium',
-         'Terminated PO line still shows real invoicing activity',
-         "A line under a Terminated (T) purchase order is expected to carry no material invoicing activity — "
-         "Parliament's own guidance is that T is reserved for POs raised in error. "
-         'A line with a genuinely non-zero arr_amount or invoiced value means real activity was processed against a PO that was later terminated, '
-         'which is worth reviewing even though the termination itself may be legitimate.',
-         'Confirm whether the invoicing activity on the affected line was reversed, reassigned, or should be investigated '
-         'further before this PO is treated as a clean error.',
-         'apodetail', None,
-         "WHERE status = 'T' AND GREATEST(COALESCE(arr_amount,0), COALESCE(invoiced,0)) <> 0",
-         lambda df: df[['arr_amount', 'invoiced']].max(axis=1).abs() > 0.01),
-
         ('PO_ARR_EXCEEDS_AMOUNT',
          15, 'PO Line', 'Validity', 'Medium',
          'PO line has been invoiced for more than its ordered value',
@@ -407,18 +377,6 @@ def get_po_checks():
         # branch, same dual-location pattern as every other PO population
         # override.
         # ---------------------------------------------------------------
-
-        ('PO_LINE_NEVER_MATCHED',
-         15, 'PO Line', 'Consistency', 'High',
-         'Finished line shows real activity but was never matched',
-         'A PO line marked Finished should have gone through invoice matching by the time it reaches that status. '
-         'A Finished line with a received or invoiced value but a completely zero arr_amount and arr_val means the matching step '
-         'itself never ran against this line, even though other fields show it was actioned. '
-         'This is a distinct root cause from a partially-reconciled Finished PO — the matching process was bypassed entirely, not just incomplete.',
-         'Investigate why matching never ran against the affected line, and whether it was closed manually without going through the normal process.',
-         'apodetail', None,
-         "WHERE status = 'F' AND (vow_amount <> 0 OR invoiced <> 0) AND arr_amount = 0 AND arr_val = 0",
-         _po_line_never_matched),
 
         ('PO_LINE_MATCH_EXCEEDS_RECEIPT',
          15, 'PO Line', 'Validity', 'Medium',

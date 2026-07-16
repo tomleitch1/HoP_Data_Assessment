@@ -588,11 +588,7 @@ def run_dq_analysis(frames, tab=None):
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
             elif table == 'apodetail':
-                if check_id == 'PO_TERMINATED_WITH_INVOICING':
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'T')]
-                elif check_id == 'PO_LINE_NEVER_MATCHED':
-                    h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
-                elif check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
+                if check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
                 elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
                     h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
@@ -677,11 +673,9 @@ def get_check_columns():
         'PO_LINE_CLOSED_ACCOUNT':      ['order_id', 'line_no', 'account', 'status'],
         'PO_DUP_HEADER':               ['client', 'order_id', 'status'],
         'PO_FUTURE_ORDER_DATE':        ['order_id', 'order_date', 'status'],
-        'PO_TERMINATED_WITH_INVOICING': ['order_id', 'line_no', 'status', 'amount', 'arr_amount', 'invoiced'],
         'PO_ARR_EXCEEDS_AMOUNT':       ['order_id', 'line_no', 'amount', 'arr_amount', 'invoiced'],
         'PO_LINE_NO_CATEGORY':         ['order_id', 'line_no', 'art_gr_id', 'art_gr_description'],
         'PO_HDR_LINE_DATE_MISMATCH':   ['order_id', 'line_no', 'order_date'],
-        'PO_LINE_NEVER_MATCHED':       ['order_id', 'line_no', 'status', 'vow_amount', 'invoiced', 'arr_amount', 'arr_val'],
         'PO_LINE_MATCH_EXCEEDS_RECEIPT': ['order_id', 'line_no', 'vow_val', 'arr_val'],
         'PO_LINE_INVOICED_AHEAD_OF_RECEIPT': ['order_id', 'line_no', 'status', 'vow_amount', 'invoiced'],
         'PO_LINE_AMENDED_VALUE_MISMATCH': ['order_id', 'line_no', 'amend_no', 'com_amount', 'amount'],
@@ -1015,11 +1009,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
     elif table == 'apodetail':
-        if check_id == 'PO_TERMINATED_WITH_INVOICING':
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'T')]
-        elif check_id == 'PO_LINE_NEVER_MATCHED':
-            h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'F')]
-        elif check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
+        if check_id == 'PO_LINE_INVOICED_AHEAD_OF_RECEIPT':
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
         elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
             h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
