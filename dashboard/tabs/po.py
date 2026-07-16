@@ -291,40 +291,6 @@ def _compute_metrics(frames: dict) -> dict:
     )
     active_status_mix['status'] = active_status_mix['status'].astype(str)
 
-    # ── Finished-with-balance: does F really mean "fully used", as Parliament defines it? ──
-    # Real PO line inspection shows arr_amount and invoiced disagreeing about invoicing status
-    # in both directions (see QUESTIONS_FOR_PARLIAMENT.md #5) — one field is sometimes zero
-    # while the other genuinely shows the line as invoiced, for the same line. Taking whichever
-    # of the two is larger per line avoids under-counting real invoicing progress purely because
-    # of that field ambiguity, rather than trusting either field alone.
-    finished_dtl = merged[merged['status'] == 'F'].copy()
-    finished_dtl['effective_invoiced'] = finished_dtl[['arr_amount', 'invoiced']].max(axis=1)
-    finished_bal = (
-        finished_dtl
-        .groupby(['client', 'order_id'])
-        .agg(po_value=('amount', 'sum'), po_invoiced=('effective_invoiced', 'sum'),
-             po_received=('vow_amount', 'sum'))
-        .reset_index()
-    )
-    finished_bal['uninvoiced'] = finished_bal['po_value'] - finished_bal['po_invoiced']
-    finished_bal['uninvoiced_pct'] = (
-        (finished_bal['uninvoiced'] / finished_bal['po_value'].replace(0, np.nan)) * 100
-    ).fillna(0)
-    finished_total_count = int(len(finished_bal))
-    # Materiality threshold, not a float-noise floor — invoicing is rarely mathematically
-    # exact, so ">5% of value still unaccounted for" separates a genuinely incomplete PO from
-    # ordinary rounding/timing noise around a "complete" invoice.
-    finished_with_balance_count = int((finished_bal['uninvoiced_pct'] > 5).sum())
-    finished_with_balance_pct = (
-        finished_with_balance_count / finished_total_count * 100 if finished_total_count else 0.0
-    )
-    finished_value_total = float(finished_bal['po_value'].sum())
-    # Secondary, contrasting figure — receipt (vow_amount) alone, kept for context since it
-    # was the original basis before the arr_amount/invoiced ambiguity was confirmed.
-    finished_received_pct = (
-        finished_bal['po_received'].sum() / finished_value_total * 100 if finished_value_total else 0.0
-    )
-
     return {
         'status_df':       status_df,
         'total_pos':       total_pos,
@@ -366,10 +332,6 @@ def _compute_metrics(frames: dict) -> dict:
         'pos_no_acct':     pos_no_acct,
         'total_hdr':       len(hdr),
         'active_status_mix':           active_status_mix,
-        'finished_total_count':        finished_total_count,
-        'finished_with_balance_count': finished_with_balance_count,
-        'finished_with_balance_pct':   finished_with_balance_pct,
-        'finished_received_pct':       finished_received_pct,
     }
 
 
@@ -592,36 +554,6 @@ def _render_resolved_fulfilment(m: dict) -> html.Div:
     )
 
 
-def _render_finished_balance_callout(m: dict) -> html.Div:
-    """Validates Parliament's own definition of F ('used up completely') against
-    invoicing — using whichever of arr_amount/invoiced is larger per line, since
-    real data shows the two disagreeing about invoicing status in both directions
-    (QUESTIONS_FOR_PARLIAMENT.md #5). Trusting either field alone would either
-    under- or over-count genuine invoicing progress."""
-    return html.Div(style={
-        'marginTop': '18px', 'padding': '14px 16px',
-        'background': '#f0fdfa', 'border': '1px solid #99f6e4', 'borderRadius': '8px',
-        'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap',
-    }, children=[
-        html.Div(style={'flex': '1', 'minWidth': '220px'}, children=[
-            html.Span(f"{m['finished_with_balance_count']:,} of {m['finished_total_count']:,} Finished POs "
-                      f"({m['finished_with_balance_pct']:.0f}%)",
-                      style={'fontWeight': '700', 'color': '#0f766e', 'fontSize': '12px'}),
-            html.Span(' still have more than 5% of their value unaccounted for by invoicing '
-                      '(checking both arr_amount and invoiced), despite the system marking '
-                      'them "used completely".', style={'color': '#134e4a', 'fontSize': '12px'}),
-        ]),
-        html.Div(style={'flex': '1', 'minWidth': '220px'}, children=[
-            html.Span(f"{m['finished_received_pct']:.0f}% receipted", style={
-                'fontWeight': '700', 'color': '#0f766e', 'fontSize': '12px',
-            }),
-            html.Span(" of Finished POs' total value by vow_amount alone — shown for contrast, "
-                      "since receipt and invoicing can tell a different story on the same PO.",
-                      style={'color': '#134e4a', 'fontSize': '12px'}),
-        ]),
-    ])
-
-
 def _stat_box(value, label, color=None, sub=None):
     """A boxed stat card — used for the Currently Live headline row. Color is only
     given to figures that are money (teal accent); plain counts/facts stay neutral,
@@ -732,7 +664,6 @@ def _render_lifecycle(m: dict) -> html.Div:
             ]),
         ]),
         _render_resolved_fulfilment(m),
-        _render_finished_balance_callout(m),
     ])
 
     return html.Div(style={'marginBottom': '24px'}, children=[card_live, connector, card_resolved])
