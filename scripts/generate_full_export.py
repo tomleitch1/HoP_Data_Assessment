@@ -10,13 +10,14 @@ Usage:
     python scripts/generate_full_export.py suppliers HOL
     python scripts/generate_full_export.py gl HOC
     python scripts/generate_full_export.py assets HOL
+    python scripts/generate_full_export.py po HOC
 
 Tracker saved to:  trackers/<tab>_tracker_<HOUSE>.xlsx  (same as generate_tracker.py)
 Evidence saved to: trackers/evidence/<HOUSE>_<Dimension>_<CHECK_ID>.xlsx
                    (only checks with at least one failing record)
 
-Valid tabs:   suppliers, customers, gl, assets
-Valid houses: HOC, HOL
+Valid tabs:   suppliers, customers, gl, assets, po
+Valid houses: HOC, HOL (po is HoC-only — running po HOL will simply find no data)
 """
 
 import sys
@@ -39,6 +40,7 @@ TAB_ALIASES = {
     'ar':        'customers',
     'gl':        'gl',
     'assets':    'assets',
+    'po':        'po',
 }
 
 # Maps engine tab key → SCOPE_CONFIG key
@@ -47,6 +49,7 @@ SCOPE_KEY = {
     'customers': 'ar',
     'gl':        'gl',
     'assets':    'assets',
+    'po':        'po',
 }
 
 HEADER_FILL  = PatternFill('solid', fgColor='1E1528')
@@ -292,7 +295,7 @@ def run(tab: str, house: str) -> None:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate DQ tracker + evidence exports')
-    parser.add_argument('tab',   help='Tab name: suppliers, customers, gl, assets')
+    parser.add_argument('tab',   help='Tab name: suppliers, customers, gl, assets, po')
     parser.add_argument('house', help='House: HOC or HOL')
     args = parser.parse_args()
     run(args.tab, args.house)
