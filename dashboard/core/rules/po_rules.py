@@ -34,24 +34,6 @@ def _po_finished_with_balance(df, frames):
     return merged['_flag'].eq(True).values
 
 
-def _po_line_status_mismatch(df, frames):
-    """Flags apodetail lines whose own status differs from their PO header's
-    status. The real-data meaning of this divergence is not yet confirmed —
-    see CLAUDE.md's PO Domain section — so this check is kept Low severity."""
-    if df.empty or 'apoheader' not in frames:
-        return pd.Series(False, index=df.index)
-
-    house = df['house'].iloc[0]
-    hdr = frames['apoheader']
-    hdr = (
-        hdr[hdr['house'] == house][['client', 'order_id', 'status']]
-        .drop_duplicates(subset=['client', 'order_id'])
-        .rename(columns={'status': 'hdr_status'})
-    )
-    merged = df[['client', 'order_id', 'status']].merge(hdr, on=['client', 'order_id'], how='left')
-    return (merged['status'].astype(str) != merged['hdr_status'].astype(str)).values
-
-
 def _po_orphaned_supplier(df, frames):
     """Flags POs whose apar_id doesn't exist in the supplier master (asuheader)
     for the same (client, apar_id) — asuheader's real unique key, since the same
@@ -91,7 +73,8 @@ def _po_line_orphan_account(df, frames):
     """Flags PO lines whose account doesn't exist in the chart of accounts
     (aglaccounts) for the same house. Matches on account alone (not client) —
     same convention as GL_BAL_ORPHAN_ACC, since HOC account codes are shared
-    across its client codes. Blank account is PO_LINE_NO_ACCOUNT's concern."""
+    across its client codes. Blank account is excluded so it isn't miscounted
+    as an orphan."""
     if df.empty or 'aglaccounts' not in frames:
         return pd.Series(False, index=df.index)
 
@@ -127,29 +110,6 @@ def _po_unmatched_receipt_over_days(min_days):
         days = (pd.Timestamp.today() - df['deliv_date']).dt.days
         return (days >= min_days).fillna(False)
     return _check
-
-
-def _po_hdr_line_date_mismatch(df, frames):
-    """Flags apodetail lines whose own order_date differs from their PO
-    header's order_date — both fields are extracted independently (see
-    po_header_HOC_run.sql / po_detail_HOC_run.sql). Same open question as
-    PO_HDR_LINE_STATUS_MISMATCH about whether these are expected to always
-    match; only flags where both dates are actually present, so a blank line
-    date isn't miscounted as a mismatch."""
-    if df.empty or 'apoheader' not in frames:
-        return pd.Series(False, index=df.index)
-
-    house = df['house'].iloc[0]
-    hdr = frames['apoheader']
-    hdr = (
-        hdr[hdr['house'] == house][['client', 'order_id', 'order_date']]
-        .drop_duplicates(subset=['client', 'order_id'])
-        .rename(columns={'order_date': 'hdr_order_date'})
-    )
-    merged = df[['client', 'order_id', 'order_date']].merge(hdr, on=['client', 'order_id'], how='left')
-    both_present = merged['order_date'].notna() & merged['hdr_order_date'].notna()
-    differs = merged['order_date'] != merged['hdr_order_date']
-    return (both_present & differs).values
 
 
 def get_po_checks():
@@ -270,13 +230,13 @@ def get_po_checks():
 
         ('PO_LINE_NEG_AMOUNT',
          15, 'PO Line', 'Validity', 'Medium',
-         'PO line has a negative ordered amount',
-         'Every PO line represents a positive ordered value. '
+         'Open PO line has a negative ordered amount',
+         'Every open PO line represents a positive ordered value. '
          'Unlike AP/AR invoices, there is no confirmed credit-note or reversal voucher type for PO lines. '
-         'A negative amount on a PO line is therefore unexplained and should be checked before migration.',
+         'A negative amount on an open PO line is therefore unexplained and should be checked before migration.',
          'Confirm whether the affected line is a genuine adjustment or a data entry error, and correct it in the legacy system.',
          'apodetail', None,
-         "WHERE amount < 0",
+         "WHERE status IN ('O','N','A') AND amount < 0",
          lambda df: pd.to_numeric(df['amount'], errors='coerce').fillna(0) < 0),
 
         ('PO_ARR_EXCEEDS_AMOUNT',
@@ -300,17 +260,6 @@ def get_po_checks():
          "WHERE art_gr_id IS NULL OR TRIM(art_gr_id) = ''",
          lambda df: _is_blank(df['art_gr_id'])),
 
-        ('PO_LINE_NO_ACCOUNT',
-         15, 'PO Line', 'Completeness', 'High',
-         'PO line has no GL account code',
-         'Every PO line must carry a GL account code. '
-         'The new system uses this code to post the committed spend to the correct ledger account. '
-         'A PO line with no account code cannot be coded correctly and will block a clean migration of that commitment.',
-         'Add the correct GL account code to the affected PO line in the legacy system before migration.',
-         'apodetail', None,
-         "WHERE account IS NULL OR TRIM(account) = ''",
-         lambda df: _is_blank(df['account'])),
-
         ('PO_DUP_LINE',
          15, 'PO Line', 'Uniqueness', 'High',
          'Duplicate PO line — same order, line, and sequence number',
@@ -321,28 +270,6 @@ def get_po_checks():
          'apodetail', None,
          "WHERE (client, order_id, line_no, sequence_no) HAVING COUNT(*) > 1",
          lambda df: df.duplicated(subset=['client', 'order_id', 'line_no', 'sequence_no'], keep=False)),
-
-        ('PO_HDR_LINE_STATUS_MISMATCH',
-         15, 'PO Line', 'Consistency', 'Low',
-         'PO line status differs from its header status',
-         "A PO line's own status is expected to track its purchase order header's overall status. "
-         'The real-data meaning of a line diverging from its header has not yet been confirmed with Parliament. '
-         'A high or growing mismatch rate is worth investigating even though it is not yet a confirmed data error.',
-         'Confirm with Parliament whether PO line status is expected to diverge from header status, and under what circumstances.',
-         'apodetail', 'apoheader',
-         "WHERE apodetail.status <> apoheader.status",
-         _po_line_status_mismatch),
-
-        ('PO_HDR_LINE_DATE_MISMATCH',
-         15, 'PO Line', 'Consistency', 'Low',
-         'PO line order date differs from its header order date',
-         "A PO line's own order_date is extracted independently of its header's order_date. "
-         'The real-data meaning of a line diverging from its header has not yet been confirmed with Parliament, '
-         'same open question as the equivalent status check. A high or growing mismatch rate is worth investigating.',
-         'Confirm with Parliament whether PO line order_date is expected to diverge from header order_date, and under what circumstances.',
-         'apodetail', 'apoheader',
-         "WHERE apodetail.order_date <> apoheader.order_date",
-         _po_hdr_line_date_mismatch),
 
         # ---------------------------------------------------------------
         # PO DETAIL — cross-domain (GL)
@@ -371,23 +298,11 @@ def get_po_checks():
 
         # ---------------------------------------------------------------
         # PO DETAIL — added from direct Excel exploration of real PO lines
-        # (July 2026). Population overrides for these five live in
+        # (July 2026). Population overrides for these two live in
         # data_engine.py's run_dq_analysis()/get_failing_records() apodetail
         # branch, same dual-location pattern as every other PO population
         # override.
         # ---------------------------------------------------------------
-
-        ('PO_LINE_MATCH_EXCEEDS_RECEIPT',
-         15, 'PO Line', 'Validity', 'Medium',
-         'PO line has been matched for more than was received',
-         'A PO line’s matched value (arr_val) should never exceed its received value (vow_val) — a line cannot be matched '
-         'against goods or services that were never receipted. '
-         'A line where arr_val exceeds vow_val suggests either the receipt was under-recorded or the matching module has attributed value to the wrong line.',
-         'Review the affected PO line’s receipt and matching history to confirm which figure is wrong.',
-         'apodetail', None,
-         "WHERE arr_val > vow_val",
-         lambda df: (pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
-                     - pd.to_numeric(df['vow_val'], errors='coerce').fillna(0)) > 0.01),
 
         ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT',
          15, 'PO Line', 'Consistency', 'Low',
@@ -447,27 +362,14 @@ def get_po_checks():
 
         ('PO_LINE_VOW_CALC_MISMATCH',
          15, 'PO Line', 'Validity', 'Medium',
-         'Received value does not equal received quantity times unit price',
-         'A PO line’s received value (vow_amount) is expected to equal its received quantity (vow_val) multiplied by the unit price. '
+         'Open PO line received value does not equal received quantity times unit price',
+         'An open PO line’s received value (vow_amount) is expected to equal its received quantity (vow_val) multiplied by the unit price. '
          'A mismatch here points to raw data corruption in one of the three stored fields, not a process or timing issue — '
          'the fields simply do not agree with their own arithmetic relationship.',
          'Investigate which of vow_amount, vow_val, or unit_price is wrong on the affected line, and correct the underlying record.',
          'apodetail', None,
-         "WHERE ABS(vow_amount - (vow_val * unit_price)) > 0.01",
+         "WHERE status IN ('O','N','A') AND ABS(vow_amount - (vow_val * unit_price)) > 0.01",
          lambda df: (pd.to_numeric(df['vow_amount'], errors='coerce').fillna(0)
                      - pd.to_numeric(df['vow_val'], errors='coerce').fillna(0)
-                     * pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)).abs() > 0.01),
-
-        ('PO_LINE_ARR_CALC_MISMATCH',
-         15, 'PO Line', 'Validity', 'Medium',
-         'Matched value does not equal matched quantity times unit price',
-         'A PO line’s matched value (arr_amount) is expected to equal its matched quantity (arr_val) multiplied by the unit price. '
-         'A mismatch here points to raw data corruption in one of the three stored fields, not a process or timing issue — '
-         'the fields simply do not agree with their own arithmetic relationship.',
-         'Investigate which of arr_amount, arr_val, or unit_price is wrong on the affected line, and correct the underlying record.',
-         'apodetail', None,
-         "WHERE ABS(arr_amount - (arr_val * unit_price)) > 0.01",
-         lambda df: (pd.to_numeric(df['arr_amount'], errors='coerce').fillna(0)
-                     - pd.to_numeric(df['arr_val'], errors='coerce').fillna(0)
                      * pd.to_numeric(df['unit_price'], errors='coerce').fillna(0)).abs() > 0.01),
     ]

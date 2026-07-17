@@ -586,7 +586,8 @@ def run_dq_analysis(frames, tab=None):
                 else:
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
             elif table == 'apodetail':
-                if check_id in ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT', 'PO_ARR_EXCEEDS_AMOUNT'):
+                if check_id in ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT', 'PO_ARR_EXCEEDS_AMOUNT',
+                                 'PO_LINE_NEG_AMOUNT', 'PO_LINE_VOW_CALC_MISMATCH'):
                     h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
                 elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
                     h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
@@ -662,9 +663,7 @@ def get_check_columns():
         'PO_STUCK_NOT_ORDERED':       ['order_id', 'apar_id', 'status', 'order_date'],
         'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status', 'SUM(amount)', 'SUM(arr_amount)', 'SUM(invoiced)', 'uninvoiced_pct'],
         'PO_LINE_NEG_AMOUNT':         ['order_id', 'line_no', 'amount', 'status'],
-        'PO_LINE_NO_ACCOUNT':         ['order_id', 'line_no', 'account', 'status'],
         'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
-        'PO_HDR_LINE_STATUS_MISMATCH': ['order_id', 'line_no', 'status'],
         'PO_ORPHANED_SUPPLIER':        ['order_id', 'apar_id', 'status', 'client'],
         'PO_INACTIVE_SUPPLIER':        ['order_id', 'apar_id', 'status'],
         'PO_LINE_ORPHAN_ACCOUNT':      ['order_id', 'line_no', 'account'],
@@ -673,12 +672,9 @@ def get_check_columns():
         'PO_FUTURE_ORDER_DATE':        ['order_id', 'order_date', 'status'],
         'PO_ARR_EXCEEDS_AMOUNT':       ['order_id', 'line_no', 'status', 'amount', 'invoiced'],
         'PO_LINE_NO_CATEGORY':         ['order_id', 'line_no', 'art_gr_id', 'art_gr_description'],
-        'PO_HDR_LINE_DATE_MISMATCH':   ['order_id', 'line_no', 'order_date'],
-        'PO_LINE_MATCH_EXCEEDS_RECEIPT': ['order_id', 'line_no', 'vow_val', 'arr_val'],
         'PO_LINE_INVOICED_AHEAD_OF_RECEIPT': ['order_id', 'line_no', 'status', 'vow_amount', 'invoiced'],
         'PO_LINE_AMENDED_VALUE_MISMATCH': ['order_id', 'line_no', 'amend_no', 'com_amount', 'amount'],
-        'PO_LINE_VOW_CALC_MISMATCH':  ['order_id', 'line_no', 'vow_amount', 'vow_val', 'unit_price'],
-        'PO_LINE_ARR_CALC_MISMATCH':  ['order_id', 'line_no', 'arr_amount', 'arr_val', 'unit_price'],
+        'PO_LINE_VOW_CALC_MISMATCH':  ['order_id', 'line_no', 'status', 'vow_amount', 'vow_val', 'unit_price'],
         'PO_LINE_UNINVOICED_RECEIPT_OVER3M':   ['order_id', 'line_no', 'status', 'deliv_date', 'days_since_delivery', 'vow_amount', 'invoiced'],
 
         # GL Dimension Values (agldimvalue)
@@ -1005,7 +1001,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         else:
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'T')]
     elif table == 'apodetail':
-        if check_id in ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT', 'PO_ARR_EXCEEDS_AMOUNT'):
+        if check_id in ('PO_LINE_INVOICED_AHEAD_OF_RECEIPT', 'PO_ARR_EXCEEDS_AMOUNT',
+                         'PO_LINE_NEG_AMOUNT', 'PO_LINE_VOW_CALC_MISMATCH'):
             h_df = df_table[(df_table['house'] == house) & (df_table['status'].isin(['O', 'N', 'A']))]
         elif check_id == 'PO_LINE_AMENDED_VALUE_MISMATCH':
             h_df = df_table[(df_table['house'] == house) & (pd.to_numeric(df_table['amend_no'], errors='coerce').fillna(0) > 0)]
@@ -1836,48 +1833,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         master = master.drop_duplicates(subset=join_cols)
         master.columns = join_cols + ['Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=join_cols, how='left')
-
-    if check_id == 'PO_HDR_LINE_STATUS_MISMATCH' and 'apoheader' in frames:
-        # Explicit join on (client, order_id) — the real apoheader/apodetail key.
-        # The generic referential-integrity join below would instead resolve to
-        # (house, apar_id, voucher_no), since client/order_id aren't in its
-        # candidate key list — that's a different, unverified relationship, not
-        # the actual PO composite key, so this check bypasses it entirely.
-        hdr = frames['apoheader'][frames['apoheader']['house'] == house][['client', 'order_id', 'status']]
-        hdr = hdr.drop_duplicates(subset=['client', 'order_id']).rename(columns={'status': 'apoheader.status'})
-        failing = failing.merge(hdr, on=['client', 'order_id'], how='left')
-        failing = failing.rename(columns={
-            'order_id': 'apodetail.order_id',
-            'line_no':  'apodetail.line_no',
-            'status':   'apodetail.status',
-            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
-        })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.status', 'apoheader.status'] + \
-               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if check_id == 'PO_HDR_LINE_DATE_MISMATCH' and 'apoheader' in frames:
-        # Same explicit (client, order_id) join as PO_HDR_LINE_STATUS_MISMATCH,
-        # applied to order_date instead of status.
-        hdr = frames['apoheader'][frames['apoheader']['house'] == house][['client', 'order_id', 'order_date']]
-        hdr = hdr.drop_duplicates(subset=['client', 'order_id']).rename(columns={'order_date': 'apoheader.order_date'})
-        failing = failing.merge(hdr, on=['client', 'order_id'], how='left')
-        failing = failing.rename(columns={
-            'order_id':  'apodetail.order_id',
-            'line_no':   'apodetail.line_no',
-            'order_date': 'apodetail.order_date',
-            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
-        })
-        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.order_date', 'apoheader.order_date'] + \
-               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
-        failing = failing[[c for c in cols if c in failing.columns]]
-        # This early return bypasses the generic datetime->string formatting step
-        # further down, so apply it here too — otherwise these two date columns
-        # would render as raw Timestamps in the DataTable instead of YYYY-MM-DD.
-        for col in failing.columns:
-            if pd.api.types.is_datetime64_any_dtype(failing[col]):
-                failing[col] = failing[col].dt.strftime('%Y-%m-%d').where(failing[col].notna(), other='')
-        return failing
 
     if check_id == 'PO_FINISHED_WITH_BALANCE' and 'apodetail' in frames:
         # Explicit join on (client, order_id), same reasoning as above. Shows both
