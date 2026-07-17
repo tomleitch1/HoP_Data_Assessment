@@ -25,6 +25,20 @@ _PO_LINE_STANDARD_FIELDS = ['amount', 'vow_amount', 'vow_val', 'arr_amount', 'ar
 
 _PO_UNMATCHED_RECEIPT_CHECKS = ['PO_LINE_UNINVOICED_RECEIPT_OVER3M']
 
+# PO join checks whose evidence relies on their own explicit early-return
+# enrichment block further down in this function (join + narrow to the
+# identifiers and the specific joined field being compared, e.g. contract_id
+# on both sides) — for these, for_export=True must NOT take the generic
+# early-return shortcut below, or Excel exports would show the raw source
+# table only, with no evidence of the join that actually drove the flag.
+# Scoped to PO only; every other domain's early-return blocks (GL, Assets)
+# keep the existing for_export shortcut unchanged.
+_PO_JOIN_EXPORT_CHECKS = {
+    'PO_FINISHED_WITH_BALANCE', 'PO_HDR_LINE_CONTRACT_MISMATCH',
+    'PO_LINE_CLOSED_ACCOUNT', 'PO_LINE_ORPHAN_ACCOUNT',
+    'PO_INACTIVE_SUPPLIER', 'PO_ORPHANED_SUPPLIER',
+}
+
 
 def _po_unmatched_receipt_population(df_table, house):
     """Shared base population for the three unmatched-open-receipt age-tier
@@ -1025,7 +1039,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     failing = h_df[mask].copy()
     if failing.empty:
         return failing
-    if for_export:
+    if for_export and check_id not in _PO_JOIN_EXPORT_CHECKS:
         return failing
 
     # Enrich with context for better inspection
