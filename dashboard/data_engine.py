@@ -664,6 +664,7 @@ def get_check_columns():
         'PO_FINISHED_WITH_BALANCE':   ['order_id', 'apar_id', 'status', 'SUM(amount)', 'SUM(arr_amount)', 'SUM(invoiced)', 'uninvoiced_pct'],
         'PO_LINE_NEG_AMOUNT':         ['order_id', 'line_no', 'amount', 'status'],
         'PO_DUP_LINE':                ['client', 'order_id', 'line_no', 'sequence_no', 'status'],
+        'PO_HDR_LINE_CONTRACT_MISMATCH': ['order_id', 'line_no', 'contract_id'],
         'PO_ORPHANED_SUPPLIER':        ['order_id', 'apar_id', 'status', 'client'],
         'PO_INACTIVE_SUPPLIER':        ['order_id', 'apar_id', 'status'],
         'PO_LINE_ORPHAN_ACCOUNT':      ['order_id', 'line_no', 'account'],
@@ -1833,6 +1834,25 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         master = master.drop_duplicates(subset=join_cols)
         master.columns = join_cols + ['Master_Customer_Name', 'Master_Status']
         failing = failing.merge(master, on=join_cols, how='left')
+
+    if check_id == 'PO_HDR_LINE_CONTRACT_MISMATCH' and 'apoheader' in frames:
+        # Explicit join on (client, order_id) — the real apoheader/apodetail key.
+        # The generic referential-integrity join below would instead resolve to
+        # (house, apar_id, voucher_no), since client/order_id aren't in its
+        # candidate key list — that's a different, unverified relationship, not
+        # the actual PO composite key, so this check bypasses it entirely.
+        hdr = frames['apoheader'][frames['apoheader']['house'] == house][['client', 'order_id', 'contract_id']]
+        hdr = hdr.drop_duplicates(subset=['client', 'order_id']).rename(columns={'contract_id': 'apoheader.contract_id'})
+        failing = failing.merge(hdr, on=['client', 'order_id'], how='left')
+        failing = failing.rename(columns={
+            'order_id': 'apodetail.order_id',
+            'line_no':  'apodetail.line_no',
+            'contract_id': 'apodetail.contract_id',
+            **{c: f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS},
+        })
+        cols = ['apodetail.order_id', 'apodetail.line_no', 'apodetail.contract_id', 'apoheader.contract_id'] + \
+               [f'apodetail.{c}' for c in _PO_LINE_STANDARD_FIELDS]
+        return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'PO_FINISHED_WITH_BALANCE' and 'apodetail' in frames:
         # Explicit join on (client, order_id), same reasoning as above. Shows both

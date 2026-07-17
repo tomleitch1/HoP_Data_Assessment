@@ -6,6 +6,29 @@ def _is_blank(s):
     return s.isna() | (s.astype(str).str.strip().isin(['', 'nan', 'None']))
 
 
+def _po_hdr_line_contract_mismatch(df, frames):
+    """Flags apodetail lines whose own contract_id differs from their PO
+    header's contract_id — including cases where one side is blank and the
+    other is populated, not just both being populated with different values.
+    Both sides are normalised to a stripped string (blank/NaN -> '') before
+    comparing, so blank-vs-blank is correctly treated as agreement rather
+    than a mismatch."""
+    if df.empty or 'apoheader' not in frames:
+        return pd.Series(False, index=df.index)
+
+    house = df['house'].iloc[0]
+    hdr = frames['apoheader']
+    hdr = (
+        hdr[hdr['house'] == house][['client', 'order_id', 'contract_id']]
+        .drop_duplicates(subset=['client', 'order_id'])
+        .rename(columns={'contract_id': 'hdr_contract_id'})
+    )
+    merged = df[['client', 'order_id', 'contract_id']].merge(hdr, on=['client', 'order_id'], how='left')
+    line_val = merged['contract_id'].fillna('').astype(str).str.strip()
+    hdr_val = merged['hdr_contract_id'].fillna('').astype(str).str.strip()
+    return (line_val != hdr_val).values
+
+
 def _po_finished_with_balance(df, frames):
     """Flags Finished (F) POs where more than 5% of ordered value is still
     unaccounted for by invoicing. Real PO line data shows arr_amount and
@@ -270,6 +293,18 @@ def get_po_checks():
          'apodetail', None,
          "WHERE (client, order_id, line_no, sequence_no) HAVING COUNT(*) > 1",
          lambda df: df.duplicated(subset=['client', 'order_id', 'line_no', 'sequence_no'], keep=False)),
+
+        ('PO_HDR_LINE_CONTRACT_MISMATCH',
+         15, 'PO Line', 'Consistency', 'Low',
+         'PO line contract reference differs from its header contract reference',
+         "A PO line's own contract_id is expected to match its purchase order header's contract_id. "
+         'A mismatch — whether one side is blank while the other is populated, or both are populated with different values — '
+         'means the line and header disagree about which contract this PO relates to. '
+         'The real-data meaning of this divergence has not yet been confirmed with Parliament.',
+         'Confirm with Parliament whether PO line contract_id is expected to diverge from header contract_id, and correct whichever value is wrong.',
+         'apodetail', 'apoheader',
+         "WHERE COALESCE(apodetail.contract_id,'') <> COALESCE(apoheader.contract_id,'')",
+         _po_hdr_line_contract_mismatch),
 
         # ---------------------------------------------------------------
         # PO DETAIL — cross-domain (GL)
