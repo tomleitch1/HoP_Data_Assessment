@@ -890,7 +890,7 @@ These are the only six confirmed values (no confirmed `P` status). `wf_state` is
 | `PO_ORPHANED_SUPPLIER` | apoheader (joins asuheader) | Consistency | High | status != T | `apar_id` not found in the supplier master on `(client, apar_id)` |
 | `PO_INACTIVE_SUPPLIER` | apoheader (joins asuheader) | Consistency | Medium | status in (O,N,A) | matched supplier's own `status = 'C'` |
 | `PO_LINE_NEG_AMOUNT` | apodetail | Validity | Medium | all rows | `amount` < 0 (no confirmed credit-note category for PO lines, unlike AP/AR) |
-| `PO_ARR_EXCEEDS_AMOUNT` | apodetail | Validity | Medium | all rows | `GREATEST(arr_amount, invoiced)` exceeds `amount` |
+| `PO_ARR_EXCEEDS_AMOUNT` | apodetail | Validity | Medium | status in (O,N,A) | `invoiced` exceeds `amount` — `arr_amount` no longer checked, see below for why |
 | `PO_LINE_NO_CATEGORY` | apodetail | Completeness | Low | all rows | `art_gr_id` blank |
 | `PO_LINE_NO_ACCOUNT` | apodetail | Completeness | High | all rows | `account` blank |
 | `PO_DUP_LINE` | apodetail | Uniqueness | High | all rows | duplicate `(client, order_id, line_no, sequence_no)` |

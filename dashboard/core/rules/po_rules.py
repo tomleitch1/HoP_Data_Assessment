@@ -281,13 +281,14 @@ def get_po_checks():
 
         ('PO_ARR_EXCEEDS_AMOUNT',
          15, 'PO Line', 'Validity', 'Medium',
-         'PO line has been invoiced for more than its ordered value',
-         "A PO line's invoiced value (whichever of arr_amount or invoiced is larger) should not exceed its ordered amount. "
+         'Open PO line has been invoiced for more than its ordered value',
+         "An open PO line's invoiced value (invoiced) should not exceed its ordered amount. "
          'A line invoiced beyond what was ordered suggests over-billing, a data entry error, or an amendment that was not correctly reflected.',
          'Investigate the affected PO line to confirm whether the over-invoicing is legitimate (e.g. a price adjustment) or an error.',
          'apodetail', None,
-         "WHERE GREATEST(COALESCE(arr_amount,0), COALESCE(invoiced,0)) > amount",
-         lambda df: (df[['arr_amount', 'invoiced']].max(axis=1) - df['amount']) > 0.01),
+         "WHERE status IN ('O','N','A') AND invoiced > amount",
+         lambda df: (pd.to_numeric(df['invoiced'], errors='coerce').fillna(0)
+                     - pd.to_numeric(df['amount'], errors='coerce').fillna(0)) > 0.01),
 
         ('PO_LINE_NO_CATEGORY',
          15, 'PO Line', 'Completeness', 'Low',
