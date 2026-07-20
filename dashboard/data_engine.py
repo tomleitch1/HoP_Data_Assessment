@@ -568,7 +568,14 @@ def load_data(tab=None):
             continue
         if not os.path.exists(source_path):
             continue
-        df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE)
+        # These four are pasted/exported from Atamis and Excel rather than
+        # SSMS's own Query Results grid, and have been seen arriving as
+        # Windows-1252 (e.g. a curly quote or en-dash in a free-text contract
+        # title) rather than UTF-8 — fall back rather than crashing the load.
+        try:
+            df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE)
+        except UnicodeDecodeError:
+            df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE, encoding='cp1252')
         df = df.rename(columns=_ATAMIS_RENAME.get(table, {}))
         if table == 'atamis_spend':
             # The extract's first row is a grand-total summary (blank Contract,
