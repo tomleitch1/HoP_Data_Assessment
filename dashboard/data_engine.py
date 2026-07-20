@@ -108,6 +108,11 @@ _SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
 # SQL extract's own column aliases.
 _ATAMIS_RENAME = {
     'atamis_contracts': {
+        # The real export's first column header carries a "Sourcing to
+        # Contract: " report-tool prefix ahead of the field name — both keys
+        # are mapped so a plain 'ContractTitle' header (e.g. from dummy data)
+        # still renames correctly too.
+        'Sourcing to Contract: ContractTitle':  'contract_title',
         'ContractTitle':                        'contract_title',
         'Contract Reference':                    'contract_ref',
         'Contract Manager':                      'contract_manager',
@@ -577,6 +582,15 @@ def load_data(tab=None):
         except UnicodeDecodeError:
             df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE, encoding='cp1252')
         df = df.rename(columns=_ATAMIS_RENAME.get(table, {}))
+        # Guard against a real export header not matching any key in
+        # _ATAMIS_RENAME (report-tool prefixes vary — see contract_title
+        # above) — fill any expected column that didn't get created with
+        # blank rather than letting it KeyError deep in a rule or tab. A
+        # genuinely missing field then just shows up honestly as a 100%
+        # completeness failure instead of crashing the whole dashboard load.
+        for expected_col in set(_ATAMIS_RENAME.get(table, {}).values()):
+            if expected_col not in df.columns:
+                df[expected_col] = pd.NA
         if table == 'atamis_spend':
             # The extract's first row is a grand-total summary (blank Contract,
             # totals across every contract) — not a real per-contract record.
