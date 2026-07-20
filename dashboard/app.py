@@ -19,6 +19,7 @@ from dashboard.tabs.gl import render_tab as render_gl
 from dashboard.tabs.assets import render_tab as render_assets
 from dashboard.tabs.po import render_tab as render_po
 from dashboard.tabs.pbf import render_tab as render_pbf
+from dashboard.tabs.atamis import render_tab as render_atamis
 
 # Keep these in case they are needed for drill-downs or future features
 from dashboard.tabs.explorer import render_explorer_layout, render_explorer_summary
@@ -85,6 +86,9 @@ app.layout = html.Div(style={
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
                 dcc.Tab(label='PBF', value='pbf',
+                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
+                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
+                dcc.Tab(label='Atamis', value='atamis',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
             ]),
@@ -187,7 +191,7 @@ app.layout = html.Div(style={
     Input('master-tabs', 'value')
 )
 def render_tab_content(master_tab):
-    if master_tab not in ['suppliers', 'customers', 'exec-summary', 'gl', 'assets', 'po', 'pbf']:
+    if master_tab not in ['suppliers', 'customers', 'exec-summary', 'gl', 'assets', 'po', 'pbf', 'atamis']:
         return html.Div(style={'padding': '100px', 'textAlign': 'center', 'color': '#94A3B8'}, children=[
             html.Div(f"{master_tab.upper()} Module Data Not Loaded", style={'fontSize': '18px', 'fontWeight': '600'}),
             html.Div("Please select 'Executive summary', 'General Ledger', 'Suppliers', or 'Customers' to view current migration data.", style={'marginTop': '8px'})
@@ -215,6 +219,9 @@ def render_tab_content(master_tab):
     elif master_tab == 'pbf':
         filtered_dq = dq_results[dq_results['scope_id'] == -1] # Adjust logic as needed later
         return render_pbf(filtered_dq, frames)
+    elif master_tab == 'atamis':
+        filtered_dq = dq_results[dq_results['scope_id'].isin([30, 31, 32, 33])]
+        return render_atamis(filtered_dq, frames)
 
     return html.Div("Tab not found")
 

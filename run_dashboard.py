@@ -32,6 +32,7 @@ _VALID_TABS = {
     'gl':        'gl',
     'assets':    'assets',
     'po':        'po',
+    'atamis':    'atamis',
 }
 _tab_label = None
 _version    = None

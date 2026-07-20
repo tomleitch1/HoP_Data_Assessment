@@ -137,9 +137,12 @@ data/
 │                gl_dimension_values_HOC/HOL.csv         ← LOADED (5 GL_DIM_* checks)
 │                gl_transact_dimensions_HOC/HOL.csv      ← not yet loaded
 │                gl_journals_HOC/HOL.csv                 ← not yet extracted (50k rows)
-└── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
-                 asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
-                 asset_groups_HOC/HOL.csv
+├── assets/      asset_master_HOC/HOL.csv, asset_depreciation_HOC/HOL.csv
+│                asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
+│                asset_groups_HOC/HOL.csv
+├── po/          po_header_HOC.csv, po_detail_HOC.csv                    ← HoC only, no HOL data
+└── atamis/      contracts_report.csv, supplier_data_report.csv          ← Atamis — NOT split HOC/HOL
+                 contract_total_commitments.csv, contracts_spend_details.csv  ← Unit4 views, NOT split HOC/HOL
 ```
 
 `data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and `split_files` in `load_data()`. There is no longer a `file_map` for single combined files — all tables use split files.
@@ -947,6 +950,63 @@ The tab tells a two-act story built on the confirmed status meanings, deliberate
 
 ---
 
+## Atamis / Unit4-via-Atamis Domain — Implementation Details
+
+Atamis is Parliament's procurement/contracts system, extracted as four files (added August 2026). Two are Atamis's own data (contracts, suppliers); the other two are Unit4/Agresso views of the same contract spend, pulled in for reconciliation against the Atamis side and against each other.
+
+| File on Parliament laptop | Source system | Frame key | Scope |
+|---|---|---|---|
+| `contracts_report.csv` | Atamis | `atamis_contracts` | 30 |
+| `contract_total_commitments.csv` | Unit4 (Agresso view #1) | `atamis_commitments` | 31 |
+| `contracts_spend_details.csv` | Unit4 (Agresso view #2) | `atamis_spend` | 32 |
+| `supplier_data_report.csv` | Atamis | `atamis_suppliers` | 33 |
+
+All four live in `data/atamis/` on both laptops (added to `SUBDIR['atamis']` in `data_engine.py`, keyed by their real filenames, not by table name).
+
+### Not split by house — the one exception to the HOC/HOL convention
+Every other domain in this codebase is split into `*_HOC.csv` / `*_HOL.csv` extracts. These four are not — each is a single combined file spanning both houses, exactly as Parliament exports them. `data_engine.py` loads them via a separate `single_files` loop (not `split_files`), and house is **derived after loading** by `_derive_atamis_houses()`, not read from the filename or a `client` column:
+- `atamis_contracts` carries its own `Organisation` field (`HOC`/`HOL`/`Joint`) and uses it directly — mapped case-insensitively, with anything else (blank, typo) tagged `Unknown`.
+- `atamis_suppliers`, `atamis_commitments`, and `atamis_spend` have no house field at all. House is derived by matching their supplier identifier against `asuheader.apar_id` (checking HOC first, then HOL): `Creditor Ref` for suppliers, `Supplier ID` for commitments. `atamis_spend` has no supplier identifier of its own, so it inherits its house transitively from its matched `atamis_commitments` row via `u4_contract_id`.
+- A row whose identifier matches neither house is tagged `'Unknown'` — that mismatch is itself the condition several DQ checks test for (`ATAMIS_SUPPLIER_NOT_IN_UNIT4`, `ATAMIS_COMMIT_SUPPLIER_ORPHAN`, `ATAMIS_SPEND_CONTRACT_ORPHAN`), not a gap to paper over with a guessed default.
+- House derivation always recomputes fresh on every `load_data()` call (not persisted through the per-table pickle cache), since it depends on `asuheader` and `atamis_commitments`, which may change independently of the Atamis files' own cache freshness. Cheap — a few thousand rows.
+
+**Engine consequence:** `run_dq_analysis()`'s per-check house loop iterates `ATAMIS_HOUSES = ['HOC', 'HOL', 'Joint', 'Unknown']` instead of the standard `CLIENTS = ['HOC', 'HOL']`, but **only for tables in `ATAMIS_TABLES`** (`for house in (ATAMIS_HOUSES if table in ATAMIS_TABLES else CLIENTS)`). Every other domain's table never has `house == 'Joint'` or `'Unknown'`, so this extension is a no-op for them — total population is 0 for those two extra iterations, and the loop's own `if total == 0: continue` skips them with no cached file ever written for that combination.
+
+**Existence-check population — a deliberate exception to per-house partitioning.** `ATAMIS_SUPPLIER_NOT_IN_UNIT4`, `ATAMIS_COMMIT_SUPPLIER_ORPHAN`, and `ATAMIS_SPEND_CONTRACT_ORPHAN` all test "this row's own derived house is `Unknown`". Naively partitioning by house would produce a trivial 0%-failing row under `HOC`/`HOL`/`Joint` (an unresolved row can never appear in a resolved house's population) alongside the one real 100%-failing row under `Unknown` — noisy and not a genuine rate. `_atamis_existence_population()` in `data_engine.py` fixes this: for these three check IDs, every house iteration *except* `'Unknown'` returns an empty population (skipped entirely), and the `'Unknown'` iteration's population is the **full non-blank identifier population** (not house-filtered), so the check's failing/total ratio is a real percentage of the whole population, reported as a single `dq_results` row tagged `house='Unknown'`. `ATAMIS_CONTRACT_REF_NOT_IN_PO` does not use this pattern — `HOC` and `Joint` are both genuine, meaningful populations for that check (PO is HoC-only, so `HOL` naturally yields zero and is skipped by the ordinary per-house filter).
+
+### Column renaming
+The raw Atamis/Unit4 export headers (e.g. `"Contract Reference"`, `"Supplier ID"`, `"Amount (C)"`) are renamed to clean snake_case (`contract_ref`, `supplier_id`, `amount_c`) via the `_ATAMIS_RENAME` dict in `data_engine.py`, applied once at load time — unlike every other domain, whose CSVs already arrive with clean names baked in by their SQL extract's own column aliases. `Total Award Value` / `Current Value` arrive as `"GBP45,000.00"` and have their `GBP` prefix stripped before the standard comma-strip numeric conversion.
+
+**`contracts_spend_details.csv`'s first row is a grand-total summary** (blank `Contract`, totals across every contract) — filtered out at load time in the `single_files` loop (`df[df['u4_contract_id'].notna() & ...]`), not treated as a real per-contract record.
+
+### The join keys — three different identifier schemes, only some of which connect
+- **`contracts_report.Contract Reference`** (Atamis, e.g. `FWK1128-MEPFS1037`) joins directly to **`po_detail_HOC.contract_id`** — confirmed by Parliament. HOL contracts have no PO to match against (PO is HoC-only), so `ATAMIS_CONTRACT_REF_NOT_IN_PO` is scoped to `Organisation IN ('HOC', 'Joint')` only.
+- **`contract_total_commitments.Contract Id`** (Unit4, e.g. `ARC1002`) is a *different, unrelated identifier scheme* from Atamis's Contract Reference — there is no known mapping between the two, confirmed directly with the user. `contracts_report` and `contract_total_commitments`/`contracts_spend_details` are therefore two separate identifier universes in this first pass; only the join to PO (via Contract Reference) and the join between the two Unit4 views (via Contract Id / `Contract`) are implemented.
+- **`contract_total_commitments.Supplier ID`** (numeric, e.g. `8705187`) joins directly to **`asuheader.apar_id`** — this is how house is derived for commitments (and transitively for spend).
+- **`supplier_data_report.Creditor Ref`** — **not** `Supplier: ID` (a Salesforce record identifier) — is the join key to `asuheader.apar_id`. Using `Supplier: ID` here would be wrong; this was flagged explicitly by the user and is the reason `ATAMIS_SUPPLIER_NO_CREDITOR_REF`/`ATAMIS_SUPPLIER_NOT_IN_UNIT4` key off `creditor_ref`, never `supplier_salesforce_id`.
+
+### DQ checks (20 total, `dashboard/core/rules/atamis_rules.py`)
+Completeness/Validity/Uniqueness checks per table (contract reference/dates/organisation validity, commitment date and remaining-amount arithmetic, supplier Creditor Ref presence/uniqueness), plus the cross-system checks that are this domain's main value:
+- `ATAMIS_SUPPLIER_NOT_IN_UNIT4` / `UNIT4_SUPPLIER_NOT_IN_ATAMIS` — supplier existence in each direction. The reverse direction is genuinely expected to have failures (payroll/tax/individual-type Unit4 suppliers commonly never go through procurement), so it's Medium not High severity.
+- `ATAMIS_CONTRACT_REF_NOT_IN_PO` — Atamis contract with no matching PO line.
+- `ATAMIS_COMMIT_SUPPLIER_ORPHAN` / `ATAMIS_SPEND_CONTRACT_ORPHAN` — Unit4-side records that don't resolve against the supplier master / the other Unit4 view.
+- `ATAMIS_COMMIT_VS_SPEND_MISMATCH` — the two Unit4 views' own `Posted` figures disagree by more than a materiality threshold on the same contract; Parliament flagged this as a known possible discrepancy area between the systems.
+- `ATAMIS_COMMIT_OVERSPEND` — a contract posted beyond its authorised `Contract Amount Limit`.
+
+### Modal drill-down
+Most checks fall through to `get_failing_records()`'s generic tail (no early-return block needed — same convention as every other domain's simple checks), which prefixes columns with the lowercase table name (e.g. `atamis_contracts.contract_ref`) and still narrows correctly via `get_check_columns()`'s substring-based `base_cols` matching in `app.py`. Three checks have explicit early-return blocks (same reasoning as PO's cross-domain checks — the generic referential-integrity auto-join's only common column between these tables is `house`, which would dedupe the joined side down to one arbitrary row per house and attach it to every failing row): `UNIT4_SUPPLIER_NOT_IN_ATAMIS`, `ATAMIS_CONTRACT_REF_NOT_IN_PO`, and `ATAMIS_COMMIT_VS_SPEND_MISMATCH` (the latter enriches with `ATAMIS_COMMITMENTS.posted_amount` alongside `atamis_spend`'s own `posted`/`amount_c`, so the two views' disagreement is directly visible).
+
+### Tab (`dashboard/tabs/atamis.py`)
+Dark navy + Parliament green design (distinct from PO's teal), following the same hero/section-card/DQ-scorecard structure as every other tab: hero banner, an Organisation split (HOC/HOL/Joint — the only Atamis dataset with a genuine three-way house split, `contracts_report`'s own field), a **Cross-System Reconciliation** section (the flagship view — a three-segment overlap bar for Atamis-only / matched / Unit4-only suppliers, plus stat cards for the other four cross-system checks), top-15 contracts by award value, contract lifecycle (active/expired/expiring-within-90-days by `End Date`), a contract financials summary comparing the two Unit4 views, then the standard `render_dimension_scorecard()`/`render_dimension_grid()` DQ section.
+
+### Dummy data (`scripts/generate_atamis_dummy_data.py`)
+Reads the real HOC/HOL supplier master CSVs and `po_header_HOC.csv` (already generated by their own dummy generators) to build genuine cross-references rather than a disjoint ID space, then deliberately injects the mismatches the DQ checks are meant to catch: orphan Creditor Refs, orphan Supplier IDs, contracts with no PO match, commitments/spend disagreements, a few of Atamis's own real sample/test supplier rows (`Sample Child Supplier 2`, `Atamis Test supplier`, etc.), and the grand-total row at the top of `contracts_spend_details.csv`.
+
+### Known limitation (same pattern as PO)
+`python run_dashboard.py atamis` (tab-scoped mode) only loads the four Atamis files, not `asuheader`/`apodetail` — so house derivation falls back to `'Unknown'` for everything and the cross-system checks under-report. Run the full dashboard (`python run_dashboard.py`, no tab filter) for meaningful cross-system numbers, same caution already documented for PO's own cross-domain checks.
+
+---
+
 ## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**
@@ -976,8 +1036,16 @@ The tab tells a two-act story built on the confirmed status meanings, deliberate
 - Built and verified against dummy data only this session — needs a run on the Parliament laptop to confirm real-data behaviour, same caution as GL/Assets checks built ahead of real-data confirmation
 - The two orphan cross-domain checks show inflated failure rates against dummy data (disjoint dummy ID ranges across domains, not a logic bug — see PO Domain section above)
 
+**Atamis tab — new this session (August 2026), built entirely against dummy data:**
+- 20 checks across all four files (`dashboard/core/rules/atamis_rules.py`, scopes 30–33) — see the Atamis Domain section above for the full design (house derivation, join keys, the 3 cross-system checks with custom modal enrichment)
+- Tab (`dashboard/tabs/atamis.py`) built with a distinct dark-navy/Parliament-green visual identity: hero, HOC/HOL/Joint organisation split, a flagship Cross-System Reconciliation section (supplier overlap bar + 4 cross-system stat cards), top-15 contracts by value, contract lifecycle, contract financials, then the standard DQ scorecard/grid
+- Verified end-to-end against dummy data this session: loader, house derivation, all 20 checks' population/failing counts, and all 6 checks with custom `get_failing_records()` handling (3 early-return blocks, 3 using the shared `_atamis_existence_population()` helper) — confirmed via direct Python smoke tests and a live Dash callback round-trip (`_dash-update-component` POST for the `atamis` tab returned 200 with no exception and every expected section present)
+- Needs a run against real Parliament data to confirm real-world reconciliation rates, same caution as every other domain built ahead of real-data confirmation
+- Known limitation: `python run_dashboard.py atamis` (tab-scoped mode) doesn't load `asuheader`/`apodetail`, so cross-system checks under-report in that mode — same pattern as PO's own tab-scoped limitation. Use the full dashboard for meaningful numbers.
+
 **Not yet implemented:**
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
+- Cross-domain checks between Atamis and GL (e.g. contract spend vs GL account/dimension values) — not yet built, same "don't add checks speculatively" principle as everywhere else in this codebase
 
 **Dummy data generator** (`scripts/generate_gl_dummy_data.py`) updated to match all confirmed real formats:
 - Chart of accounts: Excel serial dates, CA/CM/LA clients, bflag powers of 2

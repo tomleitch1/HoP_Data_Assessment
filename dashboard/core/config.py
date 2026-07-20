@@ -30,6 +30,10 @@ class Scope(IntEnum):
     GL_TRANSACTIONS = 23
     PO_ORDERS = 15
     PBF = 25
+    ATAMIS_CONTRACTS = 30
+    ATAMIS_COMMITMENTS = 31
+    ATAMIS_SPEND = 32
+    ATAMIS_SUPPLIERS = 33
 
 class SupplierConfig:
     BACS_PAYMENT_METHODS = ['BACS']
@@ -171,6 +175,13 @@ SCOPE_CONFIG = {
         'tables':    ['pbf_data'],
         'aging':     None,
     },
+    'atamis': {
+        'label':     'Atamis',
+        'tab_value': 'atamis',
+        'scope_ids': [Scope.ATAMIS_CONTRACTS, Scope.ATAMIS_COMMITMENTS, Scope.ATAMIS_SPEND, Scope.ATAMIS_SUPPLIERS],
+        'tables':    ['atamis_contracts', 'atamis_commitments', 'atamis_spend', 'atamis_suppliers'],
+        'aging':     None,
+    },
 }
 
 SCOPE_LABELS = {
@@ -186,6 +197,10 @@ SCOPE_LABELS = {
     Scope.ASSETS: 'Assets',
     Scope.PO_ORDERS: 'Purchase Orders',
     Scope.PBF: 'Planning, Budgeting & Forecasting',
+    Scope.ATAMIS_CONTRACTS: 'Atamis Contracts',
+    Scope.ATAMIS_COMMITMENTS: 'Contract Commitments',
+    Scope.ATAMIS_SPEND: 'Contract Spend',
+    Scope.ATAMIS_SUPPLIERS: 'Atamis Suppliers',
 }
 
 SCOPE_TABLES = {
@@ -213,6 +228,7 @@ ALL_TABLES = [
     'gl_coa', 'gl_dim_values', 'gl_opening_balances', 'gl_transact_dims',
     'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags',
     'apoheader', 'apodetail', 'pbf_data',
+    'atamis_contracts', 'atamis_commitments', 'atamis_spend', 'atamis_suppliers',
 ]
 
 # Per-severity RAG thresholds (error rate %). Green = below first value, Amber = below second, Red = above.
