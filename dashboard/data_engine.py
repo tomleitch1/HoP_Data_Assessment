@@ -461,6 +461,17 @@ def load_data(tab=None):
     names_to_load = set(SUBDIR.get(tab, [])) if tab else {
         n for names in SUBDIR.values() for n in names
     }
+    if tab == 'atamis':
+        # Atamis's own checks are inherently cross-domain — house derivation and
+        # the cross-system checks (supplier/contract reconciliation) need the
+        # Unit4 supplier master and PO data to match against. Without these,
+        # `python run_dashboard.py atamis` would load only the four Atamis files
+        # and every row would resolve to house='Unknown'. Unlike PO's own
+        # tab-scoped mode (documented as a known limitation, left as-is since
+        # PO's cross-domain checks are a minority of its suite), Atamis's
+        # cross-system checks are the domain's main value, so this is loaded
+        # unconditionally in tab-scoped mode rather than left as a gap.
+        names_to_load |= {'supplier_master', 'po_header', 'po_detail'}
 
     # Tables where house is determined by the filename suffix (_HOC / _HOL),
     # not by the client column. The client column contains internal Unit4 client
