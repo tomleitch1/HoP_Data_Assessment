@@ -37,18 +37,19 @@ def _atamis_contract_ref_not_in_po(df, frames):
     return ~refs.isin(po_refs)
 
 
-def _atamis_commit_vs_spend_mismatch(df, frames):
+def _unit4_commit_vs_spend_mismatch(df, frames):
     """Flags contracts where the two Unit4 views of the same spend — the
     Commitments view's posted_amount and the Spend Details view's own posted
     figure — disagree by more than a small materiality threshold. The two are
     separate Agresso views of the same underlying ledger and are not guaranteed
     to reconcile; Parliament flagged this as a known area of potential
-    discrepancy between the systems."""
-    if df.empty or 'atamis_commitments' not in frames:
+    discrepancy between the systems. Both sides of this check are Unit4 data —
+    Atamis isn't involved at all — hence the UNIT4_ prefix on the check id."""
+    if df.empty or 'unit4_commitments' not in frames:
         return pd.Series(False, index=df.index)
 
     commit = (
-        frames['atamis_commitments'][['u4_contract_id', 'posted_amount']]
+        frames['unit4_commitments'][['u4_contract_id', 'posted_amount']]
         .drop_duplicates(subset=['u4_contract_id'])
         .rename(columns={'posted_amount': '_commit_posted'})
     )
@@ -66,21 +67,23 @@ def _atamis_contract_not_in_commitments(df, frames):
     were unrelated identifier schemes. A contract with no commitment record may
     simply be newly awarded with no financial activity yet, so this is Medium
     rather than High."""
-    if df.empty or 'atamis_commitments' not in frames:
+    if df.empty or 'unit4_commitments' not in frames:
         return pd.Series(False, index=df.index)
 
     commit_ids = set(
-        frames['atamis_commitments']['u4_contract_id'].dropna().astype(str).str.strip()
+        frames['unit4_commitments']['u4_contract_id'].dropna().astype(str).str.strip()
     )
     refs = df['contract_ref'].astype(str).str.strip()
     return ~refs.isin(commit_ids)
 
 
-def _atamis_commit_not_in_contracts(df, frames):
+def _unit4_commit_not_in_contracts(df, frames):
     """Flags Unit4 commitment records whose Contract Id has no matching Contract
     Reference in the Atamis contracts list. Every financial commitment is
     expected to trace back to a real contract record, so this is High severity —
-    more surprising than the reverse direction."""
+    more surprising than the reverse direction. The source record here is Unit4
+    data (contract_total_commitments.csv), hence the UNIT4_ prefix — only the
+    thing it's being checked against (the Atamis contracts list) is Atamis's."""
     if df.empty or 'atamis_contracts' not in frames:
         return pd.Series(False, index=df.index)
 
@@ -97,11 +100,11 @@ def _atamis_contract_value_mismatch(df, frames):
     contract. Unmatched contracts (no commitment counterpart at all — see
     ATAMIS_CONTRACT_NOT_IN_COMMITMENTS) are left unflagged here since there is
     nothing to compare against."""
-    if df.empty or 'atamis_commitments' not in frames:
+    if df.empty or 'unit4_commitments' not in frames:
         return pd.Series(False, index=df.index)
 
     commit = (
-        frames['atamis_commitments'][['u4_contract_id', 'award_amount']]
+        frames['unit4_commitments'][['u4_contract_id', 'award_amount']]
         .drop_duplicates(subset=['u4_contract_id'])
         .rename(columns={'u4_contract_id': 'contract_ref', 'award_amount': '_commit_award'})
     )
@@ -210,8 +213,8 @@ def get_atamis_checks():
          "Every populated Contract Reference is expected to match a Contract Id in the Unit4 Commitments view. "
          'A contract with no matching commitment record may simply be newly awarded with no financial activity posted yet, or may be a genuine linking gap between the two systems worth reviewing.',
          'Confirm with the contract owner whether the affected contract is expected to have Unit4 commitment activity, and investigate the missing link if so.',
-         'atamis_contracts', 'atamis_commitments',
-         "WHERE \"Contract Reference\" NOT IN (SELECT \"Contract Id\" FROM atamis_commitments)",
+         'atamis_contracts', 'unit4_commitments',
+         "WHERE \"Contract Reference\" NOT IN (SELECT \"Contract Id\" FROM contract_total_commitments)",
          _atamis_contract_not_in_commitments),
 
         ('ATAMIS_CONTRACT_VALUE_MISMATCH',
@@ -220,8 +223,8 @@ def get_atamis_checks():
          "For a contract matched between the two systems, Atamis's Total Award Value is expected to agree with the Unit4 Commitments view's own Contract Award Amount for the same contract. "
          'A material disagreement suggests one of the two systems is holding a stale or incorrectly entered award value, which needs reconciling before either figure is relied on for migration.',
          'Confirm with the contract owner which award value is correct for the affected contract, and correct the other system.',
-         'atamis_contracts', 'atamis_commitments',
-         "WHERE ABS(atamis_contracts.\"Total Award Value\" - atamis_commitments.\"Contract Award Amount\") > GREATEST(atamis_contracts.\"Total Award Value\" * 0.02, 1.00)",
+         'atamis_contracts', 'unit4_commitments',
+         "WHERE ABS(contracts_report.\"Total Award Value\" - contract_total_commitments.\"Contract Award Amount\") > GREATEST(contracts_report.\"Total Award Value\" * 0.02, 1.00)",
          _atamis_contract_value_mismatch),
 
         # ---------------------------------------------------------------
@@ -268,121 +271,128 @@ def get_atamis_checks():
          'A supplier that transacts in Unit4 but was never registered in Atamis is not unusual for payroll, tax, or individual-type suppliers, but is still worth reviewing for anything that should have gone through procurement.',
          'Confirm whether the affected supplier is expected to be in Atamis, and register it there if so.',
          'asuheader', 'atamis_suppliers',
-         "WHERE apar_id NOT IN (SELECT \"Creditor Ref\" FROM atamis_suppliers)",
+         "WHERE apar_id NOT IN (SELECT \"Creditor Ref\" FROM supplier_data_report)",
          _unit4_supplier_not_in_atamis),
 
         # ---------------------------------------------------------------
-        # CONTRACT COMMITMENTS — atamis_commitments / contract_total_commitments.csv
-        # Unit4 view #1 of contract spend. Supplier ID is the join key to
-        # asuheader.apar_id.
+        # CONTRACT COMMITMENTS — unit4_commitments / contract_total_commitments.csv
+        # Unit4 view #1 of contract spend. Both the source record and the
+        # Supplier ID join target (asuheader) are Unit4 data — Atamis isn't
+        # involved in any of these checks, hence the UNIT4_ prefix (renamed
+        # from ATAMIS_COMMIT_* in August 2026, per direct request, after the
+        # original naming was found misleading — it implied this data came
+        # from Atamis when it's actually a Unit4/Agresso view).
         # ---------------------------------------------------------------
 
-        ('ATAMIS_COMMIT_NO_SUPPLIER_ID',
+        ('UNIT4_COMMIT_NO_SUPPLIER_ID',
          31, 'Contract Commitment', 'Completeness', 'High',
          'Contract commitment record has no Supplier ID',
          'Every contract commitment record must carry a Supplier ID. '
          'This is the only field that links a commitment back to the Unit4 supplier master and determines which house it belongs to. '
          'A record with no Supplier ID cannot be assigned a house and cannot be reconciled against the supplier master.',
          'Add the correct Supplier ID to the affected commitment record in Unit4.',
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE \"Supplier ID\" IS NULL OR TRIM(\"Supplier ID\") = ''",
          lambda df: _is_blank(df['supplier_id'])),
 
-        ('ATAMIS_COMMIT_DATE_INVALID',
+        ('UNIT4_COMMIT_DATE_INVALID',
          31, 'Contract Commitment', 'Validity', 'Medium',
          'Contract commitment Date To is before its Date From',
          "A contract commitment's Date To must not fall before its own Date From. "
          'A record with dates the wrong way round signals a data entry error and cannot be placed correctly on a migration timeline.',
          'Correct the date range on the affected commitment record in Unit4.',
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE \"Contract Date To\" < \"Contract Date From\"",
          lambda df: df['date_to'] < df['date_from']),
 
-        ('ATAMIS_COMMIT_REMAINING_MISMATCH',
+        ('UNIT4_COMMIT_REMAINING_MISMATCH',
          31, 'Contract Commitment', 'Validity', 'Medium',
          "Remaining Amount does not equal Amount Limit minus Posted Amount",
          "A contract commitment's Remaining Amount is expected to equal its Contract Amount Limit minus its Posted Amount. "
          'A mismatch here points to raw data corruption or a calculation error in one of the three stored fields, not a process issue.',
          'Investigate which of Amount Limit, Posted Amount, or Remaining Amount is wrong on the affected commitment record in Unit4.',
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE ABS(\"Remaining Amount\" - (\"Contract Amount Limit\" - \"Posted Amount\")) > 1.00",
          lambda df: ((pd.to_numeric(df['amount_limit'], errors='coerce').fillna(0)
                       - pd.to_numeric(df['posted_amount'], errors='coerce').fillna(0))
                      - pd.to_numeric(df['remaining_amount'], errors='coerce').fillna(0)).abs() > 1.00),
 
-        ('ATAMIS_COMMIT_OVERSPEND',
+        ('UNIT4_COMMIT_OVERSPEND',
          31, 'Contract Commitment', 'Consistency', 'Medium',
          'Contract has been posted beyond its authorised amount limit',
          "A contract's Posted Amount is not expected to exceed its Contract Amount Limit, leaving Remaining Amount negative. "
          'A contract posted beyond its authorised limit represents spend that was never formally approved and should be reviewed before cutover, whether or not the underlying arithmetic in Remaining Amount is otherwise correct.',
          "Confirm with the contract owner whether the affected contract's limit should be increased, or whether the overspend needs investigating.",
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE \"Remaining Amount\" < -1.00",
          lambda df: pd.to_numeric(df['remaining_amount'], errors='coerce').fillna(0) < -1.00),
 
-        ('ATAMIS_COMMIT_DUP_ID',
+        ('UNIT4_COMMIT_DUP_ID',
          31, 'Contract Commitment', 'Uniqueness', 'High',
          'Duplicate Contract Id across commitment records',
          'Every Contract Id in the commitments view is expected to be unique. '
          'A duplicate Contract Id means two records are competing for the same contract, which the new system cannot load as-is and which also breaks the join to the Spend Details view.',
          'Investigate the duplicate Contract Id values in Unit4 and confirm which record, if either, is genuine.',
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE \"Contract Id\" HAVING COUNT(*) > 1",
          lambda df: df.duplicated(subset=['u4_contract_id'], keep=False) & ~_is_blank(df['u4_contract_id'])),
 
-        ('ATAMIS_COMMIT_SUPPLIER_ORPHAN',
+        ('UNIT4_COMMIT_SUPPLIER_ORPHAN',
          31, 'Contract Commitment', 'Consistency', 'High',
          'Contract commitment references a supplier that does not exist in Unit4',
          "Every contract commitment's Supplier ID is expected to match an apar_id in the Unit4 supplier master, in either house. "
          'A commitment referencing a supplier that cannot be found has no route back to the supplier master and cannot be reconciled at cutover.',
          'Correct the Supplier ID on the affected commitment record, or add the missing supplier to the Unit4 supplier master if it should exist.',
-         'atamis_commitments', None,
+         'unit4_commitments', None,
          "WHERE \"Supplier ID\" NOT IN (SELECT apar_id FROM asuheader)",
          lambda df: df['house'] == 'Unknown'),
 
-        ('ATAMIS_COMMIT_NOT_IN_CONTRACTS',
+        ('UNIT4_COMMIT_NOT_IN_CONTRACTS',
          31, 'Contract Commitment', 'Consistency', 'High',
          'Unit4 commitment has no matching Atamis contract record',
          'Every Unit4 commitment record is expected to trace back to a real contract in Atamis via Contract Id / Contract Reference. '
          'A commitment with no matching contract record is more surprising than the reverse direction — financial commitment should not exist without a contract behind it — and should be investigated before cutover.',
          'Investigate the affected Contract Id in Atamis and confirm why Unit4 holds a commitment against it with no corresponding contract record.',
-         'atamis_commitments', 'atamis_contracts',
-         "WHERE \"Contract Id\" NOT IN (SELECT \"Contract Reference\" FROM atamis_contracts)",
-         _atamis_commit_not_in_contracts),
+         'unit4_commitments', 'atamis_contracts',
+         "WHERE \"Contract Id\" NOT IN (SELECT \"Contract Reference\" FROM contracts_report)",
+         _unit4_commit_not_in_contracts),
 
         # ---------------------------------------------------------------
-        # CONTRACT SPEND — atamis_spend / contracts_spend_details.csv
-        # Unit4 view #2 of the same contracts, joined to atamis_commitments
-        # via u4_contract_id (Contract in the source extract).
+        # CONTRACT SPEND — unit4_spend / contracts_spend_details.csv
+        # Unit4 view #2 of the same contracts, joined to unit4_commitments
+        # via u4_contract_id (Contract in the source extract). Both this view
+        # and the Commitments view it's compared against are Unit4 data —
+        # hence the UNIT4_ prefix (renamed from ATAMIS_SPEND_* in August 2026,
+        # same reasoning as CONTRACT COMMITMENTS above).
         # ---------------------------------------------------------------
 
-        ('ATAMIS_SPEND_CONTRACT_ORPHAN',
+        ('UNIT4_SPEND_CONTRACT_ORPHAN',
          32, 'Contract Spend', 'Consistency', 'High',
          'Spend record has no matching contract in the Commitments view',
          'Every record in the Spend Details view is expected to match a Contract Id in the Commitments view. '
          'A spend record with no matching commitment cannot be assigned a house and cannot be reconciled against the rest of the contract data.',
          'Investigate the affected Contract Id in Unit4 and confirm why it appears in Spend Details but not in Commitments.',
-         'atamis_spend', 'atamis_commitments',
-         "WHERE Contract NOT IN (SELECT \"Contract Id\" FROM atamis_commitments)",
+         'unit4_spend', 'unit4_commitments',
+         "WHERE Contract NOT IN (SELECT \"Contract Id\" FROM contract_total_commitments)",
          lambda df: df['house'] == 'Unknown'),
 
-        ('ATAMIS_SPEND_NEGATIVE_POSTED',
+        ('UNIT4_SPEND_NEGATIVE_POSTED',
          32, 'Contract Spend', 'Validity', 'Low',
          'Spend record has a negative Posted value',
          'A contract\'s Posted value in the Spend Details view is ordinarily expected to be positive. '
          'A negative value may reflect a genuine credit note or reversal, but is worth a second look given no credit-note category is confirmed for this extract.',
          'Confirm whether the affected negative Posted value is a genuine credit or reversal, or a data entry error, in Unit4.',
-         'atamis_spend', None,
+         'unit4_spend', None,
          "WHERE Posted < 0",
          lambda df: pd.to_numeric(df['posted'], errors='coerce').fillna(0) < 0),
 
-        ('ATAMIS_COMMIT_VS_SPEND_MISMATCH',
+        ('UNIT4_COMMIT_VS_SPEND_MISMATCH',
          32, 'Contract Spend', 'Consistency', 'Medium',
          "Commitments and Spend Details views disagree on Posted amount",
          "A contract's Posted Amount in the Commitments view is expected to agree with its own Posted figure in the Spend Details view — both are Agresso views of the same underlying ledger. "
          'A material disagreement between the two suggests one of the views is stale or the two are computed on a different basis, and should be reconciled before either is relied on for migration decisions.',
          'Confirm with the Unit4 report owner which view is authoritative for the affected contract, and reconcile the difference.',
-         'atamis_spend', 'atamis_commitments',
-         "WHERE ABS(atamis_commitments.\"Posted Amount\" - atamis_spend.Posted) > 1.00",
-         _atamis_commit_vs_spend_mismatch),
+         'unit4_spend', 'unit4_commitments',
+         "WHERE ABS(contract_total_commitments.\"Posted Amount\" - contracts_spend_details.Posted) > 1.00",
+         _unit4_commit_vs_spend_mismatch),
     ]

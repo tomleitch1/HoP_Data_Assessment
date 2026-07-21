@@ -26,7 +26,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 # see _derive_atamis_houses(). ATAMIS_HOUSES extends the standard 2-house iteration
 # in run_dq_analysis() for these tables only; every other table's checks are
 # unaffected since their 'house' column never equals 'Joint' or 'Unknown'.
-ATAMIS_TABLES = {'atamis_contracts', 'atamis_commitments', 'atamis_spend', 'atamis_suppliers'}
+ATAMIS_TABLES = {'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers'}
 ATAMIS_HOUSES = ['HOC', 'HOL', 'Joint', 'Unknown']
 
 
@@ -36,8 +36,8 @@ def _atamis_blank(s: pd.Series) -> pd.Series:
 
 def _atamis_existence_population(df_table, house, id_col):
     """Shared population for Atamis 'no matching record in the other system'
-    checks (ATAMIS_SUPPLIER_NOT_IN_UNIT4, ATAMIS_COMMIT_SUPPLIER_ORPHAN,
-    ATAMIS_SPEND_CONTRACT_ORPHAN), whose failing condition is the row's own
+    checks (ATAMIS_SUPPLIER_NOT_IN_UNIT4, UNIT4_COMMIT_SUPPLIER_ORPHAN,
+    UNIT4_SPEND_CONTRACT_ORPHAN), whose failing condition is the row's own
     derived house being 'Unknown'. 'Unknown' isn't a real house to report a
     rate under three times over (HOC/HOL/Joint would each trivially show 0%,
     since an unresolved row can never appear in a resolved house's population) —
@@ -133,7 +133,7 @@ _ATAMIS_RENAME = {
         'Parent Contract / Framework':             'parent_contract',
     },
     # Unit4 view #1 of contract spend — Committed/Posted/Remaining as at extract date.
-    'atamis_commitments': {
+    'unit4_commitments': {
         'Contract Id':                    'u4_contract_id',
         'Contract Title':                 'contract_title',
         'Contract Date From':             'date_from',
@@ -149,9 +149,9 @@ _ATAMIS_RENAME = {
         'Remaining Amount':               'remaining_amount',
     },
     # Unit4 view #2 of contract spend — a separate Agresso view of the same
-    # contracts, joined back to atamis_commitments via u4_contract_id. The two
-    # views can disagree (see ATAMIS_COMMIT_VS_SPEND_MISMATCH).
-    'atamis_spend': {
+    # contracts, joined back to unit4_commitments via u4_contract_id. The two
+    # views can disagree (see UNIT4_COMMIT_VS_SPEND_MISMATCH).
+    'unit4_spend': {
         'Contract':   'u4_contract_id',
         'Posted':     'posted',
         'Amount (C)': 'amount_c',
@@ -179,7 +179,7 @@ def _derive_atamis_houses(frames: dict) -> None:
     against asuheader.apar_id (checking HOC first, then HOL). A row whose
     identifier matches neither house is tagged 'Unknown' — that mismatch is
     exactly the condition several DQ checks below test for (e.g.
-    ATAMIS_SUPPLIER_NOT_IN_UNIT4, ATAMIS_COMMIT_SUPPLIER_ORPHAN), not a gap to
+    ATAMIS_SUPPLIER_NOT_IN_UNIT4, UNIT4_COMMIT_SUPPLIER_ORPHAN), not a gap to
     be papered over with a guessed default.
     """
     asu = frames.get('asuheader')
@@ -233,15 +233,15 @@ def _derive_atamis_houses(frames: dict) -> None:
         df = frames['atamis_suppliers']
         df['house'] = _match_house(df['creditor_ref'])
 
-    if 'atamis_commitments' in frames:
-        df = frames['atamis_commitments']
+    if 'unit4_commitments' in frames:
+        df = frames['unit4_commitments']
         df['house'] = _match_house(df['supplier_id'])
 
-    if 'atamis_spend' in frames:
-        df = frames['atamis_spend']
-        if 'atamis_commitments' in frames:
+    if 'unit4_spend' in frames:
+        df = frames['unit4_spend']
+        if 'unit4_commitments' in frames:
             commit_house = (
-                frames['atamis_commitments'][['u4_contract_id', 'house']]
+                frames['unit4_commitments'][['u4_contract_id', 'house']]
                 .drop_duplicates(subset=['u4_contract_id'])
             )
             merged = df[['u4_contract_id']].merge(commit_house, on='u4_contract_id', how='left')
@@ -589,8 +589,8 @@ def load_data(tab=None):
     # filename, so nothing house-related happens in this loop.
     single_files = {
         'contracts_report':             'atamis_contracts',
-        'contract_total_commitments':   'atamis_commitments',
-        'contracts_spend_details':      'atamis_spend',
+        'contract_total_commitments':   'unit4_commitments',
+        'contracts_spend_details':      'unit4_spend',
         'supplier_data_report':         'atamis_suppliers',
     }
     for base_name, table in single_files.items():
@@ -621,7 +621,7 @@ def load_data(tab=None):
         for expected_col in set(_ATAMIS_RENAME.get(table, {}).values()):
             if expected_col not in df.columns:
                 df[expected_col] = pd.NA
-        if table == 'atamis_spend':
+        if table == 'unit4_spend':
             # The extract's first row is a grand-total summary (blank Contract,
             # totals across every contract) — not a real per-contract record.
             df = df[df['u4_contract_id'].notna() & (df['u4_contract_id'].astype(str).str.strip() != '')]
@@ -723,7 +723,7 @@ def load_data(tab=None):
                 pass
 
     # Always recompute Atamis house assignment fresh, even for cache-hit frames —
-    # it depends on asuheader (and, for atamis_spend, atamis_commitments), which
+    # it depends on asuheader (and, for unit4_spend, unit4_commitments), which
     # may have changed independently of the Atamis files' own cache freshness.
     # Cheap (a few thousand rows), so not worth its own cache entry.
     if any(t in frames for t in ATAMIS_TABLES):
@@ -879,9 +879,9 @@ def run_dq_analysis(frames, tab=None):
             elif table in ATAMIS_TABLES:
                 if check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
                     h_df = _atamis_existence_population(df_table, house, 'creditor_ref')
-                elif check_id == 'ATAMIS_COMMIT_SUPPLIER_ORPHAN':
+                elif check_id == 'UNIT4_COMMIT_SUPPLIER_ORPHAN':
                     h_df = _atamis_existence_population(df_table, house, 'supplier_id')
-                elif check_id == 'ATAMIS_SPEND_CONTRACT_ORPHAN':
+                elif check_id == 'UNIT4_SPEND_CONTRACT_ORPHAN':
                     h_df = _atamis_existence_population(df_table, house, 'u4_contract_id')
                 elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
                     # PO is HoC-only, so an HOL contract has no PO to match against —
@@ -1234,19 +1234,19 @@ def get_check_columns():
         'ATAMIS_SUPPLIER_NOT_IN_UNIT4':      ['creditor_ref', 'supplier_name'],
         'UNIT4_SUPPLIER_NOT_IN_ATAMIS':      ['apar_id', 'apar_name', 'status'],
 
-        # Contract Commitments (atamis_commitments / contract_total_commitments — Unit4)
-        'ATAMIS_COMMIT_NO_SUPPLIER_ID':      ['u4_contract_id', 'contract_title', 'supplier_name'],
-        'ATAMIS_COMMIT_DATE_INVALID':        ['u4_contract_id', 'date_from', 'date_to'],
-        'ATAMIS_COMMIT_REMAINING_MISMATCH':  ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
-        'ATAMIS_COMMIT_DUP_ID':              ['u4_contract_id', 'contract_title', 'supplier_id'],
-        'ATAMIS_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
-        'ATAMIS_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
-        'ATAMIS_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name'],
+        # Contract Commitments (unit4_commitments / contract_total_commitments — Unit4)
+        'UNIT4_COMMIT_NO_SUPPLIER_ID':      ['u4_contract_id', 'contract_title', 'supplier_name'],
+        'UNIT4_COMMIT_DATE_INVALID':        ['u4_contract_id', 'date_from', 'date_to'],
+        'UNIT4_COMMIT_REMAINING_MISMATCH':  ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
+        'UNIT4_COMMIT_DUP_ID':              ['u4_contract_id', 'contract_title', 'supplier_id'],
+        'UNIT4_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
+        'UNIT4_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
+        'UNIT4_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name'],
 
-        # Contract Spend (atamis_spend / contracts_spend_details — Unit4)
-        'ATAMIS_SPEND_CONTRACT_ORPHAN':      ['u4_contract_id', 'posted', 'amount_c'],
-        'ATAMIS_SPEND_NEGATIVE_POSTED':      ['u4_contract_id', 'posted', 'amount_c'],
-        'ATAMIS_COMMIT_VS_SPEND_MISMATCH':   ['u4_contract_id', 'posted_amount', 'posted', 'supplier_name'],
+        # Contract Spend (unit4_spend / contracts_spend_details — Unit4)
+        'UNIT4_SPEND_CONTRACT_ORPHAN':      ['u4_contract_id', 'posted', 'amount_c'],
+        'UNIT4_SPEND_NEGATIVE_POSTED':      ['u4_contract_id', 'posted', 'amount_c'],
+        'UNIT4_COMMIT_VS_SPEND_MISMATCH':   ['u4_contract_id', 'posted_amount', 'posted', 'supplier_name'],
 
     }
 
@@ -1343,9 +1343,9 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     elif table in ATAMIS_TABLES:
         if check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
             h_df = _atamis_existence_population(df_table, house, 'creditor_ref')
-        elif check_id == 'ATAMIS_COMMIT_SUPPLIER_ORPHAN':
+        elif check_id == 'UNIT4_COMMIT_SUPPLIER_ORPHAN':
             h_df = _atamis_existence_population(df_table, house, 'supplier_id')
-        elif check_id == 'ATAMIS_SPEND_CONTRACT_ORPHAN':
+        elif check_id == 'UNIT4_SPEND_CONTRACT_ORPHAN':
             h_df = _atamis_existence_population(df_table, house, 'u4_contract_id')
         elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
             h_df = df_table[df_table['house'] == house]
@@ -1380,29 +1380,29 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         coa = frames['aglaccounts'][frames['aglaccounts']['house'] == house][['client', 'account', 'account_grp']].drop_duplicates(subset=['client', 'account'])
         failing = failing.merge(coa.rename(columns={'account': 'dim_value'}), on=['client', 'dim_value'], how='left')
 
-    if check_id == 'ATAMIS_COMMIT_VS_SPEND_MISMATCH':
+    if check_id == 'UNIT4_COMMIT_VS_SPEND_MISMATCH':
         # Explicit named join, not the generic referential-integrity auto-join
-        # below — that one only has 'house' in common between atamis_spend and
-        # atamis_commitments, which would dedupe the joined table down to one
+        # below — that one only has 'house' in common between unit4_spend and
+        # unit4_commitments, which would dedupe the joined table down to one
         # arbitrary row per house and attach it to every failing row. This
         # early return bypasses it, same convention as every other PO/GL/Asset
         # cross-domain check in this function.
         failing = failing.rename(columns={
-            'u4_contract_id': 'ATAMIS_SPEND.u4_contract_id',
-            'posted':         'ATAMIS_SPEND.posted',
-            'amount_c':       'ATAMIS_SPEND.amount_c',
+            'u4_contract_id': 'UNIT4_SPEND.u4_contract_id',
+            'posted':         'UNIT4_SPEND.posted',
+            'amount_c':       'UNIT4_SPEND.amount_c',
         })
-        if 'atamis_commitments' in frames:
+        if 'unit4_commitments' in frames:
             commit_link = (
-                frames['atamis_commitments'][['u4_contract_id', 'posted_amount', 'supplier_name']]
+                frames['unit4_commitments'][['u4_contract_id', 'posted_amount', 'supplier_name']]
                 .drop_duplicates(subset=['u4_contract_id'])
-                .rename(columns={'u4_contract_id': 'ATAMIS_SPEND.u4_contract_id',
-                                  'posted_amount':  'ATAMIS_COMMITMENTS.posted_amount',
-                                  'supplier_name':  'ATAMIS_COMMITMENTS.supplier_name'})
+                .rename(columns={'u4_contract_id': 'UNIT4_SPEND.u4_contract_id',
+                                  'posted_amount':  'UNIT4_COMMITMENTS.posted_amount',
+                                  'supplier_name':  'UNIT4_COMMITMENTS.supplier_name'})
             )
-            failing = failing.merge(commit_link, on='ATAMIS_SPEND.u4_contract_id', how='left')
-        cols = ['ATAMIS_SPEND.u4_contract_id', 'ATAMIS_COMMITMENTS.supplier_name',
-                'ATAMIS_COMMITMENTS.posted_amount', 'ATAMIS_SPEND.posted', 'ATAMIS_SPEND.amount_c']
+            failing = failing.merge(commit_link, on='UNIT4_SPEND.u4_contract_id', how='left')
+        cols = ['UNIT4_SPEND.u4_contract_id', 'UNIT4_COMMITMENTS.supplier_name',
+                'UNIT4_COMMITMENTS.posted_amount', 'UNIT4_SPEND.posted', 'UNIT4_SPEND.amount_c']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'UNIT4_SUPPLIER_NOT_IN_ATAMIS':
@@ -1432,7 +1432,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
-        # Explicit named join on contract_ref -> atamis_commitments.u4_contract_id —
+        # Explicit named join on contract_ref -> unit4_commitments.u4_contract_id —
         # bypasses the generic auto-join below, which has no shared candidate
         # key between these two tables other than 'house'.
         failing = failing.rename(columns={
@@ -1443,13 +1443,13 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title', 'ATAMIS_CONTRACTS.organisation']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if check_id == 'ATAMIS_COMMIT_NOT_IN_CONTRACTS':
+    if check_id == 'UNIT4_COMMIT_NOT_IN_CONTRACTS':
         failing = failing.rename(columns={
-            'u4_contract_id': 'ATAMIS_COMMITMENTS.u4_contract_id',
-            'contract_title': 'ATAMIS_COMMITMENTS.contract_title',
-            'supplier_name':  'ATAMIS_COMMITMENTS.supplier_name',
+            'u4_contract_id': 'UNIT4_COMMITMENTS.u4_contract_id',
+            'contract_title': 'UNIT4_COMMITMENTS.contract_title',
+            'supplier_name':  'UNIT4_COMMITMENTS.supplier_name',
         })
-        cols = ['ATAMIS_COMMITMENTS.u4_contract_id', 'ATAMIS_COMMITMENTS.contract_title', 'ATAMIS_COMMITMENTS.supplier_name']
+        cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title', 'UNIT4_COMMITMENTS.supplier_name']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'ATAMIS_CONTRACT_VALUE_MISMATCH':
@@ -1461,16 +1461,16 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'contract_title':    'ATAMIS_CONTRACTS.contract_title',
             'total_award_value': 'ATAMIS_CONTRACTS.total_award_value',
         })
-        if 'atamis_commitments' in frames:
+        if 'unit4_commitments' in frames:
             commit_link = (
-                frames['atamis_commitments'][['u4_contract_id', 'award_amount']]
+                frames['unit4_commitments'][['u4_contract_id', 'award_amount']]
                 .drop_duplicates(subset=['u4_contract_id'])
                 .rename(columns={'u4_contract_id': 'ATAMIS_CONTRACTS.contract_ref',
-                                  'award_amount': 'ATAMIS_COMMITMENTS.award_amount'})
+                                  'award_amount': 'UNIT4_COMMITMENTS.award_amount'})
             )
             failing = failing.merge(commit_link, on='ATAMIS_CONTRACTS.contract_ref', how='left')
         cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title',
-                'ATAMIS_CONTRACTS.total_award_value', 'ATAMIS_COMMITMENTS.award_amount']
+                'ATAMIS_CONTRACTS.total_award_value', 'UNIT4_COMMITMENTS.award_amount']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:

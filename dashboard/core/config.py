@@ -179,7 +179,7 @@ SCOPE_CONFIG = {
         'label':     'Atamis',
         'tab_value': 'atamis',
         'scope_ids': [Scope.ATAMIS_CONTRACTS, Scope.ATAMIS_COMMITMENTS, Scope.ATAMIS_SPEND, Scope.ATAMIS_SUPPLIERS],
-        'tables':    ['atamis_contracts', 'atamis_commitments', 'atamis_spend', 'atamis_suppliers'],
+        'tables':    ['atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers'],
         'aging':     None,
     },
 }
@@ -228,7 +228,7 @@ ALL_TABLES = [
     'gl_coa', 'gl_dim_values', 'gl_opening_balances', 'gl_transact_dims',
     'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags',
     'apoheader', 'apodetail', 'pbf_data',
-    'atamis_contracts', 'atamis_commitments', 'atamis_spend', 'atamis_suppliers',
+    'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers',
 ]
 
 # Per-severity RAG thresholds (error rate %). Green = below first value, Amber = below second, Red = above.

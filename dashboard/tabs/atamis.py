@@ -119,8 +119,8 @@ def _card(title, subtitle, children, flex=None):
 def _compute_metrics(frames: dict) -> dict:
     contracts   = frames.get('atamis_contracts', pd.DataFrame()).copy()
     suppliers   = frames.get('atamis_suppliers', pd.DataFrame()).copy()
-    commitments = frames.get('atamis_commitments', pd.DataFrame()).copy()
-    spend       = frames.get('atamis_spend', pd.DataFrame()).copy()
+    commitments = frames.get('unit4_commitments', pd.DataFrame()).copy()
+    spend       = frames.get('unit4_spend', pd.DataFrame()).copy()
     asuheader   = frames.get('asuheader', pd.DataFrame())
     apodetail   = frames.get('apodetail', pd.DataFrame())
 
