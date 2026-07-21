@@ -141,11 +141,18 @@ def _compute_metrics(frames: dict) -> dict:
     total_award_value = float(contracts['total_award_value'].sum()) if 'total_award_value' in contracts.columns else 0.0
     total_current_value = float(contracts['current_value'].sum()) if 'current_value' in contracts.columns else 0.0
 
+    # Grouped on the RAW Organisation field, not the resolved 'house' column —
+    # 'house' now resolves Joint contracts down to a specific HOC/HOL/Unknown
+    # for DQ purposes (see _derive_atamis_houses in data_engine.py), but this
+    # chart is about what Atamis itself actually recorded, which is a
+    # genuinely separate, still-useful three-way split.
+    _org_map = {'HOC': 'HOC', 'HOL': 'HOL', 'JOINT': 'Joint'}
+    org_clean = contracts['organisation'].astype(str).str.strip().str.upper().map(_org_map).fillna('Unknown')
     org_mix = (
-        contracts.groupby('house').agg(
-            contract_count=('house', 'size'),
+        contracts.assign(_org_clean=org_clean).groupby('_org_clean').agg(
+            contract_count=('_org_clean', 'size'),
             total_value=('total_award_value', 'sum'),
-        ).reindex(_ORG_ORDER + ['Unknown']).fillna(0).reset_index()
+        ).reindex(_ORG_ORDER + ['Unknown']).fillna(0).reset_index().rename(columns={'_org_clean': 'house'})
     )
 
     if 'end_date' in contracts.columns:
@@ -179,9 +186,10 @@ def _compute_metrics(frames: dict) -> dict:
         )
     unit4_only = unit4_total - unit4_matched
 
-    # ---- Contract <-> PO linkage (HOC/Joint only — PO is HoC-only) ----
+    # ---- Contract <-> PO linkage (HOC only — PO is HoC-only. 'house' never
+    # resolves to 'Joint' any more, see _derive_atamis_houses in data_engine.py) ----
     po_refs = set(apodetail['contract_id'].dropna().astype(str).str.strip()) if not apodetail.empty else set()
-    hoc_joint = contracts[contracts['house'].isin(['HOC', 'Joint'])] if 'house' in contracts.columns else pd.DataFrame()
+    hoc_joint = contracts[contracts['house'] == 'HOC'] if 'house' in contracts.columns else pd.DataFrame()
     hj_with_ref = hoc_joint[~_blank(hoc_joint['contract_ref'])] if not hoc_joint.empty else pd.DataFrame()
     contract_po_total = len(hj_with_ref)
     contract_po_matched = int(hj_with_ref['contract_ref'].astype(str).str.strip().isin(po_refs).sum()) if contract_po_total else 0
@@ -481,7 +489,7 @@ def _render_reconciliation(m: dict) -> html.Div:
     stat_row = html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginTop': '16px'}, children=[
         _reconciliation_stat(
             f"{m.get('contract_po_unmatched', 0):,}", 'Contracts with no matching PO',
-            f"of {m.get('contract_po_total', 0):,} HOC/Joint contracts checked", _WARN_C,
+            f"of {m.get('contract_po_total', 0):,} HOC contracts checked", _WARN_C,
         ),
         _reconciliation_stat(
             f"{m.get('value_mismatch_count', 0):,}", 'Award value disagrees with Unit4',

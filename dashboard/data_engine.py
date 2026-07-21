@@ -173,13 +173,14 @@ def _derive_atamis_houses(frames: dict) -> None:
 
     None of these four files are split into HOC/HOL extracts like every other
     domain's tables, so house cannot be read from the filename. atamis_contracts
-    carries its own Organisation field (HOC/HOL/Joint) and uses that directly.
-    The other three have no house field at all — house is derived by matching
-    their supplier identifier against asuheader.apar_id (checking HOC first,
-    then HOL). A row whose identifier matches neither house is tagged 'Unknown' —
-    that mismatch is exactly the condition several DQ checks below test for
-    (e.g. ATAMIS_SUPPLIER_NOT_IN_UNIT4, ATAMIS_COMMIT_SUPPLIER_ORPHAN), not a
-    gap to be papered over with a guessed default.
+    carries its own Organisation field (HOC/HOL/Joint); HOC/HOL map directly,
+    but 'Joint' is resolved further — see below. The other three have no house
+    field at all — house is derived by matching their supplier identifier
+    against asuheader.apar_id (checking HOC first, then HOL). A row whose
+    identifier matches neither house is tagged 'Unknown' — that mismatch is
+    exactly the condition several DQ checks below test for (e.g.
+    ATAMIS_SUPPLIER_NOT_IN_UNIT4, ATAMIS_COMMIT_SUPPLIER_ORPHAN), not a gap to
+    be papered over with a guessed default.
     """
     asu = frames.get('asuheader')
     hoc_ids, hol_ids = set(), set()
@@ -197,7 +198,36 @@ def _derive_atamis_houses(frames: dict) -> None:
     if 'atamis_contracts' in frames:
         df = frames['atamis_contracts']
         org = df['organisation'].astype(str).str.strip().str.upper()
-        df['house'] = org.map(_ATAMIS_ORG_HOUSE_MAP).fillna('Unknown')
+        house = org.map(_ATAMIS_ORG_HOUSE_MAP).fillna('Unknown')
+
+        # 'Joint' contracts span both houses per Atamis's own Organisation
+        # field, which isn't useful for a per-house DQ breakdown — resolve
+        # each one to a specific house by matching its Supplier name against
+        # the Unit4 supplier master (asuheader has no shared ID with
+        # atamis_contracts to join on directly, only a supplier name, so this
+        # is a name match, not an ID join — real supplier names that differ
+        # slightly in formatting between Atamis and Unit4, e.g. "LTD" vs
+        # "LIMITED", will not resolve). A Joint contract whose supplier can't
+        # be matched at all in Unit4 is tagged 'Unknown' — same meaning as
+        # every other unresolvable reference in this domain — rather than
+        # silently staying mislabeled as 'Joint'. The raw Organisation field
+        # itself is untouched and still drives the tab's own "Contracts by
+        # Organisation" visualisation, which is a separate concept from this
+        # resolved house.
+        joint_mask = house == 'Joint'
+        if joint_mask.any() and asu is not None and not asu.empty and 'apar_name' in asu.columns:
+            name_to_house = (
+                asu.dropna(subset=['apar_name'])
+                .assign(_name_key=lambda d: d['apar_name'].astype(str).str.strip().str.upper())
+                .drop_duplicates(subset=['_name_key'])
+                .set_index('_name_key')['house']
+            )
+            supplier_key = df.loc[joint_mask, 'supplier_name'].astype(str).str.strip().str.upper()
+            house.loc[joint_mask] = supplier_key.map(name_to_house).fillna('Unknown')
+        elif joint_mask.any():
+            house.loc[joint_mask] = 'Unknown'
+
+        df['house'] = house
 
     if 'atamis_suppliers' in frames:
         df = frames['atamis_suppliers']
@@ -855,10 +885,12 @@ def run_dq_analysis(frames, tab=None):
                     h_df = _atamis_existence_population(df_table, house, 'u4_contract_id')
                 elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
                     # PO is HoC-only, so an HOL contract has no PO to match against —
-                    # restricting the population to HOC/Joint means the HOL iteration
-                    # of this check naturally yields zero rows and is skipped entirely.
+                    # restricting the population to HOC means the HOL iteration of
+                    # this check naturally yields zero rows and is skipped entirely.
+                    # ('Joint' never appears as a resolved house any more — see
+                    # _derive_atamis_houses — so it doesn't need listing here.)
                     h_df = df_table[df_table['house'] == house]
-                    h_df = h_df[h_df['house'].isin(['HOC', 'Joint']) & ~_atamis_blank(h_df['contract_ref'])]
+                    h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
                 else:
                     h_df = df_table[df_table['house'] == house]
             else:
@@ -1317,7 +1349,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = _atamis_existence_population(df_table, house, 'u4_contract_id')
         elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
             h_df = df_table[df_table['house'] == house]
-            h_df = h_df[h_df['house'].isin(['HOC', 'Joint']) & ~_atamis_blank(h_df['contract_ref'])]
+            h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
         else:
             h_df = df_table[df_table['house'] == house]
     else:

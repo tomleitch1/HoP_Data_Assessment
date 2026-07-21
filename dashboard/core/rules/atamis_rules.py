@@ -22,10 +22,11 @@ def _unit4_supplier_not_in_atamis(df, frames):
 
 
 def _atamis_contract_ref_not_in_po(df, frames):
-    """Flags HOC/Joint Atamis contracts whose Contract Reference has no matching
+    """Flags HOC Atamis contracts whose Contract Reference has no matching
     contract_id anywhere in po_detail_HOC. PO is HoC-only (population is already
-    restricted to house in (HOC, Joint) in data_engine.py), so an HOL contract
-    is never expected to have a PO match and never reaches this lambda."""
+    restricted to house == HOC in data_engine.py — 'Joint' never appears as a
+    resolved house, see _derive_atamis_houses), so an HOL contract is never
+    expected to have a PO match and never reaches this lambda."""
     if df.empty or 'apodetail' not in frames:
         return pd.Series(False, index=df.index)
 
@@ -188,11 +189,11 @@ def get_atamis_checks():
         ('ATAMIS_CONTRACT_REF_NOT_IN_PO',
          30, 'Atamis Contract', 'Consistency', 'Medium',
          'Contract Reference has no matching purchase order',
-         "Every HoC or Joint contract's Contract Reference is expected to appear as a contract_id on at least one purchase order line, since PO data is HoC-only. "
+         "Every HOC contract's Contract Reference is expected to appear as a contract_id on at least one purchase order line, since PO data is HoC-only. "
          'A contract with no matching PO line may simply predate the PO system, or may be a genuine linking gap between Atamis and Unit4 that is worth reviewing before both systems are relied on together.',
          'Confirm with the business owner whether the affected contract is expected to have purchase orders raised against it, and investigate the missing link if so.',
          'atamis_contracts', 'apodetail',
-         "WHERE Organisation IN ('HOC','Joint') AND \"Contract Reference\" NOT IN (SELECT contract_id FROM apodetail)",
+         "WHERE house = 'HOC' AND \"Contract Reference\" NOT IN (SELECT contract_id FROM apodetail)",
          _atamis_contract_ref_not_in_po),
 
         # ---------------------------------------------------------------
