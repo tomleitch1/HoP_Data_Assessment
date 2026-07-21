@@ -239,7 +239,7 @@ def _render_intro(m):
                 'fontSize': '13px', 'fontWeight': '800', 'color': UI['text_primary'],
                 'textTransform': 'uppercase', 'letterSpacing': '0.01em',
             }),
-            html.Div('Volumetrics — not a DQ check', style=_SECTION_BADGE),
+            html.Div('Volumetrics, not a DQ check', style=_SECTION_BADGE),
         ]),
         html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '16px'}, children=[
             headline,

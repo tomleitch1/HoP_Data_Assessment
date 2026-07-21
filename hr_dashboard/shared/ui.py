@@ -84,10 +84,18 @@ def header_bar():
             'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
         }, children=[
             html.Div([
-                html.Div('HR & PAYROLL SYSTEMS — BID DEMONSTRATION', style={
-                    'fontSize': '11px', 'fontWeight': '700', 'color': '#d9a5ac',
-                    'letterSpacing': '2px', 'marginBottom': '2px',
-                }),
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'marginBottom': '2px'}, children=[
+                    html.Div('HR & PAYROLL SYSTEMS — BID DEMONSTRATION', style={
+                        'fontSize': '11px', 'fontWeight': '700', 'color': '#d9a5ac',
+                        'letterSpacing': '2px',
+                    }),
+                    html.Div('DUMMY DATA', style={
+                        'fontSize': '10px', 'fontWeight': '800', 'color': '#ffffff',
+                        'letterSpacing': '1px', 'background': 'rgba(255,255,255,0.15)',
+                        'border': '1px solid rgba(255,255,255,0.3)',
+                        'padding': '2px 8px', 'borderRadius': '4px',
+                    }),
+                ]),
                 html.Div('Data Quality Assessment', style={
                     'fontSize': '22px', 'fontWeight': '700', 'color': '#ffffff',
                     'letterSpacing': '-0.5px',
@@ -104,14 +112,6 @@ def header_bar():
                     html.Div('VERAN PERFORMANCE', style={'fontSize': '11px', 'fontWeight': '700', 'letterSpacing': '1px', 'color': '#ffffff'}),
                 ], style={'padding': '8px 16px', 'textAlign': 'center', 'borderLeft': '1px solid rgba(255,255,255,0.2)', 'marginLeft': '8px'}),
             ]),
-        ]),
-        html.Div(style={
-            'maxWidth': '1440px', 'margin': '0 auto', 'padding': '0 32px 10px',
-        }, children=[
-            html.Div(
-                'Illustrative dataset for bid purposes — all employee and payroll records shown are synthetic.',
-                style={'fontSize': '11px', 'color': '#a0a0a0', 'fontStyle': 'italic'}
-            ),
         ]),
     ])
 
