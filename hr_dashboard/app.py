@@ -1,3 +1,5 @@
+import re
+
 import dash
 from dash import dcc, html, Input, Output, State, dash_table
 from dash_iconify import DashIconify
@@ -110,15 +112,31 @@ app.layout = html.Div(style={
                         'minWidth': 0, 'overflow': 'hidden',
                     }),
                 ]),
-                html.Button(style={
-                    'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center',
-                    'background': 'rgba(255,255,255,0.07)',
-                    'color': 'rgba(255,255,255,0.55)',
-                    'border': '1px solid rgba(255,255,255,0.12)',
-                    'width': '30px', 'height': '30px', 'borderRadius': '7px',
-                    'cursor': 'pointer', 'padding': '0',
-                }, id='btn-close-modal', n_clicks=0, children=[
-                    DashIconify(icon='lucide:x', width=14, color='rgba(255,255,255,0.55)'),
+                html.Div(style={
+                    'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'flexShrink': '0',
+                }, children=[
+                    html.Button(style={
+                        'display': 'flex', 'alignItems': 'center', 'gap': '6px',
+                        'background': 'rgba(255,255,255,0.07)',
+                        'color': 'rgba(255,255,255,0.55)',
+                        'border': '1px solid rgba(255,255,255,0.12)',
+                        'padding': '6px 14px', 'borderRadius': '7px',
+                        'fontWeight': '600', 'cursor': 'pointer', 'fontSize': '12px',
+                    }, id='btn-export-modal', n_clicks=0, children=[
+                        DashIconify(icon='lucide:download', width=13, color='rgba(255,255,255,0.55)'),
+                        'Export',
+                    ]),
+                    html.Button(style={
+                        'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center',
+                        'background': 'rgba(255,255,255,0.07)',
+                        'color': 'rgba(255,255,255,0.55)',
+                        'border': '1px solid rgba(255,255,255,0.12)',
+                        'width': '30px', 'height': '30px', 'borderRadius': '7px',
+                        'cursor': 'pointer', 'padding': '0',
+                    }, id='btn-close-modal', n_clicks=0, children=[
+                        DashIconify(icon='lucide:x', width=14, color='rgba(255,255,255,0.55)'),
+                    ]),
+                    dcc.Download(id='download-modal-csv'),
                 ]),
             ]),
             html.Div(id='modal-content', style={
@@ -367,3 +385,31 @@ def _build_modal_for_check(check_id):
     ])
 
     return _MODAL_OPEN_STYLE, modal_title, modal_content
+
+
+@app.callback(
+    Output('download-modal-csv', 'data'),
+    Input('btn-export-modal', 'n_clicks'),
+    State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
+    prevent_initial_call=True,
+)
+def export_modal_to_csv(n_clicks, chart_clicks):
+    check_id = None
+    for click in chart_clicks:
+        if click:
+            point = click['points'][0]
+            if 'customdata' in point:
+                check_id = point['customdata'][0]
+                break
+
+    if not check_id:
+        return None
+
+    df = get_failing_records(check_id, frames, for_export=True)
+
+    check_row = dq_results[dq_results['check_id'] == check_id]
+    description = check_row.iloc[0]['description'] if not check_row.empty else check_id
+    safe_desc = re.sub(r'[^\w\s\-]', '', description).strip().replace(' ', '_')
+    filename = f"{check_id}_{safe_desc}.csv"
+
+    return dcc.send_data_frame(df.to_csv, filename, index=False)
