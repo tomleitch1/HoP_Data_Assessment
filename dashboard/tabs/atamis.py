@@ -675,7 +675,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
         _section_div('Data Quality Checks', 'DQ rules applied across all four Atamis / Unit4-via-Atamis extracts, scored per house'),
         render_dimension_scorecard(resolved_dq),
-        render_dimension_grid(resolved_dq),
+        render_dimension_grid(resolved_dq, key_prefix='resolved:'),
 
         _render_unresolved_section(unresolved_dq),
 
@@ -713,5 +713,5 @@ def _render_unresolved_section(unresolved_dq) -> html.Div:
             ),
         ]),
         render_dimension_scorecard(unresolved_dq),
-        render_dimension_grid(unresolved_dq),
+        render_dimension_grid(unresolved_dq, key_prefix='unresolved:'),
     ])

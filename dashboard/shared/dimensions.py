@@ -131,24 +131,34 @@ def render_dimension_scorecard(dq_results):
 
     return html.Div(style={'display': 'flex', 'gap': '24px', 'marginBottom': '24px', 'flexWrap': 'wrap'}, children=rows)
 
-def render_dimension_grid(dq_results):
+def render_dimension_grid(dq_results, key_prefix=''):
+    """key_prefix disambiguates the dcc.Graph pattern-matching id
+    ({'type': 'dim-widget-chart', 'index': ...}) when a tab calls this more
+    than once on the same page with overlapping dimension names — e.g. the
+    Atamis tab renders a resolved (HOC/HOL) grid and a separate unresolved
+    (Unknown) grid, both of which have Completeness/Validity/etc. Without a
+    distinct prefix per call, the two grids would emit duplicate component
+    ids, which silently breaks the modal's pattern-matching callbacks (charts
+    stop responding to clicks, or the modal reopens immediately after
+    closing) rather than raising a visible error. Every other tab calls this
+    once per page, so the default '' is a no-op for them."""
     if dq_results is None or dq_results.empty: return html.Div()
-    
+
     dim_summary = dq_results.groupby('dimension').agg({
         'error_rate': 'mean'
     }).reset_index().sort_values('error_rate', ascending=False)
 
     return html.Div(style={
-        'display': 'grid', 
-        'gridTemplateColumns': 'repeat(auto-fill, minmax(480px, 1fr))', 
+        'display': 'grid',
+        'gridTemplateColumns': 'repeat(auto-fill, minmax(480px, 1fr))',
         'gap': '20px',
         'marginBottom': '24px',
         'alignItems': 'start'
     }, children=[
-        render_dimension_widget(dim, dq_results) for dim in dim_summary['dimension']
+        render_dimension_widget(dim, dq_results, key_prefix=key_prefix) for dim in dim_summary['dimension']
     ])
 
-def render_dimension_widget(dim_name, dq_results):
+def render_dimension_widget(dim_name, dq_results, key_prefix=''):
     sub = dq_results[dq_results['dimension'] == dim_name].copy()
     if sub.empty: return html.Div()
 
@@ -270,7 +280,7 @@ def render_dimension_widget(dim_name, dq_results):
             'lineHeight': '1.6', 'maxWidth': '800px'
         }),
         html.Div(style={'marginTop': '24px'}, children=[
-            dcc.Graph(id={'type': 'dim-widget-chart', 'index': dim_name}, figure=fig, config={'displayModeBar': False})
+            dcc.Graph(id={'type': 'dim-widget-chart', 'index': f'{key_prefix}{dim_name}'}, figure=fig, config={'displayModeBar': False})
         ])
     ])
 
