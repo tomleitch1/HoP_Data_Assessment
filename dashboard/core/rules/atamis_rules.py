@@ -99,16 +99,24 @@ def _atamis_contract_value_mismatch(df, frames):
     with the matched Unit4 commitment's Contract Award Amount for the same
     contract. Unmatched contracts (no commitment counterpart at all — see
     ATAMIS_CONTRACT_NOT_IN_COMMITMENTS) are left unflagged here since there is
+    nothing to compare against. Blank contract_ref is explicitly excluded from
+    the join on both sides — without this, a contract with no reference at all
+    could spuriously 'match' an unrelated commitment record that also has a
+    blank/missing Contract Id (blank == blank in a merge), producing a fake
+    comparison against an unrelated amount rather than correctly having
     nothing to compare against."""
     if df.empty or 'unit4_commitments' not in frames:
         return pd.Series(False, index=df.index)
 
+    commit_raw = frames['unit4_commitments']
     commit = (
-        frames['unit4_commitments'][['u4_contract_id', 'award_amount']]
+        commit_raw[~_is_blank(commit_raw['u4_contract_id'])][['u4_contract_id', 'award_amount']]
         .drop_duplicates(subset=['u4_contract_id'])
         .rename(columns={'u4_contract_id': 'contract_ref', 'award_amount': '_commit_award'})
     )
-    merged = df[['contract_ref', 'total_award_value']].merge(commit, on='contract_ref', how='left')
+    left = df[['contract_ref', 'total_award_value']].copy()
+    left.loc[_is_blank(left['contract_ref']), 'contract_ref'] = None
+    merged = left.merge(commit, on='contract_ref', how='left')
     atamis_val = pd.to_numeric(merged['total_award_value'], errors='coerce')
     commit_val = pd.to_numeric(merged['_commit_award'], errors='coerce')
     diff = (atamis_val - commit_val).abs()

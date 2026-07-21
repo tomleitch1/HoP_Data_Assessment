@@ -407,14 +407,26 @@ def _read_chk(cache_file: str) -> dict:
 _ENGINE_SIG_CACHE: str | None = None
 
 def _engine_sig() -> str:
-    """Hash of run_dq_analysis source only.  Changing get_failing_records,
-    get_check_columns, or any other function in this file does NOT change
-    this value — only edits to run_dq_analysis itself do.
+    """Hash of run_dq_analysis source, plus _derive_atamis_houses source.
+    Changing get_failing_records, get_check_columns, or any other function in
+    this file does NOT change this value — only edits to these two do.
+
+    _derive_atamis_houses is included despite living outside run_dq_analysis
+    because it determines the 'house' column every Atamis check's population
+    and results depend on, but is called from load_data() rather than from
+    run_dq_analysis itself — so a change there previously didn't bust the
+    per-check cache at all. This was found the hard way: two consecutive
+    house-derivation fixes (Joint resolved via commitments, not a name match;
+    resolving contract-level ambiguity) changed which contracts land in which
+    house without invalidating a single cached check result, so the DQ
+    scorecard kept serving stale pre-fix numbers indefinitely while
+    get_failing_records (which never caches) correctly showed the current,
+    much smaller result — exactly the discrepancy that surfaced this gap.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
         try:
-            src = _inspect.getsource(run_dq_analysis)
+            src = _inspect.getsource(run_dq_analysis) + _inspect.getsource(_derive_atamis_houses)
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
         _ENGINE_SIG_CACHE = _hashlib.md5(src.encode()).hexdigest()[:8]
@@ -933,6 +945,14 @@ def run_dq_analysis(frames, tab=None):
                     # _derive_atamis_houses — so it doesn't need listing here.)
                     h_df = df_table[df_table['house'] == house]
                     h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
+                elif check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
+                    # Blank contract_ref is ATAMIS_CONTRACT_NO_REF's concern —
+                    # excluding it here avoids double-counting the same row
+                    # (a blank ref trivially "has no matching commitment" but
+                    # that's not a meaningful signal on top of already being
+                    # flagged as incomplete).
+                    h_df = df_table[df_table['house'] == house]
+                    h_df = h_df[~_atamis_blank(h_df['contract_ref'])]
                 else:
                     h_df = df_table[df_table['house'] == house]
             else:
@@ -1394,6 +1414,9 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
             h_df = df_table[df_table['house'] == house]
             h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
+        elif check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
+            h_df = df_table[df_table['house'] == house]
+            h_df = h_df[~_atamis_blank(h_df['contract_ref'])]
         else:
             h_df = df_table[df_table['house'] == house]
     else:
@@ -1499,15 +1522,22 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     if check_id == 'ATAMIS_CONTRACT_VALUE_MISMATCH':
         # Explicit named join, enriching with the matched commitment's own
         # Contract Award Amount so the two systems' disagreement is directly
-        # visible alongside Atamis's Total Award Value.
+        # visible alongside Atamis's Total Award Value. Blank contract_ref is
+        # excluded from BOTH sides before merging — otherwise a contract with
+        # no reference at all can spuriously 'match' an unrelated commitment
+        # that also has a blank/missing Contract Id (blank == blank in a
+        # merge), showing a fake comparison against an unrelated amount.
         failing = failing.rename(columns={
             'contract_ref':      'ATAMIS_CONTRACTS.contract_ref',
             'contract_title':    'ATAMIS_CONTRACTS.contract_title',
             'total_award_value': 'ATAMIS_CONTRACTS.total_award_value',
         })
+        blank_ref = _atamis_blank(failing['ATAMIS_CONTRACTS.contract_ref'])
+        failing.loc[blank_ref, 'ATAMIS_CONTRACTS.contract_ref'] = None
         if 'unit4_commitments' in frames:
+            commit_raw = frames['unit4_commitments']
             commit_link = (
-                frames['unit4_commitments'][['u4_contract_id', 'award_amount']]
+                commit_raw[~_atamis_blank(commit_raw['u4_contract_id'])][['u4_contract_id', 'award_amount']]
                 .drop_duplicates(subset=['u4_contract_id'])
                 .rename(columns={'u4_contract_id': 'ATAMIS_CONTRACTS.contract_ref',
                                   'award_amount': 'UNIT4_COMMITMENTS.award_amount'})
