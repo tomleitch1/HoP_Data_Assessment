@@ -239,37 +239,41 @@ def _derive_atamis_houses(frames: dict) -> None:
         org = df['organisation'].astype(str).str.strip().str.upper()
         house = org.map(_ATAMIS_ORG_HOUSE_MAP).fillna('Unknown')
 
-        # 'Joint' contracts span both houses per Atamis's own Organisation
-        # field, which isn't useful for a per-house DQ breakdown. Resolved via
-        # the confirmed Contract Reference == Contract Id join (not a name
-        # match — tried first, rejected as not robust: real supplier names
-        # differ in formatting between Atamis and Unit4, e.g. "LTD" vs
-        # "LIMITED", and won't reliably resolve). A 'Joint' contract's own
-        # Supplier field is free text with no shared ID to asuheader, but its
-        # Contract Reference reliably joins to a Unit4 Commitments record,
-        # whose Supplier ID is a clean, already-resolved house (computed
-        # above). A commitment always pays one specific supplier, and that
-        # supplier belongs to exactly one house — so even though Atamis labels
-        # the contract 'Joint', in reality the underlying spend has a real
-        # house once traced through to who's actually being paid. Only if no
-        # matching commitment exists at all, or that commitment's own supplier
-        # doesn't resolve either, does the contract fall to 'Unknown' — same
-        # meaning as every other unresolvable reference in this domain, not a
-        # gap to guess at. The raw Organisation field itself is untouched and
-        # still drives the tab's own "Contracts by Organisation"
-        # visualisation, a separate concept from this resolved house.
-        joint_mask = house == 'Joint'
-        if joint_mask.any() and 'unit4_commitments' in frames:
+        # Any contract not cleanly resolved to HOC/HOL by its own Organisation
+        # field — labelled 'Joint', or blank/unexpected (mapped to 'Unknown'
+        # above) — gets a second chance via the confirmed Contract Reference
+        # == Contract Id join to Unit4 Commitments, using that commitment's
+        # own already-resolved house (computed above). Not a name match —
+        # tried first, rejected as not robust: real supplier names differ in
+        # formatting between Atamis and Unit4, e.g. "LTD" vs "LIMITED", and
+        # won't reliably resolve. A commitment always pays one specific
+        # supplier, and that supplier belongs to exactly one house — so even
+        # though Atamis's own Organisation field doesn't say so (whether it
+        # says 'Joint' or is simply blank/wrong), the underlying spend has a
+        # real house once traced through to who's actually being paid. This
+        # was originally scoped to 'Joint' only, which meant a contract with
+        # a blank/invalid Organisation value skipped this lookup entirely
+        # even when the exact same resolution would have worked — found
+        # directly by the user via a specific contract on real data. Only if
+        # no matching commitment exists at all, or that commitment's own
+        # supplier doesn't resolve either, does the contract fall to
+        # 'Unknown' — same meaning as every other unresolvable reference in
+        # this domain, not a gap to guess at. The raw Organisation field
+        # itself is untouched and still drives the tab's own "Contracts by
+        # Organisation" visualisation, a separate concept from this resolved
+        # house.
+        needs_resolution = ~house.isin(['HOC', 'HOL'])
+        if needs_resolution.any() and 'unit4_commitments' in frames:
             commit_house = (
                 frames['unit4_commitments'][['u4_contract_id', 'house']]
                 .drop_duplicates(subset=['u4_contract_id'])
                 .rename(columns={'u4_contract_id': 'contract_ref', 'house': '_commit_house'})
             )
-            merged = df.loc[joint_mask, ['contract_ref']].merge(commit_house, on='contract_ref', how='left')
+            merged = df.loc[needs_resolution, ['contract_ref']].merge(commit_house, on='contract_ref', how='left')
             resolved = merged['_commit_house'].where(merged['_commit_house'].isin(['HOC', 'HOL'])).fillna('Unknown')
-            house.loc[joint_mask] = resolved.values
-        elif joint_mask.any():
-            house.loc[joint_mask] = 'Unknown'
+            house.loc[needs_resolution] = resolved.values
+        elif needs_resolution.any():
+            house.loc[needs_resolution] = 'Unknown'
 
         df['house'] = house
 

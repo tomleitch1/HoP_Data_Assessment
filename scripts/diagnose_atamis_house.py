@@ -16,6 +16,7 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd
 from dashboard.data_engine import load_data
 
 frames = load_data()
@@ -42,7 +43,7 @@ print()
 
 for table, id_col in [
     ('atamis_suppliers', 'creditor_ref'),
-    ('atamis_commitments', 'supplier_id'),
+    ('unit4_commitments', 'supplier_id'),
 ]:
     df = frames.get(table)
     if df is None or df.empty:
@@ -83,3 +84,38 @@ print("  'Sample unmatched' and 'Sample real HOL apar_id' lines above for a")
 print("  formatting mismatch (e.g. Atamis stores '8705187' but Unit4 stores")
 print("  '08705187', or with trailing whitespace).")
 print("=" * 70)
+
+# ── atamis_contracts full resolution chain for every row still 'Unknown' ──
+# Shows exactly why each one didn't resolve: no matching commitment at all,
+# vs. a matching commitment whose own Supplier ID doesn't resolve either.
+contracts = frames.get('atamis_contracts')
+commitments = frames.get('unit4_commitments')
+if contracts is not None and not contracts.empty:
+    unknown_contracts = contracts[contracts['house'] == 'Unknown']
+    print()
+    print("=" * 70)
+    print(f"atamis_contracts -- {len(unknown_contracts)} rows still 'Unknown' -- full resolution chain")
+    print("=" * 70)
+    if commitments is not None and not commitments.empty:
+        commit_lookup = commitments.set_index('u4_contract_id')[['supplier_id', 'house']]
+        commit_lookup = commit_lookup[~commit_lookup.index.to_series().duplicated(keep='first')]
+    else:
+        commit_lookup = None
+    for _, row in unknown_contracts.iterrows():
+        ref = str(row['contract_ref']).strip()
+        print(f"contract_ref={row['contract_ref']!r}  organisation={row['organisation']!r}")
+        if commit_lookup is None:
+            print("  -> unit4_commitments not loaded, cannot check")
+        elif ref in ('nan', 'None', '', 'NaN') or row['contract_ref'] is None:
+            print("  -> contract_ref itself is blank -- nothing to look up (see ATAMIS_CONTRACT_NO_REF)")
+        elif ref not in commit_lookup.index:
+            print(f"  -> no commitment record found with Contract Id == {ref!r} (check for whitespace/case differences)")
+        else:
+            match = commit_lookup.loc[ref]
+            if isinstance(match, pd.DataFrame):
+                print(f"  -> WARNING: {len(match)} commitment records share this Contract Id")
+                match = match.iloc[0]
+            print(f"  -> matched commitment: supplier_id={match['supplier_id']!r}, that commitment's own resolved house={match['house']!r}")
+            if match['house'] == 'Unknown':
+                print(f"  -> stays Unknown because the MATCHED COMMITMENT's own Supplier ID ({match['supplier_id']!r}) doesn't resolve to a Unit4 supplier either")
+    print("=" * 70)
