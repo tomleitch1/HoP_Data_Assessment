@@ -230,17 +230,28 @@ def _derive_atamis_houses(frames: dict) -> None:
         # Organisation" visualisation, a separate concept from this resolved
         # house.
         needs_resolution = ~house.isin(['HOC', 'HOL'])
-        if needs_resolution.any() and 'unit4_commitments' in frames:
+        # Baseline every unresolved row to 'Unknown' first (covers 'Joint' and
+        # any blank/unexpected Organisation alike), then only rows with a
+        # populated contract_ref get a chance to upgrade via the commitments
+        # lookup. Blank contract_ref rows are excluded from the lookup itself,
+        # not just left as-is afterwards — a pandas merge treats NaN/blank keys
+        # as equal to each other, so without this exclusion a contract with no
+        # reference at all could spuriously match a commitment that also has a
+        # blank/missing u4_contract_id and adopt its house, rather than
+        # correctly staying 'Unknown' for lack of anything to look up. Same bug
+        # class as the one already fixed in ATAMIS_CONTRACT_VALUE_MISMATCH.
+        house.loc[needs_resolution] = 'Unknown'
+        lookup_rows = needs_resolution & ~_atamis_blank(df['contract_ref'])
+        if lookup_rows.any() and 'unit4_commitments' in frames:
+            commit_raw = frames['unit4_commitments']
             commit_house = (
-                frames['unit4_commitments'][['u4_contract_id', 'house']]
+                commit_raw[~_atamis_blank(commit_raw['u4_contract_id'])][['u4_contract_id', 'house']]
                 .drop_duplicates(subset=['u4_contract_id'])
                 .rename(columns={'u4_contract_id': 'contract_ref', 'house': '_commit_house'})
             )
-            merged = df.loc[needs_resolution, ['contract_ref']].merge(commit_house, on='contract_ref', how='left')
+            merged = df.loc[lookup_rows, ['contract_ref']].merge(commit_house, on='contract_ref', how='left')
             resolved = merged['_commit_house'].where(merged['_commit_house'].isin(['HOC', 'HOL'])).fillna('Unknown')
-            house.loc[needs_resolution] = resolved.values
-        elif needs_resolution.any():
-            house.loc[needs_resolution] = 'Unknown'
+            house.loc[lookup_rows] = resolved.values
 
         df['house'] = house
 
