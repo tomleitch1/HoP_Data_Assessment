@@ -27,7 +27,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 # in run_dq_analysis() for these tables only; every other table's checks are
 # unaffected since their 'house' column never equals 'Joint' or 'Unknown'.
 ATAMIS_TABLES = {'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers'}
-ATAMIS_HOUSES = ['HOC', 'HOL', 'Joint', 'Unknown', 'All']
+ATAMIS_HOUSES = ['HOC', 'HOL', 'Joint', 'Unknown']
 
 
 def _atamis_blank(s: pd.Series) -> pd.Series:
@@ -47,39 +47,6 @@ def _atamis_existence_population(df_table, house, id_col):
     if house != 'Unknown':
         return df_table.iloc[0:0]
     return df_table[~_atamis_blank(df_table[id_col])]
-
-
-# Unit4 Commitments/Spend checks whose subject has nothing to do with house at
-# all (date validity, duplicate keys, the arithmetic/reconciliation checks) —
-# 'house' for these two tables is entirely a derived artifact of an unrelated
-# field (Supplier ID), so partitioning them by it fragments one meaningful
-# total into three misleading partial slices, and — worse — can hide a
-# genuine duplicate/mismatch between two rows that happen to resolve to
-# different houses (they'd never appear in the same per-house slice together).
-# Reported once, tagged house='All', over the (optionally blank-excluded)
-# full table. The two genuinely supplier/house-related commitment checks
-# (UNIT4_COMMIT_NO_SUPPLIER_ID, UNIT4_COMMIT_SUPPLIER_ORPHAN) are deliberately
-# NOT in this set — they ARE about the field that determines house.
-_ATAMIS_TABLEWIDE_CHECKS = {
-    'UNIT4_COMMIT_DATE_INVALID', 'UNIT4_COMMIT_REMAINING_MISMATCH',
-    'UNIT4_COMMIT_DUP_ID', 'UNIT4_COMMIT_OVERSPEND',
-    'UNIT4_COMMIT_NOT_IN_CONTRACTS', 'UNIT4_COMMIT_VS_SPEND_MISMATCH',
-    'UNIT4_SPEND_NEGATIVE_POSTED',
-}
-# Check-specific blank-exclusion column — a blank id has nothing to compare
-# against, so it shouldn't be flagged as "doesn't match" (the bug that
-# prompted this: a blank u4_contract_id was being counted as an orphan record
-# rather than excluded as incomplete).
-_ATAMIS_TABLEWIDE_BLANK_COL = {'UNIT4_COMMIT_NOT_IN_CONTRACTS': 'u4_contract_id'}
-
-
-def _atamis_tablewide_population(df_table, house, check_id):
-    if house != 'All':
-        return df_table.iloc[0:0]
-    blank_col = _ATAMIS_TABLEWIDE_BLANK_COL.get(check_id)
-    if blank_col:
-        return df_table[~_atamis_blank(df_table[blank_col])]
-    return df_table
 
 # Standard financial fields always surfaced in the modal for every apodetail
 # (PO Line) check, regardless of which field actually triggered it, so the
@@ -933,9 +900,7 @@ def run_dq_analysis(frames, tab=None):
                 else:
                     h_df = df_table[df_table['house'] == house]
             elif table in ATAMIS_TABLES:
-                if check_id in _ATAMIS_TABLEWIDE_CHECKS:
-                    h_df = _atamis_tablewide_population(df_table, house, check_id)
-                elif check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
+                if check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
                     h_df = _atamis_existence_population(df_table, house, 'creditor_ref')
                 elif check_id == 'UNIT4_COMMIT_SUPPLIER_ORPHAN':
                     h_df = _atamis_existence_population(df_table, house, 'supplier_id')
@@ -949,14 +914,16 @@ def run_dq_analysis(frames, tab=None):
                     # _derive_atamis_houses — so it doesn't need listing here.)
                     h_df = df_table[df_table['house'] == house]
                     h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
-                elif check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
-                    # Blank contract_ref is ATAMIS_CONTRACT_NO_REF's concern —
-                    # excluding it here avoids double-counting the same row
-                    # (a blank ref trivially "has no matching commitment" but
+                elif check_id in ('ATAMIS_CONTRACT_NOT_IN_COMMITMENTS', 'UNIT4_COMMIT_NOT_IN_CONTRACTS'):
+                    # Blank contract_ref/u4_contract_id is each table's own
+                    # NO_REF-style completeness check's concern — excluding it
+                    # here avoids double-counting the same row (a blank ref
+                    # trivially "has no matching commitment/contract" but
                     # that's not a meaningful signal on top of already being
                     # flagged as incomplete).
+                    ref_col = 'contract_ref' if check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS' else 'u4_contract_id'
                     h_df = df_table[df_table['house'] == house]
-                    h_df = h_df[~_atamis_blank(h_df['contract_ref'])]
+                    h_df = h_df[~_atamis_blank(h_df[ref_col])]
                 else:
                     h_df = df_table[df_table['house'] == house]
             else:
@@ -1407,9 +1374,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         else:
             h_df = df_table[df_table['house'] == house]
     elif table in ATAMIS_TABLES:
-        if check_id in _ATAMIS_TABLEWIDE_CHECKS:
-            h_df = _atamis_tablewide_population(df_table, house, check_id)
-        elif check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
+        if check_id == 'ATAMIS_SUPPLIER_NOT_IN_UNIT4':
             h_df = _atamis_existence_population(df_table, house, 'creditor_ref')
         elif check_id == 'UNIT4_COMMIT_SUPPLIER_ORPHAN':
             h_df = _atamis_existence_population(df_table, house, 'supplier_id')
@@ -1418,9 +1383,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         elif check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':
             h_df = df_table[df_table['house'] == house]
             h_df = h_df[(h_df['house'] == 'HOC') & ~_atamis_blank(h_df['contract_ref'])]
-        elif check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
+        elif check_id in ('ATAMIS_CONTRACT_NOT_IN_COMMITMENTS', 'UNIT4_COMMIT_NOT_IN_CONTRACTS'):
+            ref_col = 'contract_ref' if check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS' else 'u4_contract_id'
             h_df = df_table[df_table['house'] == house]
-            h_df = h_df[~_atamis_blank(h_df['contract_ref'])]
+            h_df = h_df[~_atamis_blank(h_df[ref_col])]
         else:
             h_df = df_table[df_table['house'] == house]
     else:

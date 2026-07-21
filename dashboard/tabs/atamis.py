@@ -646,17 +646,17 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
     m = _compute_metrics(frames)
 
-    # 'Unknown' is not a house, and 'All' is a check-driven pseudo-house for
-    # Unit4 Commitments/Spend checks whose subject has nothing to do with
-    # house at all (see _ATAMIS_TABLEWIDE_CHECKS in data_engine.py) — both are
-    # split out of the main per-house DQ scorecard/grid entirely, into their
-    # own sections below.
+    # 'Unknown' is not a house — every record that couldn't be traced to a
+    # real Unit4 supplier/contract/commitment at all — so it's split out of
+    # the main per-house DQ scorecard/grid into its own section below. Every
+    # other resolved row (including the Unit4 Commitments/Spend checks that
+    # were previously reported separately as house-independent) now resolves
+    # cleanly to HOC or HOL and is scored in the normal scorecard.
     if 'house' in dq_results.columns:
         resolved_dq = dq_results[dq_results['house'].isin(['HOC', 'HOL'])]
         unresolved_dq = dq_results[dq_results['house'] == 'Unknown']
-        tablewide_dq = dq_results[dq_results['house'] == 'All']
     else:
-        resolved_dq, unresolved_dq, tablewide_dq = dq_results, dq_results.iloc[0:0], dq_results.iloc[0:0]
+        resolved_dq, unresolved_dq = dq_results, dq_results.iloc[0:0]
 
     return html.Div(children=[
 
@@ -683,43 +683,6 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
         _render_unresolved_section(unresolved_dq),
 
-        _render_tablewide_section(tablewide_dq),
-
-    ])
-
-
-def _render_tablewide_section(tablewide_dq) -> html.Div:
-    """Unit4 Commitments/Spend checks whose subject (date validity, duplicate
-    Contract Ids, the arithmetic and cross-view reconciliation checks) has
-    nothing to do with house at all. 'house' on these two tables is derived
-    entirely from an unrelated field (Supplier ID), so scoring these checks
-    per-house would fragment one meaningful total into three misleading
-    partial slices — and could hide a genuine duplicate/mismatch between two
-    rows that happen to resolve to different houses, since they'd never
-    appear in the same per-house slice together. Reported once here instead,
-    over the whole table."""
-    if tablewide_dq is None or tablewide_dq.empty:
-        return html.Div()
-
-    return html.Div(children=[
-        _section_div(
-            'Contract Commitments & Spend — Table-Wide Checks',
-            "Apply to the whole population regardless of house",
-        ),
-        html.Div(style={
-            'background': '#f8fafc', 'border': f'1px solid {_CARD_BOR}', 'borderLeft': f'4px solid {HOUSE_HEX["All"]}',
-            'borderRadius': '10px', 'padding': '14px 18px', 'marginBottom': '18px',
-        }, children=[
-            html.Div(
-                "House for Contract Commitments and Contract Spend is derived from an unrelated field (Supplier ID) — "
-                "it has no bearing on whether a date range is valid, a Contract Id is duplicated, or the two Unit4 "
-                "views agree on a Posted amount. Scoring these checks per house would split one real number into "
-                "three partial, misleading ones, so they're reported once here across every record instead.",
-                style={'fontSize': '12px', 'color': '#475569', 'lineHeight': '1.6'},
-            ),
-        ]),
-        render_dimension_scorecard(tablewide_dq),
-        render_dimension_grid(tablewide_dq, key_prefix='tablewide:'),
     ])
 
 
