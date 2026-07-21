@@ -646,6 +646,14 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
     m = _compute_metrics(frames)
 
+    # 'Unknown' is not a house — see _render_unresolved_section below — so it's
+    # split out of the main per-house DQ scorecard/grid entirely.
+    if 'house' in dq_results.columns:
+        resolved_dq = dq_results[dq_results['house'].isin(['HOC', 'HOL'])]
+        unresolved_dq = dq_results[dq_results['house'] == 'Unknown']
+    else:
+        resolved_dq, unresolved_dq = dq_results, dq_results.iloc[0:0]
+
     return html.Div(children=[
 
         _render_hero(m),
@@ -665,8 +673,45 @@ def render_tab(dq_results, frames: dict) -> html.Div:
         _section_div('Contract Financials', 'Committed, posted, and remaining value — reconciled across both Unit4 views'),
         html.Div(style={'marginBottom': '24px'}, children=[_render_financials(m)]),
 
-        _section_div('Data Quality Checks', 'DQ rules applied across all four Atamis / Unit4-via-Atamis extracts'),
-        render_dimension_scorecard(dq_results),
-        render_dimension_grid(dq_results),
+        _section_div('Data Quality Checks', 'DQ rules applied across all four Atamis / Unit4-via-Atamis extracts, scored per house'),
+        render_dimension_scorecard(resolved_dq),
+        render_dimension_grid(resolved_dq),
 
+        _render_unresolved_section(unresolved_dq),
+
+    ])
+
+
+def _render_unresolved_section(unresolved_dq) -> html.Div:
+    """'Unknown' isn't a third house — it's every record whose Creditor Ref,
+    Supplier ID, or Contract Reference couldn't be matched to a real Unit4
+    record in either house at all. Reporting it inside the same HOC/HOL
+    scorecard misrepresents it as a peer category with its own comparable DQ
+    score. Instead it gets its own section, reusing the same scorecard/grid
+    components (so the visual language stays consistent) under framing that
+    makes clear these are unresolved records to investigate, not a segment
+    of the migration population to score alongside HOC and HOL."""
+    if unresolved_dq is None or unresolved_dq.empty:
+        return html.Div()
+
+    return html.Div(children=[
+        _section_div(
+            'Unresolved Records',
+            "Could not be matched to a Unit4 supplier, contract, or commitment in either house",
+        ),
+        html.Div(style={
+            'background': '#f8fafc', 'border': f'1px solid {_CARD_BOR}', 'borderLeft': f'4px solid {HOUSE_HEX["Unknown"]}',
+            'borderRadius': '10px', 'padding': '14px 18px', 'marginBottom': '18px',
+        }, children=[
+            html.Div(
+                "'Unknown' is not a third house — it's the absence of a resolvable one. Every record below has a "
+                "Creditor Ref, Supplier ID, or Contract Reference that didn't match anything in the Unit4 supplier "
+                "master (or, for contracts, a Joint contract whose supplier name couldn't be matched either). "
+                "Investigate the underlying identifier for each before assuming which house it actually belongs to — "
+                "the checks below are about the record's own data quality, not a per-house comparison.",
+                style={'fontSize': '12px', 'color': '#475569', 'lineHeight': '1.6'},
+            ),
+        ]),
+        render_dimension_scorecard(unresolved_dq),
+        render_dimension_grid(unresolved_dq),
     ])

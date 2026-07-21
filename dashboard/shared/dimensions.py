@@ -154,13 +154,16 @@ def render_dimension_widget(dim_name, dq_results):
 
     total_checks = len(sub['check_id'].unique())
     desc = DIMENSION_DESCRIPTIONS.get(dim_name, 'No description available.')
-    hoc_error = sub[sub['house'] == 'HOC']['error_rate'].mean() if 'HOC' in sub['house'].values else None
-    hol_error = sub[sub['house'] == 'HOL']['error_rate'].mean() if 'HOL' in sub['house'].values else None
-    worst_error = max(e for e in [hoc_error, hol_error] if e is not None)
-    
+    # Generic over however many/whatever house values are actually present —
+    # not hardcoded to HOC/HOL, since some tabs (e.g. Atamis) legitimately
+    # have other house values (Unknown) or omit HOC/HOL entirely.
+    houses = sorted(sub['house'].dropna().unique().tolist())
+    house_errors = {h: sub[sub['house'] == h]['error_rate'].mean() for h in houses}
+    worst_error = max(house_errors.values()) if house_errors else 0.0
+
     dim_checks = sub[['check_id', 'description', 'object']].drop_duplicates('check_id').sort_values('check_id')
     check_ids = dim_checks['check_id'].tolist()
-    
+
     # Create unique labels by combining object and description
     # This prevents Plotly from stacking bars with identical descriptions
     check_descs = []
@@ -169,9 +172,9 @@ def render_dimension_widget(dim_name, dq_results):
         label = f"<b>{r['object']}</b>: {clean_desc}"
         wrapped_label = "<br>".join(textwrap.wrap(label, width=75))
         check_descs.append(wrapped_label)
-    
+
     fig = go.Figure()
-    for house in ['HOC', 'HOL']:
+    for house in houses:
         h_data = sub[sub['house'] == house].set_index('check_id').reindex(check_ids)
         fig.add_trace(go.Bar(
             name=f"{house} (Ready)", x=[100] * len(check_ids), y=check_descs, orientation='h',
@@ -224,10 +227,17 @@ def render_dimension_widget(dim_name, dq_results):
             }),
         ])
 
-    divider = html.Div(style={
-        'width': '1px', 'height': '22px',
-        'background': 'linear-gradient(to bottom, transparent, #CBD5E1, transparent)',
-    })
+    def _divider():
+        return html.Div(style={
+            'width': '1px', 'height': '22px',
+            'background': 'linear-gradient(to bottom, transparent, #CBD5E1, transparent)',
+        })
+
+    house_score_chips = []
+    for i, h in enumerate(houses):
+        if i > 0:
+            house_score_chips.append(_divider())
+        house_score_chips.append(_house_score(house_errors.get(h), h))
 
     summary_content = html.Div(style={
         'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'width': '100%',
@@ -246,9 +256,7 @@ def render_dimension_widget(dim_name, dq_results):
             ])
         ]),
         html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '12px'}, children=[
-            _house_score(hoc_error, 'HOC'),
-            divider,
-            _house_score(hol_error, 'HOL'),
+            *house_score_chips,
             html.Span('avg error', style={
                 'fontSize': '9px', 'fontWeight': '600', 'color': '#94A3B8',
                 'textTransform': 'uppercase', 'letterSpacing': '0.05em', 'marginLeft': '2px',
