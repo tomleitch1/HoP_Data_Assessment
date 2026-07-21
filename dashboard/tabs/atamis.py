@@ -703,19 +703,6 @@ def _render_unresolved_section(unresolved_dq) -> html.Div:
             'Unresolved Records',
             "Could not be matched to a Unit4 supplier, contract, or commitment in either house",
         ),
-        html.Div(style={
-            'background': '#f8fafc', 'border': f'1px solid {_CARD_BOR}', 'borderLeft': f'4px solid {HOUSE_HEX["Unknown"]}',
-            'borderRadius': '10px', 'padding': '14px 18px', 'marginBottom': '18px',
-        }, children=[
-            html.Div(
-                "'Unknown' is not a third house — it's the absence of a resolvable one. Every record below has a "
-                "Creditor Ref, Supplier ID, or Contract Reference that didn't match anything in the Unit4 supplier "
-                "master (or, for contracts, a Joint contract whose supplier name couldn't be matched either). "
-                "Investigate the underlying identifier for each before assuming which house it actually belongs to — "
-                "the checks below are about the record's own data quality, not a per-house comparison.",
-                style={'fontSize': '12px', 'color': '#475569', 'lineHeight': '1.6'},
-            ),
-        ]),
         render_dimension_scorecard(unresolved_dq),
         render_dimension_grid(unresolved_dq, key_prefix='unresolved:'),
     ])
