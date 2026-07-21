@@ -187,6 +187,28 @@ def _compute_metrics(frames: dict) -> dict:
     contract_po_matched = int(hj_with_ref['contract_ref'].astype(str).str.strip().isin(po_refs).sum()) if contract_po_total else 0
     contract_po_unmatched = contract_po_total - contract_po_matched
 
+    # ---- Contract <-> Commitments linkage (any house — confirmed direct join
+    # on Contract Reference == Contract Id) ----
+    commit_ids = set(commitments['u4_contract_id'].dropna().astype(str).str.strip()) if 'u4_contract_id' in commitments.columns else set()
+    contracts_with_ref = contracts[~_blank(contracts['contract_ref'])] if 'contract_ref' in contracts.columns else pd.DataFrame()
+    contract_commit_total = len(contracts_with_ref)
+    contract_commit_matched = int(contracts_with_ref['contract_ref'].astype(str).str.strip().isin(commit_ids).sum()) if contract_commit_total else 0
+    contract_commit_unmatched = contract_commit_total - contract_commit_matched
+
+    contract_refs = set(contracts['contract_ref'].dropna().astype(str).str.strip()) if 'contract_ref' in contracts.columns else set()
+    commit_total_all = len(commitments)
+    commit_not_in_contracts = int((~commitments['u4_contract_id'].astype(str).str.strip().isin(contract_refs)).sum()) if commit_total_all else 0
+
+    value_mismatch_count = 0
+    if contract_commit_matched and 'award_amount' in commitments.columns:
+        cm = commitments[['u4_contract_id', 'award_amount']].drop_duplicates(subset=['u4_contract_id']).rename(columns={'u4_contract_id': 'contract_ref'})
+        vm = contracts_with_ref[['contract_ref', 'total_award_value']].merge(cm, on='contract_ref', how='inner')
+        a = pd.to_numeric(vm['total_award_value'], errors='coerce')
+        b = pd.to_numeric(vm['award_amount'], errors='coerce')
+        diff = (a - b).abs()
+        tol = (a.abs() * 0.02).clip(lower=1.00)
+        value_mismatch_count = int((diff > tol).sum())
+
     # ---- Commitments / Spend cross-checks ----
     commit_with_sup = commitments[~_blank(commitments['supplier_id'])] if 'supplier_id' in commitments.columns else pd.DataFrame()
     commit_orphan = int((commit_with_sup['house'] == 'Unknown').sum()) if not commit_with_sup.empty else 0
@@ -233,6 +255,12 @@ def _compute_metrics(frames: dict) -> dict:
         'contract_po_total': contract_po_total,
         'contract_po_matched': contract_po_matched,
         'contract_po_unmatched': contract_po_unmatched,
+        'contract_commit_total': contract_commit_total,
+        'contract_commit_matched': contract_commit_matched,
+        'contract_commit_unmatched': contract_commit_unmatched,
+        'commit_not_in_contracts': commit_not_in_contracts,
+        'commit_total_all': commit_total_all,
+        'value_mismatch_count': value_mismatch_count,
         'commit_orphan': commit_orphan,
         'commit_total': len(commit_with_sup),
         'spend_total': spend_total,
@@ -430,10 +458,34 @@ def _render_reconciliation(m: dict) -> html.Div:
         ],
     )
 
+    contract_card = _card(
+        'Contract Overlap: Atamis ↔ Commitments', 'Contract Reference (Atamis) matched directly against Contract Id (Unit4 Commitments view)',
+        [
+            _overlap_bar(
+                'Atamis only', m.get('contract_commit_unmatched', 0),
+                'Matched (both systems)', m.get('contract_commit_matched', 0),
+                'Unit4 only', m.get('commit_not_in_contracts', 0),
+                HOUSE_HEX['Unknown'], _ACCENT, _NAVY,
+            ),
+            html.Div('Atamis-only contracts may simply be newly awarded with no financial activity posted yet. '
+                     'Unit4-only commitments are more surprising — a financial commitment should trace back to a real contract record.',
+                     style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '10px', 'lineHeight': '1.6'}),
+        ],
+    )
+
+    overlap_row = html.Div(style={'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap', 'alignItems': 'stretch'}, children=[
+        html.Div(sup_card, style={'flex': '1', 'minWidth': '420px'}),
+        html.Div(contract_card, style={'flex': '1', 'minWidth': '420px'}),
+    ])
+
     stat_row = html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginTop': '16px'}, children=[
         _reconciliation_stat(
             f"{m.get('contract_po_unmatched', 0):,}", 'Contracts with no matching PO',
             f"of {m.get('contract_po_total', 0):,} HOC/Joint contracts checked", _WARN_C,
+        ),
+        _reconciliation_stat(
+            f"{m.get('value_mismatch_count', 0):,}", 'Award value disagrees with Unit4',
+            f"of {m.get('contract_commit_matched', 0):,} matched contracts", _WARN_C,
         ),
         _reconciliation_stat(
             f"{m.get('commit_orphan', 0):,}", 'Commitments with unknown supplier',
@@ -449,7 +501,7 @@ def _render_reconciliation(m: dict) -> html.Div:
         ),
     ])
 
-    return html.Div(style={'marginBottom': '24px'}, children=[sup_card, stat_row])
+    return html.Div(style={'marginBottom': '24px'}, children=[overlap_row, stat_row])
 
 
 # ── Top contracts by value ────────────────────────────────────────────────────

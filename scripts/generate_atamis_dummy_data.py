@@ -114,21 +114,31 @@ FRAMEWORKS = [
 
 # ── Atamis Contracts (contracts_report.csv) ─────────────────────────────────
 
-def _gen_contracts(n=90):
+def _gen_contracts(n=90, commitment_award_map=None):
     rows = []
     used_refs = set()
+    commitment_award_map = dict(commitment_award_map or {})
+    commitment_ids = list(commitment_award_map.keys())
     hoc_names = UNIT4_SUPPLIERS[UNIT4_SUPPLIERS['house'] == 'HOC']['apar_name'].dropna().tolist()
     hol_names = UNIT4_SUPPLIERS[UNIT4_SUPPLIERS['house'] == 'HOL']['apar_name'].dropna().tolist()
 
     for i in range(n):
         org = random.choices(['HOC', 'HOL', 'Joint'], weights=[60, 25, 15])[0]
 
-        # ~60% of HOC/Joint contracts reuse a real PO contract_id (genuine link);
-        # HOL contracts never do, since PO is HoC-only and this is not the check's
-        # concern; the remaining HOC/Joint share is left unmatched on purpose so
-        # ATAMIS_CONTRACT_REF_NOT_IN_PO has real failures to show.
-        if org in ('HOC', 'Joint') and PO_CONTRACT_REFS and random.random() < 0.6:
+        # Contract Reference is drawn from one of three sources, so both
+        # cross-system checks have genuine matches AND genuine gaps to find:
+        #   ~30% (HOC/Joint only) reuse a real PO contract_id — PO is HoC-only,
+        #        so this is ATAMIS_CONTRACT_REF_NOT_IN_PO's source of matches
+        #   ~35% (any house) reuse a real Unit4 Commitments Contract Id — the
+        #        join the user confirmed directly; ATAMIS_CONTRACT_NOT_IN_COMMITMENTS'
+        #        source of matches
+        #   remainder is a synthetic, unmatched reference — left unmatched on
+        #        purpose so both checks have real failures to show
+        roll = random.random()
+        if org in ('HOC', 'Joint') and PO_CONTRACT_REFS and roll < 0.30:
             ref = random.choice(PO_CONTRACT_REFS)
+        elif commitment_ids and roll < 0.65:
+            ref = random.choice(commitment_ids)
         else:
             ref = f"FWK{random.randint(1000,1199)}-{fake.bothify('??##')}{random.randint(1,9999)}"
 
@@ -157,7 +167,18 @@ def _gen_contracts(n=90):
         if random.random() < 0.04:
             end_out = ''
 
-        award_val = 0.0 if random.random() < 0.1 else round(random.uniform(2000, 2_500_000), 2)
+        # When Contract Reference reused a real Commitments Contract Id, base
+        # Total Award Value on that commitment's own Contract Award Amount —
+        # mostly in close agreement, a subset deliberately mismatched — so
+        # ATAMIS_CONTRACT_VALUE_MISMATCH has both real passes and real failures.
+        commit_award = commitment_award_map.get(ref)
+        if commit_award:
+            if random.random() < 0.2:
+                award_val = round(commit_award + random.uniform(5000, 40000) * random.choice([-1, 1]), 2)
+            else:
+                award_val = round(commit_award + random.uniform(-0.5, 0.5), 2)
+        else:
+            award_val = 0.0 if random.random() < 0.1 else round(random.uniform(2000, 2_500_000), 2)
         current_val = award_val if random.random() > 0.25 else round(award_val * random.uniform(0.8, 1.3), 2)
 
         org_out = org
@@ -254,7 +275,7 @@ _CONTRACT_PREFIXES = ['ARC', 'PM', 'COM', 'GSV', 'CON']
 def _gen_commitments(n=70):
     rows = []
     real_ids = UNIT4_SUPPLIERS.dropna(subset=['apar_id'])['apar_id'].unique().tolist()
-    used_ids = set()
+    award_map = {}
 
     for i in range(n):
         prefix = random.choice(_CONTRACT_PREFIXES)
@@ -297,14 +318,14 @@ def _gen_commitments(n=70):
             'Total Open Requisitions Amount': _amt(0.0),
             'Remaining Amount': _amt(remaining),
         })
-        used_ids.add(cid)
+        award_map[cid] = award
 
     # A couple of duplicate Contract Ids
     if len(rows) > 5:
         dup = dict(rows[3])
         rows.append(dup)
 
-    return pd.DataFrame(rows), used_ids
+    return pd.DataFrame(rows), award_map
 
 
 # ── Contract Spend Details (contracts_spend_details.csv, Unit4) ────────────
@@ -349,8 +370,16 @@ def _gen_spend(commitments_df: pd.DataFrame):
 
 
 if __name__ == '__main__':
+    # Commitments generated first so contracts can reuse a genuine sample of
+    # its Contract Id values as their own Contract Reference — the join the
+    # user confirmed directly between the two systems.
+    print('Generating Unit4 contract commitments...')
+    commitments, commitment_award_map = _gen_commitments()
+    commitments.to_csv(os.path.join(OUTPUT_DIR, 'contract_total_commitments.csv'), index=False)
+    print(f'  {len(commitments):,} commitments -> data/atamis/contract_total_commitments.csv')
+
     print('Generating Atamis contracts...')
-    contracts = _gen_contracts()
+    contracts = _gen_contracts(commitment_award_map=commitment_award_map)
     contracts.to_csv(os.path.join(OUTPUT_DIR, 'contracts_report.csv'), index=False)
     print(f'  {len(contracts):,} contracts -> data/atamis/contracts_report.csv')
 
@@ -358,11 +387,6 @@ if __name__ == '__main__':
     suppliers = _gen_suppliers()
     suppliers.to_csv(os.path.join(OUTPUT_DIR, 'supplier_data_report.csv'), index=False)
     print(f'  {len(suppliers):,} suppliers -> data/atamis/supplier_data_report.csv')
-
-    print('Generating Unit4 contract commitments...')
-    commitments, _ = _gen_commitments()
-    commitments.to_csv(os.path.join(OUTPUT_DIR, 'contract_total_commitments.csv'), index=False)
-    print(f'  {len(commitments):,} commitments -> data/atamis/contract_total_commitments.csv')
 
     print('Generating Unit4 contract spend details...')
     spend = _gen_spend(commitments)

@@ -1193,6 +1193,8 @@ def get_check_columns():
         'ATAMIS_CONTRACT_DATE_INVALID':  ['contract_ref', 'start_date', 'end_date'],
         'ATAMIS_CONTRACT_DUP_REF':       ['contract_ref', 'contract_title', 'organisation', 'supplier_name'],
         'ATAMIS_CONTRACT_REF_NOT_IN_PO': ['contract_ref', 'contract_title', 'organisation'],
+        'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS': ['contract_ref', 'contract_title', 'organisation'],
+        'ATAMIS_CONTRACT_VALUE_MISMATCH':     ['contract_ref', 'contract_title', 'total_award_value', 'award_amount'],
 
         # Atamis Suppliers (atamis_suppliers / supplier_data_report)
         'ATAMIS_SUPPLIER_NO_CREDITOR_REF':   ['supplier_name', 'creditor_ref', 'supplier_salesforce_id'],
@@ -1207,6 +1209,7 @@ def get_check_columns():
         'ATAMIS_COMMIT_DUP_ID':              ['u4_contract_id', 'contract_title', 'supplier_id'],
         'ATAMIS_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
         'ATAMIS_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
+        'ATAMIS_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name'],
 
         # Contract Spend (atamis_spend / contracts_spend_details — Unit4)
         'ATAMIS_SPEND_CONTRACT_ORPHAN':      ['u4_contract_id', 'posted', 'amount_c'],
@@ -1394,6 +1397,48 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'organisation':  'ATAMIS_CONTRACTS.organisation',
         })
         cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title', 'ATAMIS_CONTRACTS.organisation']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS':
+        # Explicit named join on contract_ref -> atamis_commitments.u4_contract_id —
+        # bypasses the generic auto-join below, which has no shared candidate
+        # key between these two tables other than 'house'.
+        failing = failing.rename(columns={
+            'contract_ref':   'ATAMIS_CONTRACTS.contract_ref',
+            'contract_title': 'ATAMIS_CONTRACTS.contract_title',
+            'organisation':   'ATAMIS_CONTRACTS.organisation',
+        })
+        cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title', 'ATAMIS_CONTRACTS.organisation']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'ATAMIS_COMMIT_NOT_IN_CONTRACTS':
+        failing = failing.rename(columns={
+            'u4_contract_id': 'ATAMIS_COMMITMENTS.u4_contract_id',
+            'contract_title': 'ATAMIS_COMMITMENTS.contract_title',
+            'supplier_name':  'ATAMIS_COMMITMENTS.supplier_name',
+        })
+        cols = ['ATAMIS_COMMITMENTS.u4_contract_id', 'ATAMIS_COMMITMENTS.contract_title', 'ATAMIS_COMMITMENTS.supplier_name']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'ATAMIS_CONTRACT_VALUE_MISMATCH':
+        # Explicit named join, enriching with the matched commitment's own
+        # Contract Award Amount so the two systems' disagreement is directly
+        # visible alongside Atamis's Total Award Value.
+        failing = failing.rename(columns={
+            'contract_ref':      'ATAMIS_CONTRACTS.contract_ref',
+            'contract_title':    'ATAMIS_CONTRACTS.contract_title',
+            'total_award_value': 'ATAMIS_CONTRACTS.total_award_value',
+        })
+        if 'atamis_commitments' in frames:
+            commit_link = (
+                frames['atamis_commitments'][['u4_contract_id', 'award_amount']]
+                .drop_duplicates(subset=['u4_contract_id'])
+                .rename(columns={'u4_contract_id': 'ATAMIS_CONTRACTS.contract_ref',
+                                  'award_amount': 'ATAMIS_COMMITMENTS.award_amount'})
+            )
+            failing = failing.merge(commit_link, on='ATAMIS_CONTRACTS.contract_ref', how='left')
+        cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title',
+                'ATAMIS_CONTRACTS.total_award_value', 'ATAMIS_COMMITMENTS.award_amount']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:
