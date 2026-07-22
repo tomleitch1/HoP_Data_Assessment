@@ -878,10 +878,12 @@ def run_dq_analysis(frames, tab=None):
         rel_fps   = [_cache_path(table)]
         if joined_table and joined_table in frames:
             rel_fps.append(_cache_path(joined_table))
-        if table == 'unit4_contract_refs':
-            # Synthetic frame, never pickled itself — track its two real
-            # underlying sources so a change to either one busts this check's
-            # per-check cache (mirrors the joined_table pattern above).
+        if 'unit4_contract_refs' in (table, joined_table):
+            # Synthetic frame, never pickled itself (whether it's this check's
+            # own source table or, for ATAMIS_CONTRACT_NOT_IN_COMMITMENTS, the
+            # joined_table) — track its two real underlying sources so a
+            # change to either one busts this check's per-check cache (mirrors
+            # the joined_table pattern above).
             rel_fps.append(_cache_path('unit4_commitments'))
             rel_fps.append(_cache_path('agldimvalue'))
 

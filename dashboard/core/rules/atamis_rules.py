@@ -61,17 +61,26 @@ def _unit4_commit_vs_spend_mismatch(df, frames):
 
 
 def _atamis_contract_not_in_commitments(df, frames):
-    """Flags Atamis contracts whose Contract Reference has no matching Contract
-    Id in the Unit4 Commitments view — confirmed by the user as a direct join,
-    contrary to the working assumption at the start of this build that the two
-    were unrelated identifier schemes. A contract with no commitment record may
+    """Flags Atamis contracts whose Contract Reference has no matching Unit4
+    contract reference — confirmed by the user as a direct join, contrary to
+    the working assumption at the start of this build that the two were
+    unrelated identifier schemes. A contract with no commitment record may
     simply be newly awarded with no financial activity yet, so this is Medium
-    rather than High."""
-    if df.empty or 'unit4_commitments' not in frames:
+    rather than High.
+
+    Checks against unit4_contract_refs, not unit4_commitments directly —
+    HOL has no usable Commitments extract of its own (confirmed: real data
+    resolves it almost entirely to HOC), so a HOL contract would otherwise
+    always fail this check regardless of whether it's genuinely linked.
+    unit4_contract_refs already combines HOC's real Commitments IDs with
+    HOL's GL dimension value ('Contract Number', dim_position 5) references
+    — see _build_unit4_contract_refs() in data_engine.py — so checking
+    against it covers both houses' real source of truth in one set."""
+    if df.empty or 'unit4_contract_refs' not in frames:
         return pd.Series(False, index=df.index)
 
     commit_ids = set(
-        frames['unit4_commitments']['u4_contract_id'].dropna().astype(str).str.strip()
+        frames['unit4_contract_refs']['u4_contract_id'].dropna().astype(str).str.strip()
     )
     refs = df['contract_ref'].astype(str).str.strip()
     return ~refs.isin(commit_ids)
@@ -217,12 +226,14 @@ def get_atamis_checks():
 
         ('ATAMIS_CONTRACT_NOT_IN_COMMITMENTS',
          30, 'Atamis Contract', 'Consistency', 'Medium',
-         'Contract Reference has no matching Unit4 commitment record',
-         "Every populated Contract Reference is expected to match a Contract Id in the Unit4 Commitments view. "
-         'A contract with no matching commitment record may simply be newly awarded with no financial activity posted yet, or may be a genuine linking gap between the two systems worth reviewing.',
-         'Confirm with the contract owner whether the affected contract is expected to have Unit4 commitment activity, and investigate the missing link if so.',
-         'atamis_contracts', 'unit4_commitments',
-         "WHERE \"Contract Reference\" NOT IN (SELECT \"Contract Id\" FROM contract_total_commitments)",
+         'Contract Reference has no matching Unit4 record',
+         "Every populated Contract Reference is expected to match a known Unit4 contract reference — the Commitments view's Contract Id for "
+         "HOC, or the Contract Number GL dimension value (agldimvalue, dim_position 5) for HOL, which has no equivalent Commitments data of its own. "
+         'A contract with no matching record may simply be newly awarded with no financial activity posted yet, or may be a genuine linking gap between the two systems worth reviewing.',
+         'Confirm with the contract owner whether the affected contract is expected to have Unit4 activity, and investigate the missing link if so.',
+         'atamis_contracts', 'unit4_contract_refs',
+         "WHERE \"Contract Reference\" NOT IN (SELECT \"Contract Id\" FROM contract_total_commitments) "
+         "-- HOL side additionally checked against agldimvalue WHERE dim_position = '5' (Contract Number)",
          _atamis_contract_not_in_commitments),
 
         ('ATAMIS_CONTRACT_VALUE_MISMATCH',
