@@ -1346,6 +1346,7 @@ def get_check_columns():
         'ATAMIS_CONTRACT_REF_NOT_IN_PO': ['contract_ref', 'contract_title', 'organisation'],
         'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS': ['contract_ref', 'contract_title', 'organisation'],
         'ATAMIS_CONTRACT_VALUE_MISMATCH':     ['contract_ref', 'contract_title', 'total_award_value', 'award_amount'],
+        'ATAMIS_CONTRACT_DATE_MISMATCH':      ['contract_ref', 'contract_title', 'start_date', 'end_date', 'date_from', 'date_to'],
 
         # Atamis Suppliers (atamis_suppliers / supplier_data_report)
         'ATAMIS_SUPPLIER_NO_CREDITOR_REF':   ['supplier_name', 'creditor_ref', 'supplier_salesforce_id'],
@@ -1609,6 +1610,35 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             failing = failing.merge(commit_link, on='ATAMIS_CONTRACTS.contract_ref', how='left')
         cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title',
                 'ATAMIS_CONTRACTS.total_award_value', 'UNIT4_COMMITMENTS.award_amount']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'ATAMIS_CONTRACT_DATE_MISMATCH':
+        # Explicit named join, enriching with the matched commitment's own
+        # Contract Date From / Contract Date To so the two systems'
+        # disagreement is directly visible alongside Atamis's own Start/End
+        # Date. Same blank-contract_ref exclusion as ATAMIS_CONTRACT_VALUE_MISMATCH,
+        # for the same reason (avoid a spurious blank == blank merge match).
+        failing = failing.rename(columns={
+            'contract_ref':   'ATAMIS_CONTRACTS.contract_ref',
+            'contract_title': 'ATAMIS_CONTRACTS.contract_title',
+            'start_date':     'ATAMIS_CONTRACTS.start_date',
+            'end_date':       'ATAMIS_CONTRACTS.end_date',
+        })
+        blank_ref = _atamis_blank(failing['ATAMIS_CONTRACTS.contract_ref'])
+        failing.loc[blank_ref, 'ATAMIS_CONTRACTS.contract_ref'] = None
+        if 'unit4_commitments' in frames:
+            commit_raw = frames['unit4_commitments']
+            commit_link = (
+                commit_raw[~_atamis_blank(commit_raw['u4_contract_id'])][['u4_contract_id', 'date_from', 'date_to']]
+                .drop_duplicates(subset=['u4_contract_id'])
+                .rename(columns={'u4_contract_id': 'ATAMIS_CONTRACTS.contract_ref',
+                                  'date_from': 'UNIT4_COMMITMENTS.date_from',
+                                  'date_to': 'UNIT4_COMMITMENTS.date_to'})
+            )
+            failing = failing.merge(commit_link, on='ATAMIS_CONTRACTS.contract_ref', how='left')
+        cols = ['ATAMIS_CONTRACTS.contract_ref', 'ATAMIS_CONTRACTS.contract_title',
+                'ATAMIS_CONTRACTS.start_date', 'ATAMIS_CONTRACTS.end_date',
+                'UNIT4_COMMITMENTS.date_from', 'UNIT4_COMMITMENTS.date_to']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_depreciation' and check_id in ['DQ-AG-X03', 'DQ-AG-X04']:

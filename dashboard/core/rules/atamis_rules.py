@@ -133,6 +133,38 @@ def _atamis_contract_value_mismatch(df, frames):
     return (commit_val.notna() & (diff > tolerance)).values
 
 
+def _atamis_contract_date_mismatch(df, frames):
+    """Flags contracts where Atamis's own Start Date / End Date disagree with
+    the matched Unit4 commitment's Contract Date From / Contract Date To for
+    the same contract. HOC only — HOL's contract reference comes from a GL
+    dimension value (see unit4_contract_refs in data_engine.py), which carries
+    no date fields of its own to compare against; its own period_from/
+    period_to describe when that dimension code was valid for GL postings,
+    not the contract's actual start/end date, so it isn't a safe substitute.
+    Unmatched contracts (no commitment counterpart at all — see
+    ATAMIS_CONTRACT_NOT_IN_COMMITMENTS) are left unflagged here since there is
+    nothing to compare against, same reasoning as ATAMIS_CONTRACT_VALUE_MISMATCH.
+    Blank contract_ref is explicitly excluded from the join on both sides —
+    same blank-key merge hazard already fixed there."""
+    if df.empty or 'unit4_commitments' not in frames:
+        return pd.Series(False, index=df.index)
+
+    commit_raw = frames['unit4_commitments']
+    commit = (
+        commit_raw[~_is_blank(commit_raw['u4_contract_id'])][['u4_contract_id', 'date_from', 'date_to']]
+        .drop_duplicates(subset=['u4_contract_id'])
+        .rename(columns={'u4_contract_id': 'contract_ref', 'date_from': '_commit_date_from', 'date_to': '_commit_date_to'})
+    )
+    left = df[['contract_ref', 'start_date', 'end_date']].copy()
+    left.loc[_is_blank(left['contract_ref']), 'contract_ref'] = None
+    merged = left.merge(commit, on='contract_ref', how='left')
+
+    has_commitment = merged['_commit_date_from'].notna() | merged['_commit_date_to'].notna()
+    start_mismatch = merged['start_date'].notna() & merged['_commit_date_from'].notna() & (merged['start_date'] != merged['_commit_date_from'])
+    end_mismatch = merged['end_date'].notna() & merged['_commit_date_to'].notna() & (merged['end_date'] != merged['_commit_date_to'])
+    return (has_commitment & (start_mismatch | end_mismatch)).values
+
+
 def get_atamis_checks():
     return [
 
@@ -245,6 +277,18 @@ def get_atamis_checks():
          'atamis_contracts', 'unit4_commitments',
          "WHERE ABS(contracts_report.\"Total Award Value\" - contract_total_commitments.\"Contract Award Amount\") > GREATEST(contracts_report.\"Total Award Value\" * 0.02, 1.00)",
          _atamis_contract_value_mismatch),
+
+        ('ATAMIS_CONTRACT_DATE_MISMATCH',
+         30, 'Atamis Contract', 'Consistency', 'Medium',
+         "Atamis Start/End Date disagrees with Unit4's Contract Date From/To",
+         "For a contract matched between the two systems, Atamis's own Start Date and End Date are expected to agree with the Unit4 Commitments view's "
+         'Contract Date From and Contract Date To for the same contract. HOC only — HOL has no equivalent Commitments date data to compare against. '
+         'A disagreement suggests one of the two systems is holding a stale or incorrectly entered contract date, which needs reconciling before either is relied on for migration.',
+         'Confirm with the contract owner which date is correct for the affected contract, and correct the other system.',
+         'atamis_contracts', 'unit4_commitments',
+         "WHERE contracts_report.\"Start Date\" <> contract_total_commitments.\"Contract Date From\" "
+         "OR contracts_report.\"End Date\" <> contract_total_commitments.\"Contract Date To\"",
+         _atamis_contract_date_mismatch),
 
         # ---------------------------------------------------------------
         # ATAMIS SUPPLIERS — atamis_suppliers / supplier_data_report.csv
