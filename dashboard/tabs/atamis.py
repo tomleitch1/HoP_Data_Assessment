@@ -495,21 +495,6 @@ def _render_org_split(m: dict) -> html.Div:
     total_val = mix['total_value'].sum() or 1
     total_n = mix['contract_count'].sum() or 1
 
-    fig = go.Figure(data=[go.Pie(
-        labels=mix['house'], values=mix['contract_count'], hole=0.62,
-        marker=dict(colors=[_ORG_COLORS[h] for h in mix['house']], line=dict(color='#ffffff', width=2)),
-        textinfo='label+percent', textfont=dict(size=11, color='#334155'),
-        hovertemplate='<b>%{label}</b><br>%{value:,.0f} contracts (%{percent})<extra></extra>',
-        sort=False,
-    )])
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=10, b=10, l=10, r=10), height=220, showlegend=False,
-        font=dict(family="'Inter', sans-serif"),
-        annotations=[dict(text=_fmt_count(int(total_n)), showarrow=False,
-                           font=dict(size=18, color='#1e293b', family=DISPLAY_FONT))],
-    )
-
     rows = []
     for _, r in mix.iterrows():
         h = r['house']
@@ -533,10 +518,10 @@ def _render_org_split(m: dict) -> html.Div:
     return _card(
         'Contracts by Organisation', 'Number of contracts and Total Award Value by organisation',
         [
-            html.Div(style={'display': 'flex', 'gap': '24px', 'alignItems': 'center', 'flexWrap': 'wrap'}, children=[
-                html.Div(dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '220px', 'width': '220px'}), style={'flex': '0 0 220px'}),
-                html.Div(style={'flex': '1', 'minWidth': '280px'}, children=rows),
-            ]),
+            html.Div(f'{int(total_n):,} contracts total', style={
+                'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b', 'marginBottom': '12px',
+            }),
+            html.Div(rows),
         ],
     )
 
