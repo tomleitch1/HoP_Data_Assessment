@@ -290,12 +290,6 @@ def _compute_metrics(frames: dict) -> dict:
     else:
         active_count = expired_count = no_date_count = expiring_soon_count = 0
 
-    top_contracts = (
-        contracts[contracts['total_award_value'] > 0]
-        .nlargest(15, 'total_award_value')[['contract_title', 'supplier_name', 'total_award_value', 'house']]
-        if 'total_award_value' in contracts.columns and not contracts.empty else pd.DataFrame()
-    )
-
     # ---- Supplier reconciliation (the flagship cross-system view) ----
     atamis_sup = suppliers[~_blank(suppliers['creditor_ref'])] if 'creditor_ref' in suppliers.columns else pd.DataFrame()
     atamis_sup_total = len(atamis_sup)
@@ -389,7 +383,6 @@ def _compute_metrics(frames: dict) -> dict:
         'expired_count': expired_count,
         'no_date_count': no_date_count,
         'expiring_soon_count': expiring_soon_count,
-        'top_contracts': top_contracts,
         'atamis_sup_total': atamis_sup_total,
         'atamis_matched': atamis_matched,
         'atamis_only': atamis_only,
@@ -666,20 +659,6 @@ def _overlap_bar(left_label, left_n, mid_label, mid_n, right_label, right_n, lef
     return html.Div([bar, legend])
 
 
-def _reconciliation_stat(value, label, sublabel, color):
-    return html.Div(style={
-        'flex': '1', 'minWidth': '190px',
-        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
-        'borderRadius': '12px', 'padding': '18px 20px',
-        'borderLeft': f'4px solid {color}',
-        'boxShadow': '0 2px 8px rgba(0,0,0,0.04)',
-    }, children=[
-        html.Div(value, style={'fontSize': '26px', 'fontWeight': '800', 'color': color, 'fontFamily': DISPLAY_FONT, 'lineHeight': '1'}),
-        html.Div(label, style={'fontSize': '12px', 'fontWeight': '700', 'color': '#1e293b', 'marginTop': '8px'}),
-        html.Div(sublabel, style={'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '3px'}),
-    ])
-
-
 def _render_reconciliation(m: dict) -> html.Div:
     sup_card = _card(
         'Supplier Overlap: Atamis ↔ Unit4', 'Creditor Ref (Atamis) matched against apar_id (Unit4 supplier master, both houses)',
@@ -710,73 +689,7 @@ def _render_reconciliation(m: dict) -> html.Div:
         html.Div(contract_card, style={'flex': '1', 'minWidth': '420px'}),
     ])
 
-    stat_row = html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginTop': '16px'}, children=[
-        _reconciliation_stat(
-            f"{m.get('contract_po_unmatched', 0):,}", 'Contracts with no matching PO',
-            f"of {m.get('contract_po_total', 0):,} HOC contracts checked", _WARN_C,
-        ),
-        _reconciliation_stat(
-            f"{m.get('value_mismatch_count', 0):,}", 'Award value disagrees with Unit4',
-            f"of {m.get('contract_commit_matched', 0):,} matched contracts", _WARN_C,
-        ),
-        _reconciliation_stat(
-            f"{m.get('commit_orphan', 0):,}", 'Commitments with unknown supplier',
-            f"of {m.get('commit_total', 0):,} commitment records", _CRIT_C,
-        ),
-        _reconciliation_stat(
-            f"{m.get('spend_orphan', 0):,}", 'Spend records with no matching contract',
-            f"of {m.get('spend_total', 0):,} spend records", _CRIT_C,
-        ),
-        _reconciliation_stat(
-            f"{m.get('mismatch_count', 0):,}", 'Commitments vs Spend disagree',
-            f"{_fmt_val(m.get('mismatch_gap', 0))} total gap across matched contracts", _WARN_C,
-        ),
-    ])
-
-    return html.Div(style={'marginBottom': '24px'}, children=[overlap_row, stat_row])
-
-
-# ── Top contracts by value ────────────────────────────────────────────────────
-
-def _render_top_contracts(m: dict) -> html.Div:
-    tc = m.get('top_contracts')
-    if tc is None or tc.empty:
-        return html.Div()
-
-    tc = tc.sort_values('total_award_value', ascending=True)
-    labels = tc['contract_title'].astype(str).str.slice(0, 55).tolist()
-    values = tc['total_award_value'].tolist()
-    colors = [_ORG_COLORS.get(h, '#94a3b8') for h in tc['house']]
-    suppliers = tc['supplier_name'].fillna('—').tolist()
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=labels, x=values, orientation='h',
-        marker=dict(color=colors, opacity=0.9, line=dict(width=0)),
-        customdata=suppliers,
-        hovertemplate='<b>%{y}</b><br>%{customdata}<br>£%{x:,.0f}<extra></extra>',
-        text=[_fmt_val(v) for v in values],
-        textposition='outside', textfont=dict(size=10, color='#475569'),
-    ))
-    fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=10, b=30, l=10, r=80), height=max(340, len(labels) * 26), bargap=0.25,
-        xaxis=dict(showgrid=True, gridcolor='#f1f5f9', tickfont=dict(size=10, color='#94a3b8'), zeroline=False),
-        yaxis=dict(showgrid=False, tickfont=dict(size=11, color='#475569')),
-        showlegend=False, font=dict(family="'Inter', sans-serif"),
-    )
-
-    legend = html.Div(style={'display': 'flex', 'gap': '16px', 'marginTop': '8px'}, children=[
-        html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
-            html.Div(style={'width': '10px', 'height': '10px', 'borderRadius': '2px', 'background': _ORG_COLORS[h]}),
-            html.Span(h, style={'fontSize': '11px', 'color': '#475569', 'fontWeight': '600'}),
-        ]) for h in _ORG_ORDER
-    ])
-
-    return _card(
-        'Top 15 Contracts by Award Value', 'Bar color denotes Organisation (HOC / HOL / Joint)',
-        [dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': f'{max(340, len(labels) * 26)}px'}), legend],
-    )
+    return html.Div(style={'marginBottom': '24px'}, children=[overlap_row])
 
 
 # ── Contract lifecycle ────────────────────────────────────────────────────────
@@ -892,11 +805,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
         _section_div('Cross-System Reconciliation'),
         _render_reconciliation(m),
 
-        _section_div('Contract Value & Lifecycle', 'Highest-value contracts and where each sits in its lifecycle'),
-        html.Div(style={'display': 'flex', 'gap': '20px', 'flexWrap': 'wrap', 'marginBottom': '24px', 'alignItems': 'stretch'}, children=[
-            html.Div(style={'flex': '3', 'minWidth': '420px'}, children=[_render_top_contracts(m)]),
-            html.Div(style={'flex': '2', 'minWidth': '340px'}, children=[_render_lifecycle(m)]),
-        ]),
+        html.Div(style={'marginBottom': '24px'}, children=[_render_lifecycle(m)]),
 
         _section_div('Contract Financials', 'Committed, posted, and remaining value — reconciled across both Unit4 views'),
         html.Div(style={'marginBottom': '24px'}, children=[_render_financials(m)]),
