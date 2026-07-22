@@ -516,7 +516,7 @@ def _render_org_split(m: dict) -> html.Div:
 
 RELIABILITY_VERDICT_LABELS = {
     'HOC': 'Resolves to HOC', 'HOL': 'Resolves to HOL',
-    'Unknown': 'Matched, supplier unresolved',
+    'Unknown': 'Supplier unresolved',
     'Conflicting': 'Conflicting signals', 'No Match': 'No match either source',
     'No Reference': 'No Contract Reference',
 }
