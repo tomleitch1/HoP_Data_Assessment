@@ -370,8 +370,6 @@ def _compute_metrics(frames: dict) -> dict:
     total_committed = float(pd.to_numeric(commitments.get('committed_amount', pd.Series(dtype=float)), errors='coerce').sum())
     total_posted = float(pd.to_numeric(commitments.get('posted_amount', pd.Series(dtype=float)), errors='coerce').sum())
     total_remaining = float(pd.to_numeric(commitments.get('remaining_amount', pd.Series(dtype=float)), errors='coerce').sum())
-    overspend_count = int((pd.to_numeric(commitments.get('remaining_amount', pd.Series(dtype=float)), errors='coerce') < -1).sum())
-    total_spend_posted = float(pd.to_numeric(spend.get('posted', pd.Series(dtype=float)), errors='coerce').sum())
 
     return {
         'total_contracts': total_contracts,
@@ -408,8 +406,6 @@ def _compute_metrics(frames: dict) -> dict:
         'total_committed': total_committed,
         'total_posted': total_posted,
         'total_remaining': total_remaining,
-        'total_spend_posted': total_spend_posted,
-        'overspend_count': overspend_count,
         'commitments_count': len(commitments),
     }
 
@@ -737,8 +733,6 @@ def _render_financials(m: dict) -> html.Div:
     committed = m.get('total_committed', 0)
     posted = m.get('total_posted', 0)
     remaining = m.get('total_remaining', 0)
-    overspend = m.get('overspend_count', 0)
-    spend_posted = m.get('total_spend_posted', 0)
 
     total = max(limit, 1)
     segs = [('Posted', posted, _ACCENT), ('Committed (uninvoiced)', max(committed - posted, 0), _ACCENT_LT), ('Remaining', max(remaining, 0), _TRACK)]
@@ -760,11 +754,6 @@ def _render_financials(m: dict) -> html.Div:
         'Contract Financials (Unit4 Commitments view)', f'Amount Limit totals {_fmt_val(limit)} across {m.get("commitments_count",0):,} commitments',
         [
             html.Div(rows),
-            html.Div(style={'display': 'flex', 'gap': '14px', 'flexWrap': 'wrap', 'marginTop': '18px'}, children=[
-                _stat_box(f'{overspend:,}', 'Contracts overspent', _CRIT_C, sub='Posted exceeds authorised limit'),
-                _stat_box(_fmt_val(spend_posted), 'Spend Details view — total posted', _NAVY, sub='Second Unit4 view, for comparison'),
-                _stat_box(_fmt_val(posted - spend_posted), 'Views\' net difference', _WARN_C if abs(posted - spend_posted) > 1 else _ACCENT),
-            ]),
         ],
     )
 
