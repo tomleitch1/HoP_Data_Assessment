@@ -155,6 +155,51 @@ def _compute_metrics(frames: dict) -> dict:
         ).reindex(_ORG_ORDER + ['Unknown']).fillna(0).reset_index().rename(columns={'_org_clean': 'house'})
     )
 
+    # ---- Organisation field reliability ----
+    # Does the raw Organisation field (HOC/HOL/Joint) agree with what the
+    # underlying data actually implies — checked independently for EVERY
+    # contract, not just the Joint/blank ones _derive_atamis_houses resolves.
+    # A contract cleanly labelled HOC or HOL can still disagree with its own
+    # commitment's supplier chain or with HOL's GL Contract Number dimension;
+    # that disagreement is exactly what this surfaces.
+    #
+    # unit4_contract_refs already carries, per contract_ref, every house that
+    # source resolves to (a commitment's own supplier-derived house for HOC,
+    # or a flat 'HOL' tag for a GL dimension match) — a contract_ref appearing
+    # under more than one distinct house across the two sources is a genuine
+    # conflict between them, not just a label disagreement.
+    unit4_refs_all = frames.get('unit4_contract_refs', pd.DataFrame())
+    org_reliability = pd.DataFrame()
+    org_reliability_excluded_blank_ref = 0
+    if 'contract_ref' in contracts.columns and not unit4_refs_all.empty and 'u4_contract_id' in unit4_refs_all.columns:
+        ref_house = (
+            unit4_refs_all[~_blank(unit4_refs_all['u4_contract_id'])][['u4_contract_id', 'house']]
+            .rename(columns={'u4_contract_id': 'contract_ref'})
+        )
+        ref_house['contract_ref'] = ref_house['contract_ref'].astype(str).str.strip()
+        house_sets = ref_house.groupby('contract_ref')['house'].apply(lambda s: sorted(set(s)))
+
+        blank_ref_mask = _blank(contracts['contract_ref'])
+        org_reliability_excluded_blank_ref = int(blank_ref_mask.sum())
+        contracts_with_ref = contracts[~blank_ref_mask].copy()
+        contracts_with_ref['_org_clean'] = org_clean.loc[contracts_with_ref.index]
+        refs_stripped = contracts_with_ref['contract_ref'].astype(str).str.strip()
+
+        def _reliability_verdict(ref):
+            houses = house_sets.get(ref)
+            if not houses:
+                return 'No Match'
+            if len(houses) > 1:
+                return 'Conflicting'
+            return houses[0]
+
+        contracts_with_ref['_derived'] = refs_stripped.map(_reliability_verdict)
+        org_reliability = pd.crosstab(contracts_with_ref['_org_clean'], contracts_with_ref['_derived'])
+        org_reliability = org_reliability.reindex(index=_ORG_ORDER + ['Unknown'], fill_value=0)
+        org_reliability = org_reliability.reindex(
+            columns=['HOC', 'HOL', 'Unknown', 'Conflicting', 'No Match'], fill_value=0
+        )
+
     if 'end_date' in contracts.columns:
         active_mask = contracts['end_date'] >= today
         active_count = int(active_mask.sum())
@@ -259,6 +304,8 @@ def _compute_metrics(frames: dict) -> dict:
         'total_award_value': total_award_value,
         'total_current_value': total_current_value,
         'org_mix': org_mix,
+        'org_reliability': org_reliability,
+        'org_reliability_excluded_blank_ref': org_reliability_excluded_blank_ref,
         'active_count': active_count,
         'expired_count': expired_count,
         'no_date_count': no_date_count,
@@ -411,6 +458,76 @@ def _render_org_split(m: dict) -> html.Div:
                 html.Div(dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '220px', 'width': '220px'}), style={'flex': '0 0 220px'}),
                 html.Div(style={'flex': '1', 'minWidth': '280px'}, children=rows),
             ]),
+        ],
+    )
+
+
+_RELIABILITY_LABELS = {
+    'HOC': 'Resolves to HOC', 'HOL': 'Resolves to HOL',
+    'Unknown': 'Matched, supplier unresolved',
+    'Conflicting': 'Conflicting signals', 'No Match': 'No match either source',
+}
+
+
+def _render_org_reliability(m: dict) -> html.Div:
+    tbl = m.get('org_reliability')
+    if tbl is None or tbl.empty:
+        return html.Div()
+
+    def _cell_style(org, verdict, val):
+        base = {'fontSize': '13px', 'fontWeight': '700', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}
+        if val == 0:
+            return {**base, 'color': '#cbd5e1'}
+        if verdict == 'Conflicting':
+            return {**base, 'color': '#fff', 'background': _CRIT_C, 'borderRadius': '6px'}
+        if verdict == org:
+            return {**base, 'color': _ACCENT}
+        if verdict in ('HOC', 'HOL'):
+            # Org says one house, underlying data resolves to the other — a
+            # genuine label/data disagreement, not just an unresolved case.
+            return {**base, 'color': '#fff', 'background': _WARN_C, 'borderRadius': '6px'}
+        return {**base, 'color': '#64748b'}
+
+    header = html.Tr([
+        html.Th('Organisation', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'left', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
+    ] + [
+        html.Th(_RELIABILITY_LABELS.get(c, c), style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'center', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'})
+        for c in tbl.columns
+    ] + [
+        html.Th('Total', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'center', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
+    ])
+
+    rows = []
+    for org in tbl.index:
+        row_total = int(tbl.loc[org].sum())
+        cells = [html.Td(html.Span(org, style={
+            'fontSize': '11px', 'fontWeight': '800', 'color': '#fff',
+            'background': _ORG_COLORS.get(org, '#64748b'), 'padding': '2px 8px', 'borderRadius': '4px',
+        }), style={'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'})]
+        for verdict in tbl.columns:
+            val = int(tbl.loc[org, verdict])
+            cells.append(html.Td(f'{val:,}', style=_cell_style(org, verdict, val)))
+        cells.append(html.Td(f'{row_total:,}', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#334155', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}))
+        rows.append(html.Tr(cells))
+
+    excluded = m.get('org_reliability_excluded_blank_ref', 0)
+    footnote_bits = [
+        'Green = Organisation agrees with the underlying data. Amber = Organisation says one house but the Supplier ID / '
+        "Contract Number chain resolves to the other. Red = the two sources (Commitments' supplier chain and HOL's GL "
+        "Contract Number dimension) disagree with each other, independent of what Organisation says.",
+    ]
+    if excluded:
+        footnote_bits.append(f' {excluded:,} contracts excluded — no Contract Reference to check (see ATAMIS_CONTRACT_NO_REF).')
+
+    return _card(
+        'Organisation Field Reliability',
+        "Does Atamis's own Organisation field (HOC/HOL/Joint) agree with what the Supplier ID / Contract Number data actually implies? "
+        'Checked independently for every contract with a reference, not just Joint or blank ones.',
+        [
+            html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
+                html.Thead(header), html.Tbody(rows),
+            ]),
+            html.Div(''.join(footnote_bits), style={'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '12px', 'lineHeight': '1.6'}),
         ],
     )
 
@@ -674,6 +791,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
         _section_div('Contracts by Organisation', 'Atamis contract data spans both houses plus a Joint category'),
         html.Div(style={'marginBottom': '24px'}, children=[_render_org_split(m)]),
+        html.Div(style={'marginBottom': '24px'}, children=[_render_org_reliability(m)]),
 
         _section_div('Cross-System Reconciliation', 'Where Atamis (procurement) and Unit4 (Agresso) agree — and where they don\'t'),
         _render_reconciliation(m),
