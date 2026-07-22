@@ -175,7 +175,7 @@ def org_reliability_detail(frames: dict) -> pd.DataFrame:
     gl_side['gl_dim_match'] = True
 
     merged = contracts.merge(commit_side, on='_ref_clean', how='left').merge(gl_side, on='_ref_clean', how='left')
-    merged['gl_dim_match'] = merged['gl_dim_match'].fillna(False).astype(bool)
+    merged['gl_dim_match'] = merged['gl_dim_match'].eq(True)
 
     def _verdict(row):
         houses = set()
@@ -540,16 +540,26 @@ def _render_org_reliability(m: dict) -> html.Div:
     def _cell_style(org, verdict, val):
         base = {'fontSize': '13px', 'fontWeight': '700', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}
         if val == 0:
-            return {**base, 'color': '#cbd5e1'}
+            # Genuinely empty — kept hollow so it visually recedes against
+            # every other, filled cell below.
+            return {**base, 'color': '#cbd5e1', 'background': '#f8fafc'}
         if verdict == 'Conflicting':
             return {**base, 'color': '#fff', 'background': _CRIT_C, 'borderRadius': '6px'}
         if verdict == org:
-            return {**base, 'color': _ACCENT}
+            # Organisation agrees with the underlying data.
+            return {**base, 'color': '#fff', 'background': _ACCENT, 'borderRadius': '6px'}
         if verdict in ('HOC', 'HOL'):
             # Org says one house, underlying data resolves to the other — a
             # genuine label/data disagreement, not just an unresolved case.
             return {**base, 'color': '#fff', 'background': _WARN_C, 'borderRadius': '6px'}
-        return {**base, 'color': '#64748b'}
+        if verdict == 'Unknown':
+            # Matched something, but that record's own supplier doesn't
+            # resolve either — inconclusive, but for a different reason than
+            # No Match, so it gets its own shade rather than sharing one.
+            return {**base, 'color': '#fff', 'background': '#94a3b8', 'borderRadius': '6px'}
+        # No Match — nothing to compare against at all; the lightest of the
+        # filled tones since there's no actual disagreement to flag.
+        return {**base, 'color': '#475569', 'background': '#e2e8f0', 'borderRadius': '6px'}
 
     header = html.Tr([
         html.Th('Organisation', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'left', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
@@ -599,7 +609,9 @@ def _render_org_reliability(m: dict) -> html.Div:
     footnote_bits = [
         'Green = Organisation agrees with the underlying data. Amber = Organisation says one house but the Supplier ID / '
         "Contract Number chain resolves to the other. Red = the two sources (Commitments' supplier chain and HOL's GL "
-        "Contract Number dimension) disagree with each other, independent of what Organisation says.",
+        "Contract Number dimension) disagree with each other, independent of what Organisation says. Dark grey = matched "
+        "something, but that record's own supplier is unresolved. Light grey = no match in either source at all — "
+        'inconclusive rather than wrong. Click any filled cell to see the underlying contracts.',
     ]
     if excluded:
         footnote_bits.append(f' {excluded:,} contracts excluded — no Contract Reference to check (see ATAMIS_CONTRACT_NO_REF).')
