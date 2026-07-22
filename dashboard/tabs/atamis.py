@@ -690,9 +690,6 @@ def _render_reconciliation(m: dict) -> html.Div:
                 'Unit4 only', m.get('unit4_only', 0),
                 HOUSE_HEX['Unknown'], _ACCENT, _NAVY,
             ),
-            html.Div('Atamis-only suppliers exist in procurement records with no counterpart Unit4 supplier ever created. '
-                     'Unit4-only suppliers transact in Agresso but were never registered in Atamis — common for payroll, tax, and individual-type suppliers, but still worth a second look.',
-                     style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '10px', 'lineHeight': '1.6'}),
         ],
     )
 
@@ -705,9 +702,6 @@ def _render_reconciliation(m: dict) -> html.Div:
                 'Unit4 only', m.get('commit_not_in_contracts', 0),
                 HOUSE_HEX['Unknown'], _ACCENT, _NAVY,
             ),
-            html.Div('Atamis-only contracts may simply be newly awarded with no financial activity posted yet. '
-                     'Unit4-only commitments are more surprising — a financial commitment should trace back to a real contract record.',
-                     style={'fontSize': '11px', 'color': '#64748b', 'marginTop': '10px', 'lineHeight': '1.6'}),
         ],
     )
 
@@ -895,7 +889,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
         html.Div(style={'marginTop': '24px', 'marginBottom': '24px'}, children=[_render_org_split(m)]),
         html.Div(style={'marginBottom': '24px'}, children=[_render_org_reliability(m)]),
 
-        _section_div('Cross-System Reconciliation', 'Where Atamis (procurement) and Unit4 (Agresso) agree — and where they don\'t'),
+        _section_div('Cross-System Reconciliation'),
         _render_reconciliation(m),
 
         _section_div('Contract Value & Lifecycle', 'Highest-value contracts and where each sits in its lifecycle'),
