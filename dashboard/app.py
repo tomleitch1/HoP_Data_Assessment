@@ -74,7 +74,7 @@ app.layout = html.Div(style={
                 dcc.Tab(label='Summary', value='exec-summary',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='General Ledger', value='gl',
+                dcc.Tab(label='GL', value='gl',
                         style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
                         selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
                 dcc.Tab(label='Suppliers', value='suppliers',
