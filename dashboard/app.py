@@ -19,7 +19,11 @@ from dashboard.tabs.gl import render_tab as render_gl
 from dashboard.tabs.assets import render_tab as render_assets
 from dashboard.tabs.po import render_tab as render_po
 from dashboard.tabs.pbf import render_tab as render_pbf
-from dashboard.tabs.atamis import render_tab as render_atamis
+from dashboard.tabs.atamis import (
+    render_tab as render_atamis,
+    get_org_reliability_records as get_atamis_org_reliability_records,
+    RELIABILITY_VERDICT_LABELS as ATAMIS_RELIABILITY_VERDICT_LABELS,
+)
 
 # Keep these in case they are needed for drill-downs or future features
 from dashboard.tabs.explorer import render_explorer_layout, render_explorer_summary
@@ -1286,6 +1290,105 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
     ])
 
     return {'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)', 'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center', 'padding': '20px', 'boxSizing': 'border-box'},            modal_title,            content
+
+
+@app.callback(
+    [Output('modal-overlay', 'style', allow_duplicate=True),
+     Output('modal-title', 'children', allow_duplicate=True),
+     Output('modal-content', 'children', allow_duplicate=True)],
+    Input({'type': 'atamis-org-rel-cell', 'org': dash.ALL, 'verdict': dash.ALL}, 'n_clicks'),
+    prevent_initial_call=True,
+)
+def handle_atamis_org_reliability_click(n_clicks_list):
+    """Drill-down for the Atamis tab's Organisation Field Reliability matrix
+    (see dashboard/tabs/atamis.py). Reuses the same modal-overlay/title/content
+    shell as the DQ drill-down (handle_modal_logic above) via allow_duplicate,
+    but this isn't a DQ check — there's no severity/RAG/threshold data — so it
+    renders a simpler content: just the actual contracts behind the clicked
+    cell, tracing exactly which source(s) (Commitments supplier chain, HOL's
+    GL Contract Number dimension) resolved each one and to what house.
+    """
+    if not any(n_clicks_list):
+        return dash.no_update, dash.no_update, dash.no_update
+
+    triggered = dash.ctx.triggered_id
+    if not triggered:
+        return dash.no_update, dash.no_update, dash.no_update
+
+    org = triggered['org']
+    verdict = triggered['verdict']
+
+    df = get_atamis_org_reliability_records(frames, org, verdict)
+    if df.empty:
+        content = html.Div('No records found for this combination.', style={
+            'padding': '48px', 'textAlign': 'center', 'color': '#94a3b8', 'fontSize': '13px',
+        })
+    else:
+        display_cols = [
+            ('contract_ref', 'Contract Reference'),
+            ('contract_title', 'Contract Title'),
+            ('organisation', 'Organisation (raw)'),
+            ('commitment_id', 'Matched Commitment Id'),
+            ('commitment_supplier_id', 'Commitment Supplier ID'),
+            ('commitment_supplier_name', 'Commitment Supplier Name'),
+            ('commitment_house', 'Commitment House'),
+            ('gl_dim_match', 'Matches HOL GL Contract Number'),
+        ]
+        avail = [(c, label) for c, label in display_cols if c in df.columns]
+        table_df = df[[c for c, _ in avail]].copy()
+        if 'gl_dim_match' in table_df.columns:
+            table_df['gl_dim_match'] = table_df['gl_dim_match'].map({True: 'Yes', False: 'No'})
+        table_df = table_df.fillna('—')
+
+        content = html.Div(style={'padding': '0'}, children=[
+            dash_table.DataTable(
+                data=table_df.to_dict('records'),
+                columns=[{'name': label, 'id': c} for c, label in avail],
+                style_table={'overflowX': 'auto', 'border': 'none'},
+                style_cell={
+                    'textAlign': 'left', 'padding': '10px 16px',
+                    'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
+                    'minWidth': '100px', 'color': '#1a1523',
+                    'borderColor': '#f0edf8', 'borderLeft': 'none', 'borderRight': 'none',
+                },
+                style_header={
+                    'backgroundColor': '#1e1528', 'fontWeight': '600',
+                    'color': 'rgba(255,255,255,0.65)', 'textAlign': 'left',
+                    'fontSize': '11px', 'letterSpacing': '0.05em',
+                    'borderColor': '#2a1f3d', 'padding': '10px 16px',
+                    'textTransform': 'uppercase',
+                },
+                style_data={'borderColor': '#f0edf8'},
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'}],
+                filter_action='native',
+                sort_action='native',
+                page_size=15,
+            ),
+        ])
+
+    verdict_label = ATAMIS_RELIABILITY_VERDICT_LABELS.get(verdict, verdict)
+    org_color = HOUSE_HEX.get(org, '#7c5cbf')
+    modal_title = html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'minWidth': 0}, children=[
+        html.Span(org, style={
+            'background': org_color, 'color': '#fff',
+            'fontSize': '9px', 'fontWeight': '800', 'letterSpacing': '0.12em',
+            'padding': '3px 8px', 'borderRadius': '4px', 'flexShrink': '0',
+        }),
+        html.Span('/', style={'color': 'rgba(255,255,255,0.2)', 'fontSize': '14px', 'flexShrink': '0'}),
+        html.Span(f'Organisation says {org} — {verdict_label}', style={
+            'fontSize': '13px', 'fontWeight': '500', 'color': 'rgba(255,255,255,0.85)',
+            'overflow': 'hidden', 'textOverflow': 'ellipsis', 'whiteSpace': 'nowrap',
+        }),
+    ])
+
+    modal_style = {
+        'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0,
+        'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)',
+        'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
+        'padding': '20px', 'boxSizing': 'border-box',
+    }
+    return modal_style, modal_title, content
+
 
 @app.callback(
     Output("download-modal-csv", "data"),

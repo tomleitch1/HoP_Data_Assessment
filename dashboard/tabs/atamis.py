@@ -114,6 +114,94 @@ def _card(title, subtitle, children, flex=None):
     ])
 
 
+# ── Organisation Field Reliability — shared by the tab's summary crosstab and ─
+# ── app.py's modal drill-down, so both use identical matching logic ──────────
+
+def _blank_series(s):
+    return s.isna() | (s.astype(str).str.strip().isin(['', 'nan', 'None']))
+
+
+def org_reliability_detail(frames: dict) -> pd.DataFrame:
+    """Per-contract detail behind the Organisation Field Reliability card.
+
+    For every Atamis contract with a populated Contract Reference, traces
+    whether it matches a Unit4 Commitments record (and if so, that record's
+    own supplier-derived house) and/or HOL's Contract Number GL dimension
+    value (see _build_unit4_contract_refs in data_engine.py) — independent of
+    what the contract's own Organisation field already says. Returns one row
+    per contract with:
+      _org_clean   — Organisation normalised to HOC/HOL/Joint/Unknown
+      _derived     — verdict: HOC/HOL/Unknown/Conflicting/No Match
+      commitment_id, commitment_supplier_id, commitment_supplier_name,
+        commitment_house — the matched Commitments record, if any
+      gl_dim_match — whether contract_ref also matches HOL's GL dimension
+
+    Module-level (not nested in _compute_metrics) specifically so app.py's
+    modal drill-down callback can call get_org_reliability_records() below
+    and get the exact same per-contract rows the summary counts came from.
+    """
+    contracts = frames.get('atamis_contracts', pd.DataFrame()).copy()
+    if contracts.empty or 'contract_ref' not in contracts.columns:
+        return pd.DataFrame()
+
+    _org_map = {'HOC': 'HOC', 'HOL': 'HOL', 'JOINT': 'Joint'}
+    contracts['_org_clean'] = contracts['organisation'].astype(str).str.strip().str.upper().map(_org_map).fillna('Unknown')
+
+    contracts = contracts[~_blank_series(contracts['contract_ref'])].copy()
+    contracts['_ref_clean'] = contracts['contract_ref'].astype(str).str.strip()
+
+    unit4_refs = frames.get('unit4_contract_refs', pd.DataFrame())
+    if unit4_refs.empty or 'u4_contract_id' not in unit4_refs.columns:
+        contracts['commitment_id'] = None
+        contracts['commitment_supplier_id'] = None
+        contracts['commitment_supplier_name'] = None
+        contracts['commitment_house'] = None
+        contracts['gl_dim_match'] = False
+        contracts['_derived'] = 'No Match'
+        return contracts
+
+    refs = unit4_refs[~_blank_series(unit4_refs['u4_contract_id'])].copy()
+    refs['_ref_clean'] = refs['u4_contract_id'].astype(str).str.strip()
+
+    commit_extra_cols = [c for c in ['supplier_id', 'supplier_name'] if c in refs.columns]
+    commit_side = (
+        refs[refs['_source'] == 'unit4_commitments'][['_ref_clean', 'u4_contract_id', 'house'] + commit_extra_cols]
+        .rename(columns={'u4_contract_id': 'commitment_id', 'house': 'commitment_house',
+                          'supplier_id': 'commitment_supplier_id', 'supplier_name': 'commitment_supplier_name'})
+        .drop_duplicates(subset=['_ref_clean'])
+    )
+
+    gl_side = refs[refs['_source'] == 'gl_dimension_values'][['_ref_clean']].drop_duplicates()
+    gl_side['gl_dim_match'] = True
+
+    merged = contracts.merge(commit_side, on='_ref_clean', how='left').merge(gl_side, on='_ref_clean', how='left')
+    merged['gl_dim_match'] = merged['gl_dim_match'].fillna(False).astype(bool)
+
+    def _verdict(row):
+        houses = set()
+        if pd.notna(row.get('commitment_id')):
+            houses.add(row['commitment_house'])
+        if row['gl_dim_match']:
+            houses.add('HOL')
+        if not houses:
+            return 'No Match'
+        if len(houses) > 1:
+            return 'Conflicting'
+        return next(iter(houses))
+
+    merged['_derived'] = merged.apply(_verdict, axis=1)
+    return merged
+
+
+def get_org_reliability_records(frames: dict, organisation: str, verdict: str) -> pd.DataFrame:
+    """Contracts behind one cell of the Organisation Field Reliability matrix
+    — used by app.py's modal drill-down callback when a cell is clicked."""
+    df = org_reliability_detail(frames)
+    if df.empty:
+        return df
+    return df[(df['_org_clean'] == organisation) & (df['_derived'] == verdict)]
+
+
 # ── Metric computation ────────────────────────────────────────────────────────
 
 def _compute_metrics(frames: dict) -> dict:
@@ -161,40 +249,15 @@ def _compute_metrics(frames: dict) -> dict:
     # contract, not just the Joint/blank ones _derive_atamis_houses resolves.
     # A contract cleanly labelled HOC or HOL can still disagree with its own
     # commitment's supplier chain or with HOL's GL Contract Number dimension;
-    # that disagreement is exactly what this surfaces.
-    #
-    # unit4_contract_refs already carries, per contract_ref, every house that
-    # source resolves to (a commitment's own supplier-derived house for HOC,
-    # or a flat 'HOL' tag for a GL dimension match) — a contract_ref appearing
-    # under more than one distinct house across the two sources is a genuine
-    # conflict between them, not just a label disagreement.
-    unit4_refs_all = frames.get('unit4_contract_refs', pd.DataFrame())
+    # that disagreement is exactly what this surfaces. The per-contract detail
+    # (org_reliability_detail, module-level so app.py's modal drill-down can
+    # reuse the identical matching logic) is computed once and both the
+    # summary crosstab here and the modal's per-cell records come from it.
+    org_detail = org_reliability_detail(frames)
+    org_reliability_excluded_blank_ref = int(total_contracts - len(org_detail)) if 'contract_ref' in contracts.columns else 0
     org_reliability = pd.DataFrame()
-    org_reliability_excluded_blank_ref = 0
-    if 'contract_ref' in contracts.columns and not unit4_refs_all.empty and 'u4_contract_id' in unit4_refs_all.columns:
-        ref_house = (
-            unit4_refs_all[~_blank(unit4_refs_all['u4_contract_id'])][['u4_contract_id', 'house']]
-            .rename(columns={'u4_contract_id': 'contract_ref'})
-        )
-        ref_house['contract_ref'] = ref_house['contract_ref'].astype(str).str.strip()
-        house_sets = ref_house.groupby('contract_ref')['house'].apply(lambda s: sorted(set(s)))
-
-        blank_ref_mask = _blank(contracts['contract_ref'])
-        org_reliability_excluded_blank_ref = int(blank_ref_mask.sum())
-        contracts_with_ref = contracts[~blank_ref_mask].copy()
-        contracts_with_ref['_org_clean'] = org_clean.loc[contracts_with_ref.index]
-        refs_stripped = contracts_with_ref['contract_ref'].astype(str).str.strip()
-
-        def _reliability_verdict(ref):
-            houses = house_sets.get(ref)
-            if not houses:
-                return 'No Match'
-            if len(houses) > 1:
-                return 'Conflicting'
-            return houses[0]
-
-        contracts_with_ref['_derived'] = refs_stripped.map(_reliability_verdict)
-        org_reliability = pd.crosstab(contracts_with_ref['_org_clean'], contracts_with_ref['_derived'])
+    if not org_detail.empty:
+        org_reliability = pd.crosstab(org_detail['_org_clean'], org_detail['_derived'])
         org_reliability = org_reliability.reindex(index=_ORG_ORDER + ['Unknown'], fill_value=0)
         org_reliability = org_reliability.reindex(
             columns=['HOC', 'HOL', 'Unknown', 'Conflicting', 'No Match'], fill_value=0
@@ -462,7 +525,7 @@ def _render_org_split(m: dict) -> html.Div:
     )
 
 
-_RELIABILITY_LABELS = {
+RELIABILITY_VERDICT_LABELS = {
     'HOC': 'Resolves to HOC', 'HOL': 'Resolves to HOL',
     'Unknown': 'Matched, supplier unresolved',
     'Conflicting': 'Conflicting signals', 'No Match': 'No match either source',
@@ -491,11 +554,33 @@ def _render_org_reliability(m: dict) -> html.Div:
     header = html.Tr([
         html.Th('Organisation', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'left', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
     ] + [
-        html.Th(_RELIABILITY_LABELS.get(c, c), style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'center', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'})
+        html.Th(RELIABILITY_VERDICT_LABELS.get(c, c), style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'center', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'})
         for c in tbl.columns
     ] + [
         html.Th('Total', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'center', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
     ])
+
+    def _cell(org, verdict, val):
+        style = _cell_style(org, verdict, val)
+        if val == 0:
+            return html.Td(f'{val:,}', style=style)
+        # Clickable — opens the same modal used for DQ drill-downs, showing
+        # the actual contracts behind this cell (see app.py's
+        # handle_atamis_org_reliability_click). Only non-zero cells are
+        # buttons; a 0 has nothing to drill into.
+        return html.Td(
+            html.Button(
+                f'{val:,}',
+                id={'type': 'atamis-org-rel-cell', 'org': org, 'verdict': verdict},
+                n_clicks=0,
+                title='Click to see the underlying contracts',
+                style={
+                    'background': 'transparent', 'border': 'none', 'cursor': 'pointer',
+                    'font': 'inherit', 'color': 'inherit', 'width': '100%', 'padding': '0',
+                },
+            ),
+            style=style,
+        )
 
     rows = []
     for org in tbl.index:
@@ -506,7 +591,7 @@ def _render_org_reliability(m: dict) -> html.Div:
         }), style={'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'})]
         for verdict in tbl.columns:
             val = int(tbl.loc[org, verdict])
-            cells.append(html.Td(f'{val:,}', style=_cell_style(org, verdict, val)))
+            cells.append(_cell(org, verdict, val))
         cells.append(html.Td(f'{row_total:,}', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#334155', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}))
         rows.append(html.Tr(cells))
 
