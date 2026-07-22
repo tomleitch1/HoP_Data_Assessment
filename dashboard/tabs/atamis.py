@@ -124,14 +124,22 @@ def _blank_series(s):
 def org_reliability_detail(frames: dict) -> pd.DataFrame:
     """Per-contract detail behind the Organisation Field Reliability card.
 
-    For every Atamis contract with a populated Contract Reference, traces
-    whether it matches a Unit4 Commitments record (and if so, that record's
-    own supplier-derived house) and/or HOL's Contract Number GL dimension
-    value (see _build_unit4_contract_refs in data_engine.py) — independent of
-    what the contract's own Organisation field already says. Returns one row
-    per contract with:
+    Covers EVERY Atamis contract, including ones with no Contract Reference
+    at all (verdict 'No Reference') — so this frame's row totals per
+    Organisation always reconcile exactly with the Contracts by Organisation
+    card above it. (An earlier version silently dropped blank-reference
+    contracts and only reported their count in a footnote, which is why the
+    two cards' totals used to disagree by a handful of records per house —
+    found directly by the user comparing the two.)
+
+    For every contract with a populated reference, traces whether it matches
+    a Unit4 Commitments record (and if so, that record's own supplier-derived
+    house) and/or HOL's Contract Number GL dimension value (see
+    _build_unit4_contract_refs in data_engine.py) — independent of what the
+    contract's own Organisation field already says. Returns one row per
+    contract with:
       _org_clean   — Organisation normalised to HOC/HOL/Joint/Unknown
-      _derived     — verdict: HOC/HOL/Unknown/Conflicting/No Match
+      _derived     — verdict: HOC/HOL/Unknown/Conflicting/No Match/No Reference
       commitment_id, commitment_supplier_id, commitment_supplier_name,
         commitment_house — the matched Commitments record, if any
       gl_dim_match — whether contract_ref also matches HOL's GL dimension
@@ -141,24 +149,32 @@ def org_reliability_detail(frames: dict) -> pd.DataFrame:
     and get the exact same per-contract rows the summary counts came from.
     """
     contracts = frames.get('atamis_contracts', pd.DataFrame()).copy()
-    if contracts.empty or 'contract_ref' not in contracts.columns:
+    if contracts.empty:
         return pd.DataFrame()
+    if 'contract_ref' not in contracts.columns:
+        contracts['contract_ref'] = None
 
     _org_map = {'HOC': 'HOC', 'HOL': 'HOL', 'JOINT': 'Joint'}
     contracts['_org_clean'] = contracts['organisation'].astype(str).str.strip().str.upper().map(_org_map).fillna('Unknown')
 
-    contracts = contracts[~_blank_series(contracts['contract_ref'])].copy()
+    blank_ref = _blank_series(contracts['contract_ref'])
     contracts['_ref_clean'] = contracts['contract_ref'].astype(str).str.strip()
+    contracts.loc[blank_ref, '_ref_clean'] = None
+
+    contracts['commitment_id'] = None
+    contracts['commitment_supplier_id'] = None
+    contracts['commitment_supplier_name'] = None
+    contracts['commitment_house'] = None
+    contracts['gl_dim_match'] = False
+    contracts['_derived'] = 'No Match'
+    contracts.loc[blank_ref, '_derived'] = 'No Reference'
+
+    no_ref_rows = contracts[blank_ref]
+    with_ref = contracts[~blank_ref].copy()
 
     unit4_refs = frames.get('unit4_contract_refs', pd.DataFrame())
-    if unit4_refs.empty or 'u4_contract_id' not in unit4_refs.columns:
-        contracts['commitment_id'] = None
-        contracts['commitment_supplier_id'] = None
-        contracts['commitment_supplier_name'] = None
-        contracts['commitment_house'] = None
-        contracts['gl_dim_match'] = False
-        contracts['_derived'] = 'No Match'
-        return contracts
+    if unit4_refs.empty or 'u4_contract_id' not in unit4_refs.columns or with_ref.empty:
+        return pd.concat([no_ref_rows, with_ref], ignore_index=True)
 
     refs = unit4_refs[~_blank_series(unit4_refs['u4_contract_id'])].copy()
     refs['_ref_clean'] = refs['u4_contract_id'].astype(str).str.strip()
@@ -174,7 +190,9 @@ def org_reliability_detail(frames: dict) -> pd.DataFrame:
     gl_side = refs[refs['_source'] == 'gl_dimension_values'][['_ref_clean']].drop_duplicates()
     gl_side['gl_dim_match'] = True
 
-    merged = contracts.merge(commit_side, on='_ref_clean', how='left').merge(gl_side, on='_ref_clean', how='left')
+    with_ref = with_ref.drop(columns=['commitment_id', 'commitment_supplier_id', 'commitment_supplier_name',
+                                       'commitment_house', 'gl_dim_match'])
+    merged = with_ref.merge(commit_side, on='_ref_clean', how='left').merge(gl_side, on='_ref_clean', how='left')
     merged['gl_dim_match'] = merged['gl_dim_match'].eq(True)
 
     def _verdict(row):
@@ -190,7 +208,7 @@ def org_reliability_detail(frames: dict) -> pd.DataFrame:
         return next(iter(houses))
 
     merged['_derived'] = merged.apply(_verdict, axis=1)
-    return merged
+    return pd.concat([no_ref_rows, merged], ignore_index=True)
 
 
 def get_org_reliability_records(frames: dict, organisation: str, verdict: str) -> pd.DataFrame:
@@ -254,13 +272,12 @@ def _compute_metrics(frames: dict) -> dict:
     # reuse the identical matching logic) is computed once and both the
     # summary crosstab here and the modal's per-cell records come from it.
     org_detail = org_reliability_detail(frames)
-    org_reliability_excluded_blank_ref = int(total_contracts - len(org_detail)) if 'contract_ref' in contracts.columns else 0
     org_reliability = pd.DataFrame()
     if not org_detail.empty:
         org_reliability = pd.crosstab(org_detail['_org_clean'], org_detail['_derived'])
         org_reliability = org_reliability.reindex(index=_ORG_ORDER + ['Unknown'], fill_value=0)
         org_reliability = org_reliability.reindex(
-            columns=['HOC', 'HOL', 'Unknown', 'Conflicting', 'No Match'], fill_value=0
+            columns=['HOC', 'HOL', 'Unknown', 'Conflicting', 'No Match', 'No Reference'], fill_value=0
         )
 
     if 'end_date' in contracts.columns:
@@ -368,7 +385,6 @@ def _compute_metrics(frames: dict) -> dict:
         'total_current_value': total_current_value,
         'org_mix': org_mix,
         'org_reliability': org_reliability,
-        'org_reliability_excluded_blank_ref': org_reliability_excluded_blank_ref,
         'active_count': active_count,
         'expired_count': expired_count,
         'no_date_count': no_date_count,
@@ -529,6 +545,7 @@ RELIABILITY_VERDICT_LABELS = {
     'HOC': 'Resolves to HOC', 'HOL': 'Resolves to HOL',
     'Unknown': 'Matched, supplier unresolved',
     'Conflicting': 'Conflicting signals', 'No Match': 'No match either source',
+    'No Reference': 'No Contract Reference',
 }
 
 
@@ -555,11 +572,19 @@ def _render_org_reliability(m: dict) -> html.Div:
         if verdict == 'Unknown':
             # Matched something, but that record's own supplier doesn't
             # resolve either — inconclusive, but for a different reason than
-            # No Match, so it gets its own shade rather than sharing one.
+            # No Match/No Reference, so it gets the darkest of the three
+            # neutral shades rather than sharing one with them.
             return {**base, 'color': '#fff', 'background': '#94a3b8', 'borderRadius': '6px'}
-        # No Match — nothing to compare against at all; the lightest of the
-        # filled tones since there's no actual disagreement to flag.
-        return {**base, 'color': '#475569', 'background': '#e2e8f0', 'borderRadius': '6px'}
+        if verdict == 'No Match':
+            # Had a reference to check, checked it, found nothing — a
+            # genuine (if inconclusive) attempt, so one shade darker than
+            # No Reference below.
+            return {**base, 'color': '#475569', 'background': '#e2e8f0', 'borderRadius': '6px'}
+        # No Reference — nothing was even attempted (no Contract Reference to
+        # look up at all; see ATAMIS_CONTRACT_NO_REF). The lightest of the
+        # three neutral tones, since this isn't a disagreement or even a
+        # failed match, just an absence.
+        return {**base, 'color': '#64748b', 'background': '#f1f5f9', 'borderRadius': '6px'}
 
     header = html.Tr([
         html.Th('Organisation', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'left', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
@@ -605,26 +630,26 @@ def _render_org_reliability(m: dict) -> html.Div:
         cells.append(html.Td(f'{row_total:,}', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#334155', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}))
         rows.append(html.Tr(cells))
 
-    excluded = m.get('org_reliability_excluded_blank_ref', 0)
-    footnote_bits = [
+    footnote = (
         'Green = Organisation agrees with the underlying data. Amber = Organisation says one house but the Supplier ID / '
         "Contract Number chain resolves to the other. Red = the two sources (Commitments' supplier chain and HOL's GL "
         "Contract Number dimension) disagree with each other, independent of what Organisation says. Dark grey = matched "
-        "something, but that record's own supplier is unresolved. Light grey = no match in either source at all — "
-        'inconclusive rather than wrong. Click any filled cell to see the underlying contracts.',
-    ]
-    if excluded:
-        footnote_bits.append(f' {excluded:,} contracts excluded — no Contract Reference to check (see ATAMIS_CONTRACT_NO_REF).')
+        "something, but that record's own supplier is unresolved. Mid grey = had a reference but it matched nothing. "
+        "Light grey = no Contract Reference to check at all (see ATAMIS_CONTRACT_NO_REF). Click any filled cell to see "
+        'the underlying contracts. Row totals reconcile exactly with the Contracts by Organisation totals above — the '
+        "'Unknown' row (blank/unrecognised Organisation) is the one exception, since that card is deliberately scoped to "
+        'the three confirmed HOC/HOL/Joint categories and omits it.'
+    )
 
     return _card(
         'Organisation Field Reliability',
         "Does Atamis's own Organisation field (HOC/HOL/Joint) agree with what the Supplier ID / Contract Number data actually implies? "
-        'Checked independently for every contract with a reference, not just Joint or blank ones.',
+        'Checked independently for every contract, not just Joint or blank ones.',
         [
             html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
                 html.Thead(header), html.Tbody(rows),
             ]),
-            html.Div(''.join(footnote_bits), style={'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '12px', 'lineHeight': '1.6'}),
+            html.Div(footnote, style={'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '12px', 'lineHeight': '1.6'}),
         ],
     )
 
