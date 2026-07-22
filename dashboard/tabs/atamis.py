@@ -531,7 +531,7 @@ def _render_org_split(m: dict) -> html.Div:
         ]))
 
     return _card(
-        'Contracts by Organisation', 'Only Atamis dataset carrying a genuine three-way HOC / HOL / Joint split',
+        'Contracts by Organisation', 'Number of contracts and Total Award Value by organisation',
         [
             html.Div(style={'display': 'flex', 'gap': '24px', 'alignItems': 'center', 'flexWrap': 'wrap'}, children=[
                 html.Div(dcc.Graph(figure=fig, config=PLOTLY_HOVER_CONFIG, style={'height': '220px', 'width': '220px'}), style={'flex': '0 0 220px'}),
@@ -919,8 +919,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
 
         _render_hero(m),
 
-        _section_div('Contracts by Organisation', 'Atamis contract data spans both houses plus a Joint category'),
-        html.Div(style={'marginBottom': '24px'}, children=[_render_org_split(m)]),
+        html.Div(style={'marginTop': '24px', 'marginBottom': '24px'}, children=[_render_org_split(m)]),
         html.Div(style={'marginBottom': '24px'}, children=[_render_org_reliability(m)]),
 
         _section_div('Cross-System Reconciliation', 'Where Atamis (procurement) and Unit4 (Agresso) agree — and where they don\'t'),
