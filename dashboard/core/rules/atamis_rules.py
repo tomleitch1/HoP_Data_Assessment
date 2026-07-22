@@ -357,12 +357,15 @@ def get_atamis_checks():
 
         ('UNIT4_COMMIT_NOT_IN_CONTRACTS',
          31, 'Contract Commitment', 'Consistency', 'High',
-         'Unit4 commitment has no matching Atamis contract record',
-         'Every Unit4 commitment record is expected to trace back to a real contract in Atamis via Contract Id / Contract Reference. '
-         'A commitment with no matching contract record is more surprising than the reverse direction — financial commitment should not exist without a contract behind it — and should be investigated before cutover.',
-         'Investigate the affected Contract Id in Atamis and confirm why Unit4 holds a commitment against it with no corresponding contract record.',
-         'unit4_commitments', 'atamis_contracts',
-         "WHERE \"Contract Id\" NOT IN (SELECT \"Contract Reference\" FROM contracts_report)",
+         'Unit4 contract reference has no matching Atamis contract record',
+         'Every Unit4 contract reference is expected to trace back to a real contract in Atamis. For HOC this is the Commitments '
+         "view's Contract Id; HOL has no equivalent rich Commitments data, so this instead uses the Contract Number GL dimension "
+         'value (agldimvalue, dim_position 5) as the reference for HOL. '
+         'A reference with no matching contract record is more surprising than the reverse direction — financial activity should not exist without a contract behind it — and should be investigated before cutover.',
+         'Investigate the affected Contract Id/Reference in Atamis and confirm why Unit4 holds activity against it with no corresponding contract record.',
+         'unit4_contract_refs', 'atamis_contracts',
+         "WHERE \"Contract Id\" NOT IN (SELECT \"Contract Reference\" FROM contracts_report) "
+         "-- HOC: contract_total_commitments; HOL: agldimvalue WHERE dim_position = '5' (Contract Number)",
          _unit4_commit_not_in_contracts),
 
         # ---------------------------------------------------------------

@@ -26,7 +26,7 @@ SCOPE_LABELS = {10: 'Suppliers', 11: 'Customers', 16: 'AP Invoices', 17: 'AR Inv
 # see _derive_atamis_houses(). ATAMIS_HOUSES extends the standard 2-house iteration
 # in run_dq_analysis() for these tables only; every other table's checks are
 # unaffected since their 'house' column never equals 'Joint' or 'Unknown'.
-ATAMIS_TABLES = {'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers'}
+ATAMIS_TABLES = {'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers', 'unit4_contract_refs'}
 ATAMIS_HOUSES = ['HOC', 'HOL', 'Joint', 'Unknown']
 
 
@@ -271,6 +271,59 @@ def _derive_atamis_houses(frames: dict) -> None:
         else:
             df['house'] = 'Unknown'
 
+
+def _build_unit4_contract_refs(frames: dict) -> None:
+    """Builds frames['unit4_contract_refs'] — the population for
+    UNIT4_COMMIT_NOT_IN_CONTRACTS — since HOC and HOL master their Unit4-side
+    contract reference completely differently and neither source alone covers
+    both houses:
+
+      - HOC: contract_total_commitments.csv (unit4_commitments) is the real,
+        rich source — one row per commitment, Contract Id plus Supplier,
+        Posted/Remaining/Limit amounts, dates, etc. In practice this extract
+        is HOC-only (real data: Supplier IDs resolve almost exclusively to
+        HOC — see CLAUDE.md), so it contributes no meaningful HOL coverage.
+      - HOL: has no equivalent Commitments extract. Per direct confirmation,
+        HOL's contract reference instead lives in the GL dimension value list
+        (gl_dimension_values_HOL.csv / agldimvalue), specifically the
+        dim_position == '5' ('Contract Number') attribute, where dim_value
+        IS the contract reference.
+
+    Rather than replacing unit4_commitments (which every other Commitments
+    check — REMAINING_MISMATCH, DATE_INVALID, DUP_ID, OVERSPEND,
+    SUPPLIER_ORPHAN — still depends on, and which HOL has no equivalent rich
+    data for), this builds a separate frame: a full copy of unit4_commitments
+    (same columns, so UNIT4_COMMIT_NOT_IN_CONTRACTS's existing lambda and
+    modal enrichment work unchanged for HOC) with synthetic HOL rows appended
+    that populate only 'house' and 'u4_contract_id' (from dim_value) — every
+    other commitment-specific column (contract_title, supplier_name,
+    amount_limit, etc.) is blank for these rows since HOL has no equivalent
+    data. A '_source' column marks which rows came from which extract, so the
+    modal evidence makes the provenance difference visible rather than
+    implying HOL has the same rich commitment data HOC does.
+    """
+    commit = frames.get('unit4_commitments')
+    if commit is not None and not commit.empty:
+        base = commit.copy()
+        base['_source'] = 'unit4_commitments'
+    else:
+        base = pd.DataFrame(columns=['house', 'u4_contract_id', '_source'])
+
+    dimvals = frames.get('agldimvalue')
+    if dimvals is not None and not dimvals.empty:
+        hol_mask = (
+            (dimvals['house'] == 'HOL') &
+            (dimvals['dim_position'].astype(str).str.strip() == '5') &
+            (dimvals['dim_description'].astype(str).str.strip().str.lower() == 'contract number')
+        )
+        hol_refs = dimvals.loc[hol_mask, ['dim_value']].rename(columns={'dim_value': 'u4_contract_id'})
+        hol_refs['house'] = 'HOL'
+        hol_refs['_source'] = 'gl_dimension_values'
+        base = pd.concat([base, hol_refs], ignore_index=True)
+
+    frames['unit4_contract_refs'] = base
+
+
 def _data_path(base_name: str, suffix: str = '') -> str:
     """Return the full path for a data file, respecting the subdirectory layout."""
     filename = f"{base_name}{suffix}.csv"
@@ -389,9 +442,10 @@ def _read_chk(cache_file: str) -> dict:
 _ENGINE_SIG_CACHE: str | None = None
 
 def _engine_sig() -> str:
-    """Hash of run_dq_analysis source, plus _derive_atamis_houses source.
-    Changing get_failing_records, get_check_columns, or any other function in
-    this file does NOT change this value — only edits to these two do.
+    """Hash of run_dq_analysis source, plus _derive_atamis_houses and
+    _build_unit4_contract_refs source. Changing get_failing_records,
+    get_check_columns, or any other function in this file does NOT change
+    this value — only edits to these three do.
 
     _derive_atamis_houses is included despite living outside run_dq_analysis
     because it determines the 'house' column every Atamis check's population
@@ -404,11 +458,20 @@ def _engine_sig() -> str:
     scorecard kept serving stale pre-fix numbers indefinitely while
     get_failing_records (which never caches) correctly showed the current,
     much smaller result — exactly the discrepancy that surfaced this gap.
+
+    _build_unit4_contract_refs is included for the same reason: it determines
+    the population UNIT4_COMMIT_NOT_IN_CONTRACTS runs against (HOC from
+    unit4_commitments, HOL from agldimvalue's Contract Number dimension), and
+    is also called from load_data() rather than run_dq_analysis.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
         try:
-            src = _inspect.getsource(run_dq_analysis) + _inspect.getsource(_derive_atamis_houses)
+            src = (
+                _inspect.getsource(run_dq_analysis)
+                + _inspect.getsource(_derive_atamis_houses)
+                + _inspect.getsource(_build_unit4_contract_refs)
+            )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
         _ENGINE_SIG_CACHE = _hashlib.md5(src.encode()).hexdigest()[:8]
@@ -540,7 +603,10 @@ def load_data(tab=None):
         # PO's cross-domain checks are a minority of its suite), Atamis's
         # cross-system checks are the domain's main value, so this is loaded
         # unconditionally in tab-scoped mode rather than left as a gap.
-        names_to_load |= {'supplier_master', 'po_header', 'po_detail'}
+        # gl_dimension_values is needed too — HOL's contract reference isn't
+        # in unit4_commitments at all (see _build_unit4_contract_refs), it
+        # lives in the GL dimension value list.
+        names_to_load |= {'supplier_master', 'po_header', 'po_detail', 'gl_dimension_values'}
 
     # Tables where house is determined by the filename suffix (_HOC / _HOL),
     # not by the client column. The client column contains internal Unit4 client
@@ -762,6 +828,7 @@ def load_data(tab=None):
     # Cheap (a few thousand rows), so not worth its own cache entry.
     if any(t in frames for t in ATAMIS_TABLES):
         _derive_atamis_houses(frames)
+        _build_unit4_contract_refs(frames)
 
     return frames
 
@@ -811,6 +878,12 @@ def run_dq_analysis(frames, tab=None):
         rel_fps   = [_cache_path(table)]
         if joined_table and joined_table in frames:
             rel_fps.append(_cache_path(joined_table))
+        if table == 'unit4_contract_refs':
+            # Synthetic frame, never pickled itself — track its two real
+            # underlying sources so a change to either one busts this check's
+            # per-check cache (mirrors the joined_table pattern above).
+            rel_fps.append(_cache_path('unit4_commitments'))
+            rel_fps.append(_cache_path('agldimvalue'))
 
         _dq_version = os.environ.get('DASHBOARD_VERSION', '').strip()
         _houses = ATAMIS_HOUSES if table in ATAMIS_TABLES else CLIENTS
@@ -1285,7 +1358,7 @@ def get_check_columns():
         'UNIT4_COMMIT_DUP_ID':              ['u4_contract_id', 'contract_title', 'supplier_id'],
         'UNIT4_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
         'UNIT4_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
-        'UNIT4_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name'],
+        'UNIT4_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name', 'house'],
 
         # Contract Spend (unit4_spend / contracts_spend_details — Unit4)
         'UNIT4_SPEND_CONTRACT_ORPHAN':      ['u4_contract_id', 'posted', 'amount_c'],
@@ -1492,12 +1565,20 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'UNIT4_COMMIT_NOT_IN_CONTRACTS':
+        # HOC rows come from unit4_commitments (rich data — contract_title,
+        # supplier_name, etc. are real); HOL rows come from agldimvalue's
+        # Contract Number dimension (see _build_unit4_contract_refs) and have
+        # nothing but house/u4_contract_id populated. '_source' makes that
+        # provenance difference visible in the evidence rather than implying
+        # HOL has the same rich commitment data HOC does.
         failing = failing.rename(columns={
             'u4_contract_id': 'UNIT4_COMMITMENTS.u4_contract_id',
             'contract_title': 'UNIT4_COMMITMENTS.contract_title',
             'supplier_name':  'UNIT4_COMMITMENTS.supplier_name',
+            '_source':        'UNIT4_COMMITMENTS.source',
         })
-        cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title', 'UNIT4_COMMITMENTS.supplier_name']
+        cols = ['house', 'UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title',
+                'UNIT4_COMMITMENTS.supplier_name', 'UNIT4_COMMITMENTS.source']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'ATAMIS_CONTRACT_VALUE_MISMATCH':
