@@ -652,8 +652,7 @@ def _render_org_reliability(m: dict) -> html.Div:
 
     return _card(
         'Organisation Field Reliability',
-        "Does Atamis's own Organisation field (HOC/HOL/Joint) agree with what the Supplier ID / Contract Number data actually implies? "
-        'Checked independently for every contract, not just Joint or blank ones.',
+        "Does Atamis's own Organisation field (HOC/HOL/Joint) agree with what the Supplier ID / Contract Number data actually implies?",
         [
             html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
                 html.Thead(header), html.Tbody(rows),
