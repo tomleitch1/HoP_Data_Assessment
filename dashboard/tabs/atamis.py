@@ -195,17 +195,27 @@ def _compute_metrics(frames: dict) -> dict:
     contract_po_matched = int(hj_with_ref['contract_ref'].astype(str).str.strip().isin(po_refs).sum()) if contract_po_total else 0
     contract_po_unmatched = contract_po_total - contract_po_matched
 
-    # ---- Contract <-> Commitments linkage (any house — confirmed direct join
-    # on Contract Reference == Contract Id) ----
-    commit_ids = set(commitments['u4_contract_id'].dropna().astype(str).str.strip()) if 'u4_contract_id' in commitments.columns else set()
+    # ---- Contract <-> Commitments linkage ----
+    # Confirmed direct join on Contract Reference == Contract Id for HOC.
+    # HOL has no usable Commitments extract of its own (real data resolves it
+    # almost entirely to HOC), so its side of this join instead comes from the
+    # Contract Number GL dimension value (agldimvalue, dim_position 5) — see
+    # _build_unit4_contract_refs() in data_engine.py. unit4_contract_refs
+    # combines both sources into one column shape so this reconciliation
+    # matches the ATAMIS_CONTRACT_NOT_IN_COMMITMENTS / UNIT4_COMMIT_NOT_IN_CONTRACTS
+    # DQ checks exactly — same source, same blank-exclusion, same membership
+    # test either direction.
+    unit4_refs = frames.get('unit4_contract_refs', commitments)
+    commit_ids = set(unit4_refs['u4_contract_id'].dropna().astype(str).str.strip()) if 'u4_contract_id' in unit4_refs.columns else set()
     contracts_with_ref = contracts[~_blank(contracts['contract_ref'])] if 'contract_ref' in contracts.columns else pd.DataFrame()
     contract_commit_total = len(contracts_with_ref)
     contract_commit_matched = int(contracts_with_ref['contract_ref'].astype(str).str.strip().isin(commit_ids).sum()) if contract_commit_total else 0
     contract_commit_unmatched = contract_commit_total - contract_commit_matched
 
     contract_refs = set(contracts['contract_ref'].dropna().astype(str).str.strip()) if 'contract_ref' in contracts.columns else set()
-    commit_total_all = len(commitments)
-    commit_not_in_contracts = int((~commitments['u4_contract_id'].astype(str).str.strip().isin(contract_refs)).sum()) if commit_total_all else 0
+    unit4_refs_with_id = unit4_refs[~_blank(unit4_refs['u4_contract_id'])] if 'u4_contract_id' in unit4_refs.columns else pd.DataFrame()
+    commit_total_all = len(unit4_refs_with_id)
+    commit_not_in_contracts = int((~unit4_refs_with_id['u4_contract_id'].astype(str).str.strip().isin(contract_refs)).sum()) if commit_total_all else 0
 
     value_mismatch_count = 0
     if contract_commit_matched and 'award_amount' in commitments.columns:
@@ -467,7 +477,7 @@ def _render_reconciliation(m: dict) -> html.Div:
     )
 
     contract_card = _card(
-        'Contract Overlap: Atamis ↔ Commitments', 'Contract Reference (Atamis) matched directly against Contract Id (Unit4 Commitments view)',
+        'Contract Overlap: Atamis ↔ Commitments', 'Contract Reference (Atamis) matched against Contract Id (Unit4 Commitments view for HOC, GL Contract Number dimension for HOL)',
         [
             _overlap_bar(
                 'Atamis only', m.get('contract_commit_unmatched', 0),
