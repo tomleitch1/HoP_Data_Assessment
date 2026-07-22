@@ -630,16 +630,25 @@ def _render_org_reliability(m: dict) -> html.Div:
         cells.append(html.Td(f'{row_total:,}', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#334155', 'textAlign': 'center', 'padding': '10px 8px', 'borderBottom': '1px solid #f1f5f9'}))
         rows.append(html.Tr(cells))
 
-    footnote = (
-        'Green = Organisation agrees with the underlying data. Amber = Organisation says one house but the Supplier ID / '
-        "Contract Number chain resolves to the other. Red = the two sources (Commitments' supplier chain and HOL's GL "
-        "Contract Number dimension) disagree with each other, independent of what Organisation says. Dark grey = matched "
-        "something, but that record's own supplier is unresolved. Mid grey = had a reference but it matched nothing. "
-        "Light grey = no Contract Reference to check at all (see ATAMIS_CONTRACT_NO_REF). Click any filled cell to see "
-        'the underlying contracts. Row totals reconcile exactly with the Contracts by Organisation totals above — the '
-        "'Unknown' row (blank/unrecognised Organisation) is the one exception, since that card is deliberately scoped to "
-        'the three confirmed HOC/HOL/Joint categories and omits it.'
-    )
+    def _legend_item(bg, text_color, label):
+        return html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+            html.Div(style={'width': '14px', 'height': '14px', 'borderRadius': '4px', 'background': bg,
+                             'border': f'1px solid {bg}' if bg != '#f8fafc' else '1px solid #e2e8f0'}),
+            html.Span(label, style={'fontSize': '11px', 'color': '#64748b'}),
+        ])
+
+    legend = html.Div(style={
+        'display': 'flex', 'flexWrap': 'wrap', 'gap': '16px', 'alignItems': 'center',
+        'marginTop': '14px', 'paddingTop': '12px', 'borderTop': f'1px solid {_CARD_BOR}',
+    }, children=[
+        _legend_item(_ACCENT, '#fff', 'Agrees'),
+        _legend_item(_WARN_C, '#fff', 'Disagrees'),
+        _legend_item(_CRIT_C, '#fff', 'Conflicting'),
+        _legend_item('#94a3b8', '#fff', 'Unresolved'),
+        _legend_item('#e2e8f0', '#475569', 'No match'),
+        _legend_item('#f1f5f9', '#64748b', 'No reference'),
+        html.Span('Click a cell for the underlying contracts', style={'fontSize': '11px', 'color': '#cbd5e1', 'marginLeft': 'auto'}),
+    ])
 
     return _card(
         'Organisation Field Reliability',
@@ -649,7 +658,7 @@ def _render_org_reliability(m: dict) -> html.Div:
             html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
                 html.Thead(header), html.Tbody(rows),
             ]),
-            html.Div(footnote, style={'fontSize': '11px', 'color': '#94a3b8', 'marginTop': '12px', 'lineHeight': '1.6'}),
+            legend,
         ],
     )
 
