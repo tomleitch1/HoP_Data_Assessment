@@ -469,18 +469,6 @@ def _render_hero(m: dict) -> html.Div:
                 _secondary_stat(_fmt_count(m.get('commitments_count', 0)), 'Unit4 commitments'),
             ]),
         ]),
-        html.Div(style={
-            'marginTop': '26px', 'paddingTop': '18px',
-            'borderTop': '1px solid rgba(255,255,255,0.08)',
-            'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'flexWrap': 'wrap', 'gap': '8px',
-        }, children=[
-            html.Span('Atamis (procurement) reconciled against Unit4 (Agresso) — see Cross-System Reconciliation below', style={
-                'fontSize': '11px', 'color': 'rgba(255,255,255,0.35)',
-            }),
-            html.Span('Single combined extract — house derived, not filename-split', style={
-                'fontSize': '12px', 'fontWeight': '600', 'color': 'rgba(255,255,255,0.55)',
-            }),
-        ]),
     ])
 
 
