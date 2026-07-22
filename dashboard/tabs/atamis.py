@@ -544,20 +544,20 @@ def _render_org_reliability(m: dict) -> html.Div:
             return {**base, 'color': '#fff', 'background': _WARN_C, 'borderRadius': '6px'}
         if verdict == 'Unknown':
             # Matched something, but that record's own supplier doesn't
-            # resolve either — inconclusive, but for a different reason than
-            # No Match/No Reference, so it gets the darkest of the three
-            # neutral shades rather than sharing one with them.
-            return {**base, 'color': '#fff', 'background': '#94a3b8', 'borderRadius': '6px'}
+            # resolve either — a genuinely different situation from No Match/
+            # No Reference (there IS a link, it just dead-ends), so it gets
+            # its own hue (violet) rather than another shade of grey.
+            return {**base, 'color': '#fff', 'background': '#7c5cbf', 'borderRadius': '6px'}
         if verdict == 'No Match':
-            # Had a reference to check, checked it, found nothing — a
-            # genuine (if inconclusive) attempt, so one shade darker than
-            # No Reference below.
-            return {**base, 'color': '#475569', 'background': '#e2e8f0', 'borderRadius': '6px'}
+            # Had a reference, checked it, found nothing in either source —
+            # a genuine (if inconclusive) attempt, so a distinct hue (blue)
+            # rather than a shade shared with Unknown or No Reference.
+            return {**base, 'color': '#fff', 'background': '#2563eb', 'borderRadius': '6px'}
         # No Reference — nothing was even attempted (no Contract Reference to
-        # look up at all; see ATAMIS_CONTRACT_NO_REF). The lightest of the
-        # three neutral tones, since this isn't a disagreement or even a
-        # failed match, just an absence.
-        return {**base, 'color': '#64748b', 'background': '#f1f5f9', 'borderRadius': '6px'}
+        # look up at all; see ATAMIS_CONTRACT_NO_REF). Genuinely neutral, so
+        # this is the one that stays grey — but a single, solid grey rather
+        # than a shade shared with the other two inconclusive outcomes.
+        return {**base, 'color': '#fff', 'background': '#94a3b8', 'borderRadius': '6px'}
 
     header = html.Tr([
         html.Th('Organisation', style={'fontSize': '11px', 'color': '#94a3b8', 'textAlign': 'left', 'padding': '8px', 'borderBottom': f'2px solid {_CARD_BOR}'}),
@@ -617,9 +617,9 @@ def _render_org_reliability(m: dict) -> html.Div:
         _legend_item(_ACCENT, '#fff', 'Agrees'),
         _legend_item(_WARN_C, '#fff', 'Disagrees'),
         _legend_item(_CRIT_C, '#fff', 'Conflicting'),
-        _legend_item('#94a3b8', '#fff', 'Unresolved'),
-        _legend_item('#e2e8f0', '#475569', 'No match'),
-        _legend_item('#f1f5f9', '#64748b', 'No reference'),
+        _legend_item('#7c5cbf', '#fff', 'Unresolved'),
+        _legend_item('#2563eb', '#fff', 'No match'),
+        _legend_item('#94a3b8', '#fff', 'No reference'),
         html.Span('Click a cell for the underlying contracts', style={'fontSize': '11px', 'color': '#cbd5e1', 'marginLeft': 'auto'}),
     ])
 
