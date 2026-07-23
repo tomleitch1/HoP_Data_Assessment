@@ -292,13 +292,27 @@ def _compute_metrics(frames: dict) -> dict:
     # against it. Assessed at line level (apodetail's own contract_id, i.e.
     # 'contract_id_x' post-merge — NOT the header's 'contract_id_y', which
     # can differ, see PO_HDR_LINE_CONTRACT_MISMATCH).
-    contract_leakage = pd.DataFrame()
+    #
+    # contract_leakage_summary: one row per supplier — used for the card's
+    # headline stats and preview.
+    # contract_leakage_detail: one row per (supplier, contract) pair — used
+    # by the modal, so a supplier with multiple contracts shows each
+    # contract's own Award Value and tagged spend separately rather than an
+    # ambiguous combined figure across unrelated contracts.
+    contract_leakage_summary = pd.DataFrame()
+    contract_leakage_detail = pd.DataFrame()
     contract_leakage_total_untagged = 0.0
     contract_leakage_supplier_count = 0
     if 'contract_id_x' in merged.columns and 'apar_id' in merged.columns:
-        line_contract = merged['contract_id_x']
-        tagged_mask = ~_is_blank(line_contract)
         tmp = merged.copy()
+        # contract_id isn't in the engine's global string-cleanup list (only
+        # contract_ref/u4_contract_id are) — strip it here explicitly, or a
+        # trailing-whitespace difference between apodetail.contract_id and
+        # atamis_contracts.contract_ref silently fails every join below,
+        # showing Award Value as £0 across the board even on genuine matches.
+        tmp['_contract_ref'] = tmp['contract_id_x'].astype(str).str.strip()
+        tmp.loc[_is_blank(tmp['contract_id_x']), '_contract_ref'] = None
+        tagged_mask = tmp['_contract_ref'].notna()
         tmp['_tagged_amt'] = tmp['amount'].where(tagged_mask, 0.0)
         tmp['_untagged_amt'] = tmp['amount'].where(~tagged_mask, 0.0)
 
@@ -306,22 +320,39 @@ def _compute_metrics(frames: dict) -> dict:
             tagged_spend=('_tagged_amt', 'sum'),
             untagged_spend=('_untagged_amt', 'sum'),
         ).reset_index()
-        leak = supplier_spend[
+        flagged_suppliers = supplier_spend[
             (supplier_spend['tagged_spend'] > 0) & (supplier_spend['untagged_spend'] > 0)
         ].copy()
 
-        if not leak.empty:
-            # Which contract(s) this supplier's tagged lines relate to, and
-            # each one's Atamis Award Value, for context (per direct request).
-            tagged_lines = tmp[tagged_mask]
+        if not flagged_suppliers.empty:
+            asuheader_df = frames.get('asuheader', pd.DataFrame())
+            if not asuheader_df.empty and 'apar_name' in asuheader_df.columns:
+                name_map = asuheader_df.drop_duplicates('apar_id')[['apar_id', 'apar_name']]
+                flagged_suppliers = flagged_suppliers.merge(name_map, on='apar_id', how='left')
+                flagged_suppliers['display_name'] = flagged_suppliers['apar_name'].fillna(flagged_suppliers['apar_id'].astype(str))
+            else:
+                flagged_suppliers['display_name'] = flagged_suppliers['apar_id'].astype(str)
+            flagged_suppliers['untagged_pct'] = (
+                flagged_suppliers['untagged_spend'] / (flagged_suppliers['tagged_spend'] + flagged_suppliers['untagged_spend']) * 100
+            )
+
+            # One row per (supplier, contract) — each contract's own Award
+            # Value and tagged spend against IT specifically. A supplier's
+            # total untagged spend is repeated on every one of their rows
+            # (labelled as a supplier-level figure, not per-contract) so it's
+            # visible alongside each contract without implying it belongs to
+            # any one of them.
+            tagged_lines = tmp[tagged_mask & tmp['apar_id'].isin(flagged_suppliers['apar_id'])]
             contract_per_supplier = (
-                tagged_lines.groupby(['apar_id', 'contract_id_x'])['amount'].sum()
-                .reset_index().rename(columns={'contract_id_x': 'contract_ref', 'amount': 'contract_tagged_spend'})
+                tagged_lines.groupby(['apar_id', '_contract_ref'])['amount'].sum()
+                .reset_index().rename(columns={'_contract_ref': 'contract_ref', 'amount': 'contract_tagged_spend'})
             )
             atamis_contracts_df = frames.get('atamis_contracts', pd.DataFrame())
             if not atamis_contracts_df.empty and 'contract_ref' in atamis_contracts_df.columns:
                 award_map = (
-                    atamis_contracts_df[~_is_blank(atamis_contracts_df['contract_ref'])]
+                    atamis_contracts_df.assign(
+                        contract_ref=atamis_contracts_df['contract_ref'].astype(str).str.strip()
+                    )[~_is_blank(atamis_contracts_df['contract_ref'])]
                     [['contract_ref', 'total_award_value']]
                     .drop_duplicates(subset=['contract_ref'])
                 )
@@ -329,27 +360,16 @@ def _compute_metrics(frames: dict) -> dict:
             else:
                 contract_per_supplier['total_award_value'] = None
 
-            contract_summary = contract_per_supplier.groupby('apar_id').agg(
-                contract_refs=('contract_ref', lambda s: ', '.join(sorted(set(s.dropna().astype(str))))),
-                total_award_value=('total_award_value', 'sum'),
-            ).reset_index()
+            detail = contract_per_supplier.merge(
+                flagged_suppliers[['apar_id', 'display_name', 'tagged_spend', 'untagged_spend', 'untagged_pct']],
+                on='apar_id', how='left',
+            )
+            detail = detail.sort_values(['untagged_spend', 'apar_id'], ascending=[False, True])
+            contract_leakage_detail = detail
 
-            leak = leak.merge(contract_summary, on='apar_id', how='left')
-
-            asuheader_df = frames.get('asuheader', pd.DataFrame())
-            if not asuheader_df.empty and 'apar_name' in asuheader_df.columns:
-                name_map = asuheader_df.drop_duplicates('apar_id')[['apar_id', 'apar_name']]
-                leak = leak.merge(name_map, on='apar_id', how='left')
-                leak['display_name'] = leak['apar_name'].fillna(leak['apar_id'].astype(str))
-            else:
-                leak['display_name'] = leak['apar_id'].astype(str)
-
-            leak['untagged_pct'] = leak['untagged_spend'] / (leak['tagged_spend'] + leak['untagged_spend']) * 100
-            leak = leak.sort_values('untagged_spend', ascending=False)
-
-        contract_leakage = leak
-        contract_leakage_total_untagged = float(leak['untagged_spend'].sum()) if not leak.empty else 0.0
-        contract_leakage_supplier_count = int(len(leak))
+        contract_leakage_summary = flagged_suppliers.sort_values('untagged_spend', ascending=False) if not flagged_suppliers.empty else flagged_suppliers
+        contract_leakage_total_untagged = float(flagged_suppliers['untagged_spend'].sum()) if not flagged_suppliers.empty else 0.0
+        contract_leakage_supplier_count = int(len(flagged_suppliers))
 
     # ── Active status composition (O / N / A) ──
     active_status_mix = (
@@ -402,7 +422,8 @@ def _compute_metrics(frames: dict) -> dict:
         'pos_no_acct':     pos_no_acct,
         'total_hdr':       len(hdr),
         'active_status_mix':           active_status_mix,
-        'contract_leakage':                  contract_leakage,
+        'contract_leakage_summary':          contract_leakage_summary,
+        'contract_leakage_detail':           contract_leakage_detail,
         'contract_leakage_total_untagged':   contract_leakage_total_untagged,
         'contract_leakage_supplier_count':   contract_leakage_supplier_count,
     }
@@ -1139,14 +1160,14 @@ def _render_top_suppliers(m: dict) -> html.Div:
 # ── Untagged spend for contracted suppliers ───────────────────────────────────
 
 def _render_contract_leakage(m: dict) -> html.Div:
-    leak = m.get('contract_leakage')
-    if leak is None or leak.empty:
+    summary = m.get('contract_leakage_summary')
+    if summary is None or summary.empty:
         return html.Div()
 
     total_untagged = m.get('contract_leakage_total_untagged', 0)
     supplier_count = m.get('contract_leakage_supplier_count', 0)
 
-    col_labels = ['Supplier', 'Contract(s)', 'Contract Award Value', 'Tagged PO Spend', 'Untagged PO Spend', 'Untagged %']
+    col_labels = ['Supplier', 'Tagged PO Spend', 'Untagged PO Spend', 'Untagged %']
     header = html.Tr([
         html.Th(t, style={
             'fontSize': '11px', 'color': '#94a3b8', 'padding': '8px',
@@ -1156,30 +1177,33 @@ def _render_contract_leakage(m: dict) -> html.Div:
     ])
 
     rows = []
-    for _, r in leak.head(25).iterrows():
+    for _, r in summary.head(10).iterrows():
         cell_style = {'fontSize': '12px', 'padding': '8px', 'borderBottom': '1px solid #f1f5f9', 'textAlign': 'right'}
         rows.append(html.Tr([
             html.Td(r['display_name'], style={**cell_style, 'textAlign': 'left', 'color': '#1e293b', 'fontWeight': '600'}),
-            html.Td(r.get('contract_refs') or '—', style={**cell_style, 'color': '#64748b', 'fontSize': '11px'}),
-            html.Td(_fmt_val(r.get('total_award_value')), style={**cell_style, 'color': '#475569'}),
             html.Td(_fmt_val(r['tagged_spend']), style={**cell_style, 'color': _ACCENT, 'fontWeight': '700'}),
             html.Td(_fmt_val(r['untagged_spend']), style={**cell_style, 'color': _WARN_C, 'fontWeight': '700'}),
             html.Td(f"{r['untagged_pct']:.0f}%", style={**cell_style, 'color': '#64748b'}),
         ]))
-
-    footnote_bits = [f'{supplier_count:,} suppliers have contract-tagged PO spend AND other PO line spend with no contract reference at all — {_fmt_val(total_untagged)} untagged in total.']
-    if len(leak) > 25:
-        footnote_bits.append(f' Showing the top 25 by untagged £ value.')
 
     return html.Div(style={
         'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
         'borderRadius': '12px', 'padding': '20px 24px',
         'boxShadow': '0 2px 8px rgba(0,0,0,0.04)', 'marginBottom': '24px',
     }, children=[
-        html.Div('Untagged Spend for Contracted Suppliers', style={
-            'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b', 'marginBottom': '4px',
-        }),
-        html.Div(''.join(footnote_bits), style={'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '16px'}),
+        html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'flex-start', 'marginBottom': '4px'}, children=[
+            html.Div('Untagged Spend for Contracted Suppliers', style={'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b'}),
+            html.Button('View all suppliers & contracts', id='btn-po-leakage-view-all', n_clicks=0, style={
+                'background': '#f1f5f9', 'border': f'1px solid {_CARD_BOR}', 'borderRadius': '6px',
+                'padding': '6px 12px', 'fontSize': '11px', 'fontWeight': '700', 'color': _ACCENT,
+                'cursor': 'pointer',
+            }),
+        ]),
+        html.Div(
+            f'{supplier_count:,} suppliers have contract-tagged PO spend AND other PO line spend with no contract reference at all — {_fmt_val(total_untagged)} untagged in total. '
+            f'Showing the top 10 by untagged £ value — click "View all" for the full list, broken out by contract.',
+            style={'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '16px'},
+        ),
         html.Div(style={'overflowX': 'auto'}, children=[
             html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
                 html.Thead(header), html.Tbody(rows),

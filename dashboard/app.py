@@ -17,7 +17,7 @@ from dashboard.tabs.suppliers import render_tab as render_suppliers
 from dashboard.tabs.customers import render_tab as render_customers
 from dashboard.tabs.gl import render_tab as render_gl
 from dashboard.tabs.assets import render_tab as render_assets
-from dashboard.tabs.po import render_tab as render_po
+from dashboard.tabs.po import render_tab as render_po, _compute_metrics as _po_compute_metrics
 from dashboard.tabs.pbf import render_tab as render_pbf
 from dashboard.tabs.atamis import (
     render_tab as render_atamis,
@@ -1376,6 +1376,95 @@ def handle_atamis_org_reliability_click(n_clicks_list):
         }),
         html.Span('/', style={'color': 'rgba(255,255,255,0.2)', 'fontSize': '14px', 'flexShrink': '0'}),
         html.Span(f'Organisation says {org} — {verdict_label}', style={
+            'fontSize': '13px', 'fontWeight': '500', 'color': 'rgba(255,255,255,0.85)',
+            'overflow': 'hidden', 'textOverflow': 'ellipsis', 'whiteSpace': 'nowrap',
+        }),
+    ])
+
+    modal_style = {
+        'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0,
+        'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)',
+        'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
+        'padding': '20px', 'boxSizing': 'border-box',
+    }
+    return modal_style, modal_title, content
+
+
+@app.callback(
+    [Output('modal-overlay', 'style', allow_duplicate=True),
+     Output('modal-title', 'children', allow_duplicate=True),
+     Output('modal-content', 'children', allow_duplicate=True)],
+    Input('btn-po-leakage-view-all', 'n_clicks'),
+    prevent_initial_call=True,
+)
+def handle_po_leakage_view_all(n_clicks):
+    """Full drill-down for the PO tab's 'Untagged Spend for Contracted
+    Suppliers' card (see dashboard/tabs/po.py) — the card itself only
+    previews the top 10 suppliers; this shows every (supplier, contract)
+    row via the same modal shell as the DQ drill-down, reusing dash_table's
+    own pagination/filter to make "everything" actually browsable rather
+    than truncating in the card itself."""
+    if not n_clicks:
+        return dash.no_update, dash.no_update, dash.no_update
+
+    m = _po_compute_metrics(frames)
+    detail = m.get('contract_leakage_detail', pd.DataFrame())
+
+    if detail.empty:
+        content = html.Div('No untagged spend found for contracted suppliers.', style={
+            'padding': '48px', 'textAlign': 'center', 'color': '#94a3b8', 'fontSize': '13px',
+        })
+    else:
+        display_cols = [
+            ('display_name', 'Supplier'),
+            ('contract_ref', 'Contract Ref'),
+            ('total_award_value', 'Contract Award Value'),
+            ('contract_tagged_spend', 'Tagged Spend (this contract)'),
+            ('untagged_spend', "Supplier's Total Untagged Spend"),
+            ('untagged_pct', 'Untagged %'),
+        ]
+        table_df = detail[[c for c, _ in display_cols]].copy()
+        for col in ('total_award_value', 'contract_tagged_spend', 'untagged_spend'):
+            table_df[col] = pd.to_numeric(table_df[col], errors='coerce').map(lambda v: f'£{v:,.0f}' if pd.notna(v) else '—')
+        table_df['untagged_pct'] = pd.to_numeric(detail['untagged_pct'], errors='coerce').map(lambda v: f'{v:.0f}%' if pd.notna(v) else '—')
+        table_df = table_df.fillna('—')
+
+        content = html.Div(style={'padding': '0'}, children=[
+            dash_table.DataTable(
+                data=table_df.to_dict('records'),
+                columns=[{'name': label, 'id': c} for c, label in display_cols],
+                style_table={'overflowX': 'auto', 'border': 'none'},
+                style_cell={
+                    'textAlign': 'left', 'padding': '10px 16px',
+                    'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
+                    'minWidth': '100px', 'color': '#1a1523',
+                    'borderColor': '#f0edf8', 'borderLeft': 'none', 'borderRight': 'none',
+                },
+                style_header={
+                    'backgroundColor': '#1e1528', 'fontWeight': '600',
+                    'color': 'rgba(255,255,255,0.65)', 'textAlign': 'left',
+                    'fontSize': '11px', 'letterSpacing': '0.05em',
+                    'borderColor': '#2a1f3d', 'padding': '10px 16px',
+                    'textTransform': 'uppercase',
+                },
+                style_data={'borderColor': '#f0edf8'},
+                style_data_conditional=[{'if': {'row_index': 'odd'}, 'backgroundColor': '#faf9fd'}],
+                filter_action='native',
+                sort_action='native',
+                page_size=20,
+            ),
+        ])
+
+    supplier_count = m.get('contract_leakage_supplier_count', 0)
+    total_untagged = m.get('contract_leakage_total_untagged', 0)
+    modal_title = html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'minWidth': 0}, children=[
+        html.Span(f'{supplier_count:,} suppliers', style={
+            'background': '#0d9488', 'color': '#fff',
+            'fontSize': '9px', 'fontWeight': '800', 'letterSpacing': '0.12em',
+            'padding': '3px 8px', 'borderRadius': '4px', 'flexShrink': '0',
+        }),
+        html.Span('/', style={'color': 'rgba(255,255,255,0.2)', 'fontSize': '14px', 'flexShrink': '0'}),
+        html.Span(f'Untagged Spend for Contracted Suppliers — £{total_untagged:,.0f} untagged in total', style={
             'fontSize': '13px', 'fontWeight': '500', 'color': 'rgba(255,255,255,0.85)',
             'overflow': 'hidden', 'textOverflow': 'ellipsis', 'whiteSpace': 'nowrap',
         }),
