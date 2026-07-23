@@ -48,6 +48,50 @@ def _atamis_existence_population(df_table, house, id_col):
         return df_table.iloc[0:0]
     return df_table[~_atamis_blank(df_table[id_col])]
 
+
+def _atamis_open_contract_refs(frames: dict):
+    """Set of u4_contract_id values considered currently open, per
+    unit4_open_contracts.csv — its own existence as a row means open, there
+    is no separate status column on that extract. Returns None (not an empty
+    set) when the file isn't loaded, so callers can tell "no data, don't
+    filter" apart from "loaded, but genuinely empty" (which would correctly
+    exclude everything)."""
+    open_df = frames.get('unit4_open_contracts')
+    if open_df is None or 'u4_contract_id' not in open_df.columns:
+        return None
+    return set(open_df['u4_contract_id'].dropna().astype(str).str.strip())
+
+
+# Checks restricted to currently-open contracts only (per direct request,
+# once unit4_open_contracts.csv became available) — a closed contract's
+# commitment/spend records, or a closed Atamis contract with no commitment
+# counterpart, are no longer a data quality concern once the contract itself
+# isn't live. Every UNIT4_COMMIT_*/UNIT4_SPEND_* check plus the one Atamis
+# check that tests the same "does this trace to a real Unit4 record"
+# question in the other direction (ATAMIS_CONTRACT_NOT_IN_COMMITMENTS).
+_ATAMIS_OPEN_ONLY_CHECKS = {
+    'UNIT4_COMMIT_NO_SUPPLIER_ID', 'UNIT4_COMMIT_DATE_INVALID', 'UNIT4_COMMIT_REMAINING_MISMATCH',
+    'UNIT4_COMMIT_OVERSPEND', 'UNIT4_COMMIT_DUP_ID', 'UNIT4_COMMIT_SUPPLIER_ORPHAN',
+    'UNIT4_COMMIT_NOT_IN_CONTRACTS', 'UNIT4_COMMIT_VS_SPEND_MISMATCH',
+    'UNIT4_SPEND_CONTRACT_ORPHAN', 'UNIT4_SPEND_NEGATIVE_POSTED',
+    'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS',
+}
+
+
+def _atamis_filter_open_only(h_df, table, frames):
+    """Applied after a check's normal population is computed, for check_ids
+    in _ATAMIS_OPEN_ONLY_CHECKS. No-ops (returns h_df unchanged) if
+    unit4_open_contracts.csv isn't loaded, so this never silently excludes
+    everything when the file simply isn't present yet."""
+    open_refs = _atamis_open_contract_refs(frames)
+    if open_refs is None:
+        return h_df
+    ref_col = 'contract_ref' if table == 'atamis_contracts' else 'u4_contract_id'
+    if ref_col not in h_df.columns:
+        return h_df
+    return h_df[h_df[ref_col].astype(str).str.strip().isin(open_refs)]
+
+
 # Standard financial fields always surfaced in the modal for every apodetail
 # (PO Line) check, regardless of which field actually triggered it, so the
 # reviewer can assess the full amount/receipt/match/invoice picture in one view.
@@ -97,7 +141,8 @@ SUBDIR = {
     # Base names here are the ACTUAL file stems (no _HOC/_HOL suffix — these
     # four are single combined files, unlike every other domain), not the
     # internal table keys. See single_files in load_data().
-    'atamis':    ['contracts_report', 'contract_total_commitments', 'contracts_spend_details', 'supplier_data_report'],
+    'atamis':    ['contracts_report', 'contract_total_commitments', 'contracts_spend_details', 'supplier_data_report',
+                  'unit4_open_contracts', 'hol_unit4_spend'],
 }
 # Reverse lookup: base_name -> subdirectory
 _SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
@@ -162,6 +207,56 @@ _ATAMIS_RENAME = {
         'Supplier: ID':             'supplier_salesforce_id',
         'Supplier: Supplier Name':  'supplier_name',
         'Creditor Ref':             'creditor_ref',
+    },
+    # Master list of currently OPEN Unit4 contracts — its own existence as a
+    # row means open, there is no separate status column. Used to restrict
+    # the Commitments/Spend reconciliation checks to contracts that are still
+    # live, so a closed contract's commitment/spend records stop being tested
+    # against Atamis at all (see _atamis_open_contract_refs / _ATAMIS_OPEN_ONLY_CHECKS).
+    'unit4_open_contracts': {
+        'Contract':                                          'u4_contract_id',
+        'Contract(T)':                                        'contract_title',
+        'Contract Details - Contract Award Date':             'award_date',
+        'Related Contract Info - Contract Manager':           'contract_manager',
+        'Related Contract Info - Contract Manager´s Email':   'contract_manager_email',
+        'Related Contract Info - Contract Manager User':      'contract_manager_user',
+        'Contract Details - Contract Owner':                  'contract_owner',
+        'Contract Details - Procurement Length Months':       'procurement_length_months',
+        'Contract Details - Contract to be re-let':            'to_be_relet',
+        'Supplier ID':                                        'supplier_id',
+        'Supplier ID(T)':                                     'supplier_name',
+        'Supplier Company registration no.':                  'supplier_comp_reg_no',
+        'Related Contract Info - Department':                 'department',
+        'Related Contract Info - Lead PPCS Category Team':    'ppcs_category_team',
+        'Related Contract Info - PPCS Contact':               'ppcs_contact',
+        'Contract Details - Contract Start Date':             'start_date',
+        'Date to':                                            'end_date',
+        'Contract Details - Contract Length (months)':        'contract_length_months',
+        'Extension Options - Extension Applied Date':          'extension_applied_date',
+        'Compliance - Risk':                                  'risk',
+        'Contract Details - Contract Current Value':          'current_value',
+        'Contract Details - Contract Award Value':            'award_value',
+        'Contract Details - Contract Price Type':             'price_type',
+        'Contract Details - Procedures':                      'procedures',
+        'Framework Details - Framework Options':              'framework_options',
+        'Compliance - GDPR':                                  'gdpr',
+        'Supplier Type - SME':                                'sme',
+        'Supplier Type - Social Enterprise':                  'social_enterprise',
+        'Ppcs Performance Measures - Performance-Authoritative': 'perf_authoritative',
+        'Ppcs Performance Measures - Performance-Clear':       'perf_clear',
+        'Ppcs Performance Measures - Performance-Engaged':     'perf_engaged',
+        'Ppcs Performance Measures - Performance-Making Impact': 'perf_impact',
+        'Ppcs Performance Measures - Performance-Proactive':   'perf_proactive',
+        'Related Contract Info - Location':                   'location',
+    },
+    # HOL's own contract-spend report, sent to Atamis from HAIS. Two columns
+    # only — no rich commitment data like HOC's Commitments view — but this
+    # is HOL's only source of real financial activity against a contract
+    # reference, used as a materiality gate on the HOL GL Contract Number
+    # dimension signal (see _build_unit4_contract_refs).
+    'hol_unit4_spend': {
+        'Contract Number': 'u4_contract_id',
+        'Amount':          'amount',
     },
 }
 
@@ -319,6 +414,30 @@ def _build_unit4_contract_refs(frames: dict) -> None:
         hol_refs = dimvals.loc[hol_mask, ['dim_value']].rename(columns={'dim_value': 'u4_contract_id'})
         hol_refs['house'] = 'HOL'
         hol_refs['_source'] = 'gl_dimension_values'
+
+        # Materiality gate (per direct request): a HOL GL Contract Number
+        # dimension code only counts as a genuine Unit4-side signal if there
+        # is actual recorded spend against it in hol_unit4_spend.csv (HAIS's
+        # own contract-spend report for HOL — the only source of real
+        # financial activity HOL has, since it has no Commitments extract).
+        # A dimension code with no spend is presumed dormant/unused rather
+        # than a real link, so it's excluded here — before any downstream
+        # check (UNIT4_COMMIT_NOT_IN_CONTRACTS, ATAMIS_CONTRACT_NOT_IN_COMMITMENTS)
+        # or the Organisation Field Reliability card (which reads this same
+        # frame) ever sees it. If hol_unit4_spend isn't loaded at all, the
+        # gate is skipped entirely (every HOL GL reference counts, as before)
+        # rather than silently excluding everything.
+        hol_spend = frames.get('hol_unit4_spend')
+        if hol_spend is not None and not hol_spend.empty and 'u4_contract_id' in hol_spend.columns:
+            spend_by_ref = (
+                hol_spend[~_atamis_blank(hol_spend['u4_contract_id'])]
+                .assign(_ref=lambda d: d['u4_contract_id'].astype(str).str.strip())
+                .groupby('_ref')['amount'].sum()
+            )
+            ref_clean = hol_refs['u4_contract_id'].astype(str).str.strip()
+            hol_refs = hol_refs.assign(_hol_spend_amount=ref_clean.map(spend_by_ref).fillna(0.0))
+            hol_refs = hol_refs[hol_refs['_hol_spend_amount'] > 0].drop(columns=['_hol_spend_amount'])
+
         base = pd.concat([base, hol_refs], ignore_index=True)
 
     frames['unit4_contract_refs'] = base
@@ -463,6 +582,12 @@ def _engine_sig() -> str:
     the population UNIT4_COMMIT_NOT_IN_CONTRACTS runs against (HOC from
     unit4_commitments, HOL from agldimvalue's Contract Number dimension), and
     is also called from load_data() rather than run_dq_analysis.
+
+    _atamis_filter_open_only and _atamis_open_contract_refs are included for
+    the same class of gap — they're called FROM run_dq_analysis (so their
+    call sites are covered), but as separate functions their own bodies
+    aren't part of run_dq_analysis's own source text, so an edit to just
+    their logic wouldn't otherwise bust the cache either.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
@@ -471,6 +596,8 @@ def _engine_sig() -> str:
                 _inspect.getsource(run_dq_analysis)
                 + _inspect.getsource(_derive_atamis_houses)
                 + _inspect.getsource(_build_unit4_contract_refs)
+                + _inspect.getsource(_atamis_filter_open_only)
+                + _inspect.getsource(_atamis_open_contract_refs)
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
@@ -692,6 +819,8 @@ def load_data(tab=None):
         'contract_total_commitments':   'unit4_commitments',
         'contracts_spend_details':      'unit4_spend',
         'supplier_data_report':         'atamis_suppliers',
+        'unit4_open_contracts':         'unit4_open_contracts',
+        'hol_unit4_spend':              'hol_unit4_spend',
     }
     for base_name, table in single_files.items():
         if base_name not in names_to_load:
@@ -703,7 +832,7 @@ def load_data(tab=None):
             continue
         if not os.path.exists(source_path):
             continue
-        # These four are pasted/exported from Atamis and Excel rather than
+        # These are pasted/exported from Atamis, HAIS, and Excel rather than
         # SSMS's own Query Results grid, and have been seen arriving as
         # Windows-1252 (e.g. a curly quote or en-dash in a free-text contract
         # title) rather than UTF-8 — fall back rather than crashing the load.
@@ -763,7 +892,7 @@ def load_data(tab=None):
                         'unit_price', 'disc_percent', 'tax_amount', 'tax_percent',
                         'overrun_pct', 'overrun_pct_a', 'overrun_pct_o', 'amend_no',
                         # Atamis / Unit4-via-Atamis numeric columns
-                        'total_award_value', 'current_value',
+                        'total_award_value', 'current_value', 'award_value',
                         'award_amount', 'amount_limit', 'committed_amount', 'posted_amount',
                         'registered_invoices', 'open_requisitions', 'remaining_amount',
                         'posted', 'amount_c',
@@ -1012,13 +1141,15 @@ def run_dq_analysis(frames, tab=None):
                     h_df = h_df[~_atamis_blank(h_df[ref_col])]
                 else:
                     h_df = df_table[df_table['house'] == house]
+                if check_id in _ATAMIS_OPEN_ONLY_CHECKS:
+                    h_df = _atamis_filter_open_only(h_df, table, frames)
             else:
                 h_df = df_table[df_table['house'] == house]
 
             total = len(h_df)
             if total == 0:
                 continue
-            
+
             # Run check
             try:
                 import inspect
@@ -1476,6 +1607,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = h_df[~_atamis_blank(h_df[ref_col])]
         else:
             h_df = df_table[df_table['house'] == house]
+        if check_id in _ATAMIS_OPEN_ONLY_CHECKS:
+            h_df = _atamis_filter_open_only(h_df, table, frames)
     else:
         h_df = df_table[df_table['house'] == house]
 
