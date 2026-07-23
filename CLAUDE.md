@@ -950,6 +950,19 @@ The tab tells a two-act story built on the confirmed status meanings, deliberate
 - **"Currently Live"** — `O` + `N` + `A` (the open book): active count/value/uninvoiced balance, oldest active PO, and a stuck-`N` count/age flag.
 - **"How POs Get Resolved"** — `F` + `C` + `T` mix as a donut, plus three headline stats: released/unspent budget (sum of open commitment on `C`-status POs), clean-completion rate (`F` share of resolved POs), and error rate (`T` share of resolved POs).
 
+### Contract Spend Coverage (volumetrics-only, added August 2026, per direct request)
+A new card, "Untagged Spend for Contracted Suppliers" (`_render_contract_leakage()` in `dashboard/tabs/po.py`), placed after Supplier Concentration. Volumetrics only, no DQ scoring — confirmed directly with the user, since untagged spend for a contracted supplier is a judgement call (a supplier can legitimately have both contracted and ad-hoc spend), not a clear-cut pass/fail.
+
+**The scenario it surfaces:** a supplier has some PO line spend tagged to an Atamis contract via `contract_id` (already reconciled elsewhere — see `ATAMIS_CONTRACT_REF_NOT_IN_PO`/`PO_HDR_LINE_CONTRACT_MISMATCH`), but *other* PO line spend for that same supplier with no `contract_id` at all. Since the supplier is known to have an active contract relationship, that untagged spend is worth a second look — it may well belong to the same contract and simply wasn't recorded against it.
+
+**Assessed at PO line level** (`apodetail`'s own `contract_id`), confirmed directly with the user over the alternative of header-level assessment — this is deliberately the line's *own* field, not the header's: `_compute_metrics()`'s existing `dtl`/`hdr_slim` merge already produces both under different names post-merge (`contract_id_x` = line's own, `contract_id_y` = header's, since both tables carry a same-named column — confirmed by direct inspection before writing this, since a naive assumption here would have silently used the wrong one). Per-supplier (`apar_id`), each line's `amount` is bucketed into `tagged_spend` (line has a populated `contract_id_x`) or `untagged_spend` (blank) and summed; only suppliers with **both** `tagged_spend > 0` and `untagged_spend > 0` are shown — a supplier that's fully tagged or has no contract relationship at all isn't a signal here.
+
+**Contract Award Value shown for context** (per direct request, over the simpler tagged/untagged-only option) — for each supplier, their tagged lines' distinct `contract_id` values are looked up against `atamis_contracts.contract_ref` for `total_award_value`, summed if a supplier has tagged spend against more than one contract (deliberately not attempting to attribute the untagged amount to any one specific contract when multiple exist — that would be a guess the data can't support).
+
+**Known dummy-data limitation:** `generate_po_dummy_data.py` and `generate_atamis_dummy_data.py` were built independently with disjoint `contract_id`/`contract_ref` pools (same root cause as the PO↔Atamis cross-domain ID mismatch already documented elsewhere) — so on dummy data every row's Contract Award Value shows as £0, even though the tagged/untagged split itself is computed correctly (verified: contract references *are* being read and grouped correctly, they just don't happen to match Atamis's dummy contract list). Real Parliament data pulls PO and Atamis from the same live systems, so this should not occur there.
+
+**Tab-scoped mode caveat, consistent with PO's existing documented gap:** `python run_dashboard.py po` doesn't load `atamis_contracts`, so Contract Award Value will always show as unavailable when run standalone — the tagged/untagged £ split itself is unaffected since it only needs PO's own data. Not fixed, per the same reasoning as PO's other pre-existing cross-domain tab-scoped gaps (a minority concern, real dashboard mode is unaffected).
+
 ---
 
 ## Atamis / Unit4-via-Atamis Domain — Implementation Details

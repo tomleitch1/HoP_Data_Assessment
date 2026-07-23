@@ -284,6 +284,73 @@ def _compute_metrics(frames: dict) -> dict:
     lines_no_acct   = dtl[_is_blank(dtl.get('account', pd.Series(dtype=str)))]
     pos_no_acct     = int(lines_no_acct['order_id'].nunique())
 
+    # ── Untagged spend for suppliers who DO have a contract (volumetrics,
+    # not a scored DQ check — per direct request). A supplier with some PO
+    # line spend tagged to an Atamis contract, but OTHER line spend with no
+    # contract_id at all, is worth a second look: that other spend very
+    # plausibly belongs to the same contract relationship but isn't recorded
+    # against it. Assessed at line level (apodetail's own contract_id, i.e.
+    # 'contract_id_x' post-merge — NOT the header's 'contract_id_y', which
+    # can differ, see PO_HDR_LINE_CONTRACT_MISMATCH).
+    contract_leakage = pd.DataFrame()
+    contract_leakage_total_untagged = 0.0
+    contract_leakage_supplier_count = 0
+    if 'contract_id_x' in merged.columns and 'apar_id' in merged.columns:
+        line_contract = merged['contract_id_x']
+        tagged_mask = ~_is_blank(line_contract)
+        tmp = merged.copy()
+        tmp['_tagged_amt'] = tmp['amount'].where(tagged_mask, 0.0)
+        tmp['_untagged_amt'] = tmp['amount'].where(~tagged_mask, 0.0)
+
+        supplier_spend = tmp.groupby('apar_id').agg(
+            tagged_spend=('_tagged_amt', 'sum'),
+            untagged_spend=('_untagged_amt', 'sum'),
+        ).reset_index()
+        leak = supplier_spend[
+            (supplier_spend['tagged_spend'] > 0) & (supplier_spend['untagged_spend'] > 0)
+        ].copy()
+
+        if not leak.empty:
+            # Which contract(s) this supplier's tagged lines relate to, and
+            # each one's Atamis Award Value, for context (per direct request).
+            tagged_lines = tmp[tagged_mask]
+            contract_per_supplier = (
+                tagged_lines.groupby(['apar_id', 'contract_id_x'])['amount'].sum()
+                .reset_index().rename(columns={'contract_id_x': 'contract_ref', 'amount': 'contract_tagged_spend'})
+            )
+            atamis_contracts_df = frames.get('atamis_contracts', pd.DataFrame())
+            if not atamis_contracts_df.empty and 'contract_ref' in atamis_contracts_df.columns:
+                award_map = (
+                    atamis_contracts_df[~_is_blank(atamis_contracts_df['contract_ref'])]
+                    [['contract_ref', 'total_award_value']]
+                    .drop_duplicates(subset=['contract_ref'])
+                )
+                contract_per_supplier = contract_per_supplier.merge(award_map, on='contract_ref', how='left')
+            else:
+                contract_per_supplier['total_award_value'] = None
+
+            contract_summary = contract_per_supplier.groupby('apar_id').agg(
+                contract_refs=('contract_ref', lambda s: ', '.join(sorted(set(s.dropna().astype(str))))),
+                total_award_value=('total_award_value', 'sum'),
+            ).reset_index()
+
+            leak = leak.merge(contract_summary, on='apar_id', how='left')
+
+            asuheader_df = frames.get('asuheader', pd.DataFrame())
+            if not asuheader_df.empty and 'apar_name' in asuheader_df.columns:
+                name_map = asuheader_df.drop_duplicates('apar_id')[['apar_id', 'apar_name']]
+                leak = leak.merge(name_map, on='apar_id', how='left')
+                leak['display_name'] = leak['apar_name'].fillna(leak['apar_id'].astype(str))
+            else:
+                leak['display_name'] = leak['apar_id'].astype(str)
+
+            leak['untagged_pct'] = leak['untagged_spend'] / (leak['tagged_spend'] + leak['untagged_spend']) * 100
+            leak = leak.sort_values('untagged_spend', ascending=False)
+
+        contract_leakage = leak
+        contract_leakage_total_untagged = float(leak['untagged_spend'].sum()) if not leak.empty else 0.0
+        contract_leakage_supplier_count = int(len(leak))
+
     # ── Active status composition (O / N / A) ──
     active_status_mix = (
         active_hdr.groupby('status')['order_id'].nunique().reset_index(name='po_count')
@@ -335,6 +402,9 @@ def _compute_metrics(frames: dict) -> dict:
         'pos_no_acct':     pos_no_acct,
         'total_hdr':       len(hdr),
         'active_status_mix':           active_status_mix,
+        'contract_leakage':                  contract_leakage,
+        'contract_leakage_total_untagged':   contract_leakage_total_untagged,
+        'contract_leakage_supplier_count':   contract_leakage_supplier_count,
     }
 
 
@@ -1066,6 +1136,58 @@ def _render_top_suppliers(m: dict) -> html.Div:
     ])
 
 
+# ── Untagged spend for contracted suppliers ───────────────────────────────────
+
+def _render_contract_leakage(m: dict) -> html.Div:
+    leak = m.get('contract_leakage')
+    if leak is None or leak.empty:
+        return html.Div()
+
+    total_untagged = m.get('contract_leakage_total_untagged', 0)
+    supplier_count = m.get('contract_leakage_supplier_count', 0)
+
+    col_labels = ['Supplier', 'Contract(s)', 'Contract Award Value', 'Tagged PO Spend', 'Untagged PO Spend', 'Untagged %']
+    header = html.Tr([
+        html.Th(t, style={
+            'fontSize': '11px', 'color': '#94a3b8', 'padding': '8px',
+            'textAlign': 'left' if i == 0 else 'right',
+            'borderBottom': f'2px solid {_CARD_BOR}',
+        }) for i, t in enumerate(col_labels)
+    ])
+
+    rows = []
+    for _, r in leak.head(25).iterrows():
+        cell_style = {'fontSize': '12px', 'padding': '8px', 'borderBottom': '1px solid #f1f5f9', 'textAlign': 'right'}
+        rows.append(html.Tr([
+            html.Td(r['display_name'], style={**cell_style, 'textAlign': 'left', 'color': '#1e293b', 'fontWeight': '600'}),
+            html.Td(r.get('contract_refs') or '—', style={**cell_style, 'color': '#64748b', 'fontSize': '11px'}),
+            html.Td(_fmt_val(r.get('total_award_value')), style={**cell_style, 'color': '#475569'}),
+            html.Td(_fmt_val(r['tagged_spend']), style={**cell_style, 'color': _ACCENT, 'fontWeight': '700'}),
+            html.Td(_fmt_val(r['untagged_spend']), style={**cell_style, 'color': _WARN_C, 'fontWeight': '700'}),
+            html.Td(f"{r['untagged_pct']:.0f}%", style={**cell_style, 'color': '#64748b'}),
+        ]))
+
+    footnote_bits = [f'{supplier_count:,} suppliers have contract-tagged PO spend AND other PO line spend with no contract reference at all — {_fmt_val(total_untagged)} untagged in total.']
+    if len(leak) > 25:
+        footnote_bits.append(f' Showing the top 25 by untagged £ value.')
+
+    return html.Div(style={
+        'background': _CARD_BG, 'border': f'1px solid {_CARD_BOR}',
+        'borderRadius': '12px', 'padding': '20px 24px',
+        'boxShadow': '0 2px 8px rgba(0,0,0,0.04)', 'marginBottom': '24px',
+    }, children=[
+        html.Div('Untagged Spend for Contracted Suppliers', style={
+            'fontSize': '13px', 'fontWeight': '700', 'color': '#1e293b', 'marginBottom': '4px',
+        }),
+        html.Div(''.join(footnote_bits), style={'fontSize': '11px', 'color': '#94a3b8', 'marginBottom': '16px'}),
+        html.Div(style={'overflowX': 'auto'}, children=[
+            html.Table(style={'width': '100%', 'borderCollapse': 'collapse'}, children=[
+                html.Thead(header), html.Tbody(rows),
+            ]),
+        ]),
+    ])
+
+
 # ── Policy signals ────────────────────────────────────────────────────────────
 
 def _render_policy_signals(m: dict) -> html.Div:
@@ -1178,6 +1300,7 @@ def render_tab(dq_results, frames: dict) -> html.Div:
     aging_card = _render_aging(m)
     cat_chart  = _render_category_chart(m)
     supp_chart = _render_top_suppliers(m)
+    leakage_card = _render_contract_leakage(m)
 
     return html.Div(children=[
 
@@ -1206,6 +1329,11 @@ def render_tab(dq_results, frames: dict) -> html.Div:
         _section_div('Supplier Concentration',
                      'Top 15 suppliers by total ordered value across all statuses'),
         html.Div(style={'marginBottom': '24px'}, children=[supp_chart]),
+
+        # ── Untagged spend for contracted suppliers ──
+        _section_div('Contract Spend Coverage',
+                     'Suppliers with contract-tagged PO spend who also have other PO spend tagged to no contract at all'),
+        leakage_card,
 
         # ── Data Quality Checks ──
         _section_div('Data Quality Checks',
