@@ -135,7 +135,13 @@ def _atamis_contract_value_mismatch(df, frames):
     could spuriously 'match' an unrelated commitment record that also has a
     blank/missing Contract Id (blank == blank in a merge), producing a fake
     comparison against an unrelated amount rather than correctly having
-    nothing to compare against."""
+    nothing to compare against.
+
+    A ~20% VAT variation (one side recorded VAT-inclusive, the other
+    VAT-exclusive — e.g. Unit4 112,500 vs Atamis 135,000 = 112,500 x 1.2) is
+    not a genuine data quality issue, so it's excluded from the flag even
+    though it exceeds the normal tolerance. Checked in both directions,
+    since either system could be the VAT-inclusive one."""
     if df.empty or 'unit4_commitments' not in frames:
         return pd.Series(False, index=df.index)
 
@@ -152,7 +158,15 @@ def _atamis_contract_value_mismatch(df, frames):
     commit_val = pd.to_numeric(merged['_commit_award'], errors='coerce')
     diff = (atamis_val - commit_val).abs()
     tolerance = (atamis_val.abs() * 0.02).clip(lower=1.00)  # 2% or £1, whichever is larger
-    return (commit_val.notna() & (diff > tolerance)).values
+    is_mismatch = commit_val.notna() & (diff > tolerance)
+
+    vat_tolerance = (atamis_val.abs() * 0.005).clip(lower=1.00)  # small rounding allowance
+    is_vat_variation = (
+        ((atamis_val - commit_val * 1.2).abs() <= vat_tolerance) |
+        ((commit_val - atamis_val * 1.2).abs() <= vat_tolerance)
+    )
+
+    return (is_mismatch & ~is_vat_variation).values
 
 
 def _atamis_contract_date_mismatch(df, frames):
