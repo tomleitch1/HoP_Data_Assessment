@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Parliament Finance Systems Programme – Unit4 Data Quality Assessment Dashboard**
 
-A Dash/Plotly web application that executes data quality (DQ) checks against financial data extracted from Parliament's legacy system (Unit4 predecessor), covering five domains: General Ledger, Suppliers/AP, Customers/AR, Fixed Assets, and PBF. Data arrives as CSV exports from two parliamentary houses (HoC and HoL) and is assessed against ~80+ rules across completeness, validity, referential integrity, and consistency dimensions.
+A Dash/Plotly web application that executes data quality (DQ) checks against financial data extracted from Parliament's legacy system (Unit4 predecessor), covering six domains: General Ledger, Suppliers/AP, Customers/AR, Fixed Assets, Budgets, and Atamis. Data arrives as CSV exports from two parliamentary houses (HoC and HoL) and is assessed against ~80+ rules across completeness, validity, referential integrity, and consistency dimensions.
 
 ---
 
@@ -151,8 +151,9 @@ data/
 │                asset_balances_HOC/HOL.csv, asset_trans_flags_HOC/HOL.csv
 │                asset_groups_HOC/HOL.csv
 ├── po/          po_header_HOC.csv, po_detail_HOC.csv                    ← HoC only, no HOL data
-└── atamis/      contracts_report.csv, supplier_data_report.csv          ← Atamis — NOT split HOC/HOL
-                 contract_total_commitments.csv, contracts_spend_details.csv  ← Unit4 views, NOT split HOC/HOL
+├── atamis/      contracts_report.csv, supplier_data_report.csv          ← Atamis — NOT split HOC/HOL
+│                contract_total_commitments.csv, contracts_spend_details.csv  ← Unit4 views, NOT split HOC/HOL
+└── budgets/     budgets_HOC.csv                                          ← HOC only; raw aaghocbud extract, current FY
 ```
 
 `data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and `split_files` in `load_data()`. There is no longer a `file_map` for single combined files — all tables use split files.
@@ -243,7 +244,7 @@ The DQ assessment covers the data objects below. Sequence numbers are used throu
 
 **Key dependencies:** CoA (1) → GL Balances (14) → sub-ledgers (16, 18). Banks (5) → Suppliers (10). Asset Rules (13) → Asset Balances (20). GL Balances must reconcile to AP (16), AR (18), and Asset (20) sub-ledger totals before go-live.
 
-**What this dashboard assesses:** Sequences 10 (Suppliers), 11 (Customers), 16 (AP Invoices), 18 (AR Invoices), 20 (Asset Balances), and the GL foundation objects (1, 14). PBF/budgets and Members' expenses are not yet in scope.
+**What this dashboard assesses:** Sequences 10 (Suppliers), 11 (Customers), 16 (AP Invoices), 18 (AR Invoices), 20 (Asset Balances), the GL foundation objects (1, 14), and Seq 23 (GL Budgets & Forecasts — data analysis in progress, tab not yet built). PBF and Members' expenses are not yet in scope.
 
 ---
 
@@ -1123,6 +1124,95 @@ Reads the real HOC/HOL supplier master CSVs and `po_header_HOC.csv` (already gen
 
 ---
 
+## Budgets Domain — Implementation Details
+
+**Migration scope: Seq 23 — GL Budgets & Forecasts.** HOC only — there is no HOL equivalent of the budget datacube.
+
+### Data source: `aaghocbud` (the HOC budget datacube)
+
+`aaghocbud` is a pre-aggregated balance table in Unit4 Business World. It pulls data from three source modules automatically via AGRDWS (the Agresso data warehouse service):
+- **General Ledger** → `amount` column (GL actuals, updated automatically)
+- **Purchasing** → `po_rest_com_amt` column (committed PO balance)
+- **Planner module (`apltransact`)** → all `pl*_amount` columns (budget versions)
+
+Balance table metadata: type `AA`, `Aggregated`, `Active`, updated by AGRDWS.
+
+### Confirmed dimension mapping
+
+`aaghocbud` uses generic `dim1`–`dim6` column names. Unlike every other table in this codebase, **account is in `dim1`, not a separate column**.
+
+| Column in `aaghocbud` | Attribute | Meaning |
+|---|---|---|
+| `dim1` | ACCOUNT | Account code — join to `aglaccounts` on `account` |
+| `dim2` | COSTC | Cost centre |
+| `dim3` | UNIT | Unit code (5-char, e.g. `B0130`) — parent rollup of HAIS code |
+| `dim4` | RESNO | Resource number — sparsely populated, capital/project lines only |
+| `dim5` | HAISCODE | HAIS code (8-char, e.g. `B0130110`) — the level Finance forecasts at |
+| `dim6` | RECHARGE | HOC/HOL — the house split within the datacube |
+
+### Confirmed `pl*` column to budget version mapping
+
+The `pl*` columns in `aaghocbud` correspond to "Planner Data" slots (DA, DB, DC...) defined in the balance table configuration. Each slot maps to a named budget version in `apltransact`:
+
+| `aaghocbud` column | Planner slot | Version code | Meaning |
+|---|---|---|---|
+| `amount` | — | GL | **GL actuals** (automated via AGRDWS) |
+| `number_1` | — | GL | GL headcount/FTE |
+| `po_rest_com_amt` | — | Purchasing | Committed PO balance |
+| `pla_amount` | DA | `2026ORIG` | Original budget set at year start |
+| `plb_amount` | DB | `2026CURR` | **Current approved budget for 2025/26** (confirmed by Parliament) |
+| `plc_amount` | DC | `2026FUNDS` | Funds budget |
+| `pld_amount` | DD | TBC | Not yet confirmed |
+| `ple_amount` | DE | `2026CFSTSP` | Live forecast — **also where SAT posts monthly actuals manually** |
+| `plf_amount` | DF | `2026PFST` | Pre-financial statement forecast |
+| `plg_amount` | DG | `2026Q1FC` | Q1 forecast recast |
+| `plh_amount` | DH | `2026Q2FC` | Q2 forecast recast |
+| `pli_amount` | DI | `2026Q3FC` | Q3 forecast recast |
+| `plk_amount` | DK | `2026MTIP` | Medium term investment plan |
+| `plm_amount` | DM | `2026BASE` | Base budget |
+| `plo_amount` | DO | `2026MYP` | Multi-year plan |
+
+**Two actuals fields exist and are different:**
+- `amount` — automated GL actuals pulled by AGRDWS. Should match `aglperiodic` exactly.
+- `ple_amount` (CFSTSP) — SAT posts manual adjustments here monthly (e.g. on the 6th of each month) to bring the forecast figure in line with that period's GL actuals. It is a blended figure: past periods = actuals; future periods = forecast. Do not use it as a pure actuals source.
+
+**`2025CURR` is the current approved budget for 2025/26** — confirmed by Parliament. Original budget is posted into `2026ORIG` and `2026CURR` at year start, then copied into `2026CFSTSP` which is updated throughout the FY.
+
+### Version codes in `apltransact`
+
+`apltransact` is the Planner module's transactional table (millions of rows). It has an `account` column and is the normalized source that feeds `aaghocbud`. Versions are year-stamped (e.g. `2026ORIG`, `2026CFSTSP`). There are 135 year-stamped versions in total, collapsing to ~23 distinct type suffixes (ORIG, CURR, CFSTSP, FUNDS, MYP, PFST, Q1FC/Q2FC/Q3FC, MTIP, BASE, VIRE, ADJT, BUDT, etc.). `apltransact` is not yet loaded into the dashboard — use `aaghocbud` for the dashboard tab.
+
+### Pre-built Finance report
+
+Parliament's Finance team can supply a pre-built report that is richer than the raw `aaghocbud` extract — it has account and HAIS code descriptions pre-joined, the full department/directorate/cost centre hierarchy decoded, and both HOC and HOL in one file. Confirmed columns:
+
+`Mipck-l1`, `Mipck-l1(T)`, `Mipck-l2`, `Mipck-l2(T)`, `Mipck-l3`, `Account`, `Account(T)`, `Department`, `Directorate`, `Costc`, `Haiscode`, `Haiscode(T)`, `Recharge`, `Year`, `Period`, `Amount`, `Amount DA`, `Amount DB`, `Amount DE`, `Amount DF`, `Amount DG`, `Amount DH`, `Amount DI`, `Unit`
+
+**Scope confirmed**: `Mipck-l1(T)` covers all budget types — HOL income, impairments, depreciation, office supplies, property, salaries, write-offs, telecommunications, Revenue RCOB, capital expenditure, etc. It is not filtered to CAPEX only. Full FY 2025 (FY2025/26). `Recharge` = HOC/HOL.
+
+If this report is used as the data source instead of the raw SQL extract, the file would load as a single combined file (not split HOC/HOL) with `Recharge` used as the house column — same pattern as Atamis.
+
+### SQL extract
+
+`sql/budget_HOC_run.sql` queries `aaghocbud` directly for the current FY. Output: `data/budgets/budgets_HOC.csv`. This is the raw extract; the pre-built Finance report is richer but both cover the same underlying data.
+
+### Not yet built
+
+- Dashboard tab (`dashboard/tabs/budgets.py` — placeholder not yet created)
+- DQ rules (`dashboard/core/rules/budget_rules.py` — not yet written)
+- Dummy data generator
+- Data engine registration (`load_data()`, `run_dq_analysis()`)
+
+**Likely DQ checks once tab is built:**
+- Budget lines with account (`dim1`) not in `aglaccounts` (Consistency, High)
+- Budget lines on closed accounts (`status = 'C'`) (Consistency, Medium)
+- Budget lines with no HAIS code (`dim5` blank) (Completeness, Medium)
+- Budget lines with no cost centre (`dim2` blank) (Completeness, Low)
+- `plb_amount` (CURR) zero where account has GL actuals — unbudgeted spend (Consistency, Medium)
+- Accounts in `aglaccounts` with no budget line at all — coverage gap (Completeness, Low)
+
+---
+
 ## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**
@@ -1164,6 +1254,7 @@ Reads the real HOC/HOL supplier master CSVs and `po_header_HOC.csv` (already gen
 - **Both directions of the Contract ↔ Commitment reconciliation given a HOL-specific source (August 2026, per direct request, in two steps)** — HOL has no usable Commitments extract of its own (confirmed by the user: real data resolves that file almost entirely to HOC), so contract reference is instead sourced from `gl_dimension_values_HOL.csv`'s `dim_position == '5'` (`dim_description == 'Contract Number'`) rows for HOL. First applied to `UNIT4_COMMIT_NOT_IN_CONTRACTS`, then the user asked for the same fix on the reverse-direction check, `ATAMIS_CONTRACT_NOT_IN_COMMITMENTS` (a HOL Atamis contract was otherwise always being tested against a Commitments extract that could never contain it). Both checks now share one frame, `unit4_contract_refs`, built by `_build_unit4_contract_refs()` — see "unit4_contract_refs — a shared frame for both directions of the Contract ↔ Commitment join" above for the full design (cache-signature and tab-scoped-loading consequences). Verified via forced synthetic cases in both directions (HOC- and HOL-sourced rows resolve and flag correctly); shows HOC-only on dummy data since dummy HOL's `dim_position == '5'` attribute is still labelled `'Counterpart'`, a known generator gap.
 
 **Not yet implemented:**
+- Budgets tab — data analysis complete, dimension/version mapping confirmed (see Budgets Domain section above), tab and DQ rules not yet built
 - PBF tab (`dashboard/tabs/pbf.py` is a placeholder)
 - Cross-domain checks between Atamis and GL (e.g. contract spend vs GL account/dimension values) — not yet built, same "don't add checks speculatively" principle as everywhere else in this codebase
 
