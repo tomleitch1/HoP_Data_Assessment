@@ -34,6 +34,18 @@ _TRACK_DARK = '#16324d'
 _ORG_ORDER  = ['HOC', 'HOL', 'Joint']
 _ORG_COLORS = {'HOC': HOUSE_HEX['HOC'], 'HOL': HOUSE_HEX['HOL'], 'Joint': _NAVY, 'Unknown': HOUSE_HEX['Unknown']}
 
+# Excluded from the Unresolved Records section only (per direct request) —
+# these are largely tautological for a contract that's already unresolved:
+# a blank Contract Reference or an invalid Organisation value is very often
+# the exact reason the contract couldn't be resolved to a house in the first
+# place, so flagging it again under Unknown mostly restates the Organisation
+# Field Reliability card's own 'No Reference' signal rather than adding new
+# information. Still scored normally for HOC/HOL, where they're meaningful.
+_UNRESOLVED_EXCLUDED_CHECKS = {
+    'ATAMIS_CONTRACT_NO_SUPPLIER', 'ATAMIS_CONTRACT_NO_REF',
+    'ATAMIS_CONTRACT_NO_DATES', 'ATAMIS_CONTRACT_ORG_INVALID',
+}
+
 
 # ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -780,7 +792,9 @@ def render_tab(dq_results, frames: dict) -> html.Div:
     # cleanly to HOC or HOL and is scored in the normal scorecard.
     if 'house' in dq_results.columns:
         resolved_dq = dq_results[dq_results['house'].isin(['HOC', 'HOL'])]
-        unresolved_dq = dq_results[dq_results['house'] == 'Unknown']
+        unresolved_dq = dq_results[
+            (dq_results['house'] == 'Unknown') & ~dq_results['check_id'].isin(_UNRESOLVED_EXCLUDED_CHECKS)
+        ]
     else:
         resolved_dq, unresolved_dq = dq_results, dq_results.iloc[0:0]
 
