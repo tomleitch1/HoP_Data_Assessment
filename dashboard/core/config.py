@@ -172,7 +172,7 @@ SCOPE_CONFIG = {
         'label':     'PBF',
         'tab_value': 'pbf',
         'scope_ids': [Scope.PBF],
-        'tables':    ['pbf_data'],
+        'tables':    ['budgets_report'],
         'aging':     None,
     },
     'atamis': {
@@ -214,7 +214,7 @@ SCOPE_TABLES = {
     Scope.GL_BALANCES: 'gl_opening_balances',
     Scope.GL_TRANSACTIONS: 'gl_transact_dims',
     Scope.ASSETS: 'asset_master',
-    Scope.PBF: 'pbf_data',
+    Scope.PBF: 'budgets_report',
 }
 
 SCOPE_TO_TAB = {}
@@ -227,7 +227,7 @@ ALL_TABLES = [
     'acuheader', 'acutrans', 'acuhistr',
     'gl_coa', 'gl_dim_values', 'gl_opening_balances', 'gl_transact_dims',
     'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags',
-    'apoheader', 'apodetail', 'pbf_data',
+    'apoheader', 'apodetail', 'budgets_report',
     'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers',
 ]
 

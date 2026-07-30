@@ -228,7 +228,7 @@ def render_tab_content(master_tab):
         filtered_dq = dq_results[dq_results['scope_id'] == 15]
         return render_po(filtered_dq, frames)
     elif master_tab == 'pbf':
-        filtered_dq = dq_results[dq_results['scope_id'] == -1] # Adjust logic as needed later
+        filtered_dq = dq_results[dq_results['scope_id'] == 25]
         return render_pbf(filtered_dq, frames)
     elif master_tab == 'atamis':
         filtered_dq = dq_results[dq_results['scope_id'].isin([30, 31, 32, 33])]

@@ -14,6 +14,7 @@ from dashboard.core.rules.asset_rules import get_asset_checks
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
+from dashboard.core.rules.budget_rules import get_budget_checks
 
 DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
@@ -143,6 +144,10 @@ SUBDIR = {
     # internal table keys. See single_files in load_data().
     'atamis':    ['contracts_report', 'contract_total_commitments', 'contracts_spend_details', 'supplier_data_report',
                   'unit4_open_contracts', 'hol_unit4_spend'],
+    # budgets_report is a single combined HOC+HOL file (Recharge column = HOC/HOL),
+    # same pattern as Atamis — house derived post-load, not from filename.
+    # Key is 'budgets' (the actual data/ subdirectory) not 'pbf' (the tab name).
+    'budgets':   ['budgets_report'],
 }
 # Reverse lookup: base_name -> subdirectory
 _SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
@@ -261,6 +266,37 @@ _ATAMIS_RENAME = {
 }
 
 _ATAMIS_ORG_HOUSE_MAP = {'HOC': 'HOC', 'HOL': 'HOL', 'JOINT': 'Joint'}
+
+# Pre-built Finance report column headers → clean snake_case.
+# The Finance report arrives with human-readable headers (spaces, parentheses)
+# unlike every SQL-extracted CSV which already has clean names from its own
+# column aliases.
+_BUDGET_RENAME = {
+    'Mipck-l1':    'mipck_l1',
+    'Mipck-l1(T)': 'mipck_l1_desc',
+    'Mipck-l2':    'mipck_l2',
+    'Mipck-l2(T)': 'mipck_l2_desc',
+    'Mipck-l3':    'mipck_l3',
+    'Account':     'account',
+    'Account(T)':  'account_desc',
+    'Department':  'department',
+    'Directorate': 'directorate',
+    'Costc':       'costc',
+    'Haiscode':    'haiscode',
+    'Haiscode(T)': 'haiscode_desc',
+    'Recharge':    'recharge',
+    'Year':        'year',
+    'Period':      'period',
+    'Amount':      'gl_actuals',
+    'Amount DA':   'orig_budget',
+    'Amount DB':   'curr_budget',
+    'Amount DE':   'live_forecast',
+    'Amount DF':   'pfst_budget',
+    'Amount DG':   'q1_forecast',
+    'Amount DH':   'q2_forecast',
+    'Amount DI':   'q3_forecast',
+    'Unit':        'unit',
+}
 
 
 def _derive_atamis_houses(frames: dict) -> None:
@@ -441,6 +477,19 @@ def _build_unit4_contract_refs(frames: dict) -> None:
         base = pd.concat([base, hol_refs], ignore_index=True)
 
     frames['unit4_contract_refs'] = base
+
+
+def _derive_budget_houses(frames: dict) -> None:
+    """Assigns a 'house' column to budgets_report in place.
+
+    budgets_report is a single combined HOC+HOL file (same pattern as Atamis).
+    The Recharge column contains 'HOC' or 'HOL' directly — unlike Atamis, there
+    is no cross-reference needed. Any unrecognised value maps to 'Unknown'.
+    """
+    df = frames.get('budgets_report')
+    if df is None:
+        return
+    df['house'] = df['recharge'].astype(str).str.strip().map({'HOC': 'HOC', 'HOL': 'HOL'}).fillna('Unknown')
 
 
 def _data_path(base_name: str, suffix: str = '') -> str:
@@ -696,6 +745,7 @@ _SUBDIR_TO_SCOPE = {
     'assets':    'assets',
     'po':        'po',
     'atamis':    'atamis',
+    'pbf':       'pbf',
 }
 
 # User-friendly aliases accepted on the command line
@@ -717,7 +767,9 @@ def load_data(tab=None):
     frames = {}
     _cached = set()  # tables loaded from cache — skip re-processing
 
-    names_to_load = set(SUBDIR.get(tab, [])) if tab else {
+    # 'pbf' is the tab name; the actual subdirectory is 'budgets'
+    _subdir_key   = 'budgets' if tab == 'pbf' else tab
+    names_to_load = set(SUBDIR.get(_subdir_key, [])) if tab else {
         n for names in SUBDIR.values() for n in names
     }
     if tab == 'atamis':
@@ -821,6 +873,7 @@ def load_data(tab=None):
         'supplier_data_report':         'atamis_suppliers',
         'unit4_open_contracts':         'unit4_open_contracts',
         'hol_unit4_spend':              'hol_unit4_spend',
+        'budgets_report':               'budgets_report',
     }
     for base_name, table in single_files.items():
         if base_name not in names_to_load:
@@ -840,14 +893,15 @@ def load_data(tab=None):
             df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE)
         except UnicodeDecodeError:
             df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE, encoding='cp1252')
-        df = df.rename(columns=_ATAMIS_RENAME.get(table, {}))
-        # Guard against a real export header not matching any key in
-        # _ATAMIS_RENAME (report-tool prefixes vary — see contract_title
-        # above) — fill any expected column that didn't get created with
-        # blank rather than letting it KeyError deep in a rule or tab. A
-        # genuinely missing field then just shows up honestly as a 100%
-        # completeness failure instead of crashing the whole dashboard load.
-        for expected_col in set(_ATAMIS_RENAME.get(table, {}).values()):
+        _rename_map = _ATAMIS_RENAME.get(table, {}) if table != 'budgets_report' else _BUDGET_RENAME
+        df = df.rename(columns=_rename_map)
+        # Guard against a real export header not matching any key in the
+        # rename map (report-tool prefixes vary, budget report column names may
+        # differ slightly between Finance team exports) — fill any expected
+        # column that didn't get created with blank rather than letting it
+        # KeyError deep in a rule or tab. A genuinely missing field then shows
+        # up honestly as a 100% completeness failure instead of crashing the load.
+        for expected_col in set(_rename_map.values()):
             if expected_col not in df.columns:
                 df[expected_col] = pd.NA
         if table == 'unit4_spend':
@@ -896,6 +950,9 @@ def load_data(tab=None):
                         'award_amount', 'amount_limit', 'committed_amount', 'posted_amount',
                         'registered_invoices', 'open_requisitions', 'remaining_amount',
                         'posted', 'amount_c',
+                        # Budget / PBF numeric columns
+                        'gl_actuals', 'orig_budget', 'curr_budget', 'live_forecast',
+                        'pfst_budget', 'q1_forecast', 'q2_forecast', 'q3_forecast',
                         ]
         for col in numeric_cols:
             if col in df.columns:
@@ -928,6 +985,13 @@ def load_data(tab=None):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
             _date_cols = date_cols
+        elif table == 'budgets_report':
+            # period (1–15) and year are plain integers, not dates — parse to
+            # numeric, explicitly excluded from _parse_dates.
+            for col in ('period', 'year'):
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
+            _date_cols = [c for c in date_cols if c not in ('period', 'year')]
         elif table in ('asset_master', 'asset_depreciation'):
             # cap_period_from and depr_period are YYYYPP integers, not dates
             _yypp = ('cap_period_from', 'depr_period')
@@ -959,6 +1023,14 @@ def load_data(tab=None):
         _derive_atamis_houses(frames)
         _build_unit4_contract_refs(frames)
 
+    # Budget house assignment — much simpler than Atamis: the Recharge column
+    # directly contains 'HOC' or 'HOL', so no cross-reference to asuheader is needed.
+    # Still recomputed fresh rather than relying on the cached frame, for the same
+    # reason as Atamis: a cache hit on budgets_report would have arrived without a
+    # 'house' column if it was built before this derivation existed.
+    if 'budgets_report' in frames:
+        _derive_budget_houses(frames)
+
     return frames
 
 def get_dq_checks():
@@ -970,6 +1042,7 @@ def get_dq_checks():
     checks.extend(get_gl_checks())
     checks.extend(get_po_checks())
     checks.extend(get_atamis_checks())
+    checks.extend(get_budget_checks())
     return checks
 
 def run_dq_analysis(frames, tab=None):
@@ -1143,6 +1216,8 @@ def run_dq_analysis(frames, tab=None):
                     h_df = df_table[df_table['house'] == house]
                 if check_id in _ATAMIS_OPEN_ONLY_CHECKS:
                     h_df = _atamis_filter_open_only(h_df, table, frames)
+            elif table == 'budgets_report':
+                h_df = df_table[df_table['house'] == house]
             else:
                 h_df = df_table[df_table['house'] == house]
 
@@ -1499,6 +1574,18 @@ def get_check_columns():
         'UNIT4_SPEND_NEGATIVE_POSTED':      ['u4_contract_id', 'posted', 'amount_c'],
         'UNIT4_COMMIT_VS_SPEND_MISMATCH':   ['u4_contract_id', 'posted_amount', 'posted', 'supplier_name'],
 
+        # Budget / PBF (budgets_report)
+        'BUD_ACCOUNT_MISSING':       ['account', 'account_desc', 'mipck_l1_desc', 'costc', 'period'],
+        'BUD_MIPCK_MISSING':         ['account', 'account_desc', 'mipck_l1', 'costc', 'period'],
+        'BUD_HAISCODE_MISSING':      ['account', 'account_desc', 'haiscode', 'costc', 'period'],
+        'BUD_COSTC_MISSING':         ['account', 'account_desc', 'costc', 'haiscode', 'period'],
+        'BUD_CURR_BUDGET_MISSING':   ['account', 'account_desc', 'haiscode', 'costc', 'period', 'orig_budget', 'curr_budget'],
+        'BUD_ORIG_BUDGET_MISSING':   ['account', 'account_desc', 'haiscode', 'costc', 'period', 'orig_budget', 'curr_budget'],
+        'BUD_PERIOD_INVALID':        ['account', 'account_desc', 'period', 'year', 'haiscode'],
+        'BUD_ACCOUNT_ORPHAN':        ['account', 'account_desc', 'mipck_l1_desc', 'haiscode', 'costc'],
+        'BUD_ACCOUNT_CLOSED':        ['account', 'account_desc', 'mipck_l1_desc', 'haiscode', 'costc'],
+        'BUD_ACTUALS_NO_CURR_BUDGET': ['account', 'account_desc', 'haiscode', 'costc', 'period', 'gl_actuals', 'curr_budget'],
+
     }
 
 def get_failing_records(check_id, house, frames, base_cols=None, for_export=False):
@@ -1609,6 +1696,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[df_table['house'] == house]
         if check_id in _ATAMIS_OPEN_ONLY_CHECKS:
             h_df = _atamis_filter_open_only(h_df, table, frames)
+    elif table == 'budgets_report':
+        h_df = df_table[df_table['house'] == house]
     else:
         h_df = df_table[df_table['house'] == house]
 

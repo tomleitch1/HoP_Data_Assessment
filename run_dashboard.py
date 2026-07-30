@@ -33,6 +33,7 @@ _VALID_TABS = {
     'assets':    'assets',
     'po':        'po',
     'atamis':    'atamis',
+    'pbf':       'pbf', 'budgets': 'pbf',
 }
 _tab_label = None
 _version    = None
