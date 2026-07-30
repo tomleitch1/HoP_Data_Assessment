@@ -1483,7 +1483,6 @@ def get_check_columns():
         'ATAMIS_SUPPLIER_NO_CREDITOR_REF':   ['supplier_name', 'creditor_ref', 'supplier_salesforce_id'],
         'ATAMIS_SUPPLIER_DUP_CREDITOR_REF':  ['creditor_ref', 'supplier_name'],
         'ATAMIS_SUPPLIER_NOT_IN_UNIT4':      ['creditor_ref', 'supplier_name'],
-        'UNIT4_SUPPLIER_NOT_IN_ATAMIS':      ['apar_id', 'apar_name', 'status'],
 
         # Contract Commitments (unit4_commitments / contract_total_commitments — Unit4)
         'UNIT4_COMMIT_NO_SUPPLIER_ID':      ['u4_contract_id', 'contract_title', 'supplier_name'],
@@ -1687,20 +1686,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             failing = failing.merge(po_invoiced, on='UNIT4_COMMITMENTS.u4_contract_id', how='left')
         cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title',
                 'UNIT4_COMMITMENTS.posted_amount', 'PO.invoiced_total']
-        return failing[[c for c in cols if c in failing.columns]]
-
-    if check_id == 'UNIT4_SUPPLIER_NOT_IN_ATAMIS':
-        # Explicit named join (asuheader.apar_id has no relationship to
-        # atamis_suppliers via any of the generic auto-join's candidate keys,
-        # only 'house' in common) — bypasses the generic join below, which
-        # would otherwise dedupe atamis_suppliers down to one arbitrary row
-        # per house and attach it to every failing supplier.
-        failing = failing.rename(columns={
-            'apar_id':   'SUPPLIER_MASTER.apar_id',
-            'apar_name': 'SUPPLIER_MASTER.apar_name',
-            'status':    'SUPPLIER_MASTER.status',
-        })
-        cols = ['SUPPLIER_MASTER.apar_id', 'SUPPLIER_MASTER.apar_name', 'SUPPLIER_MASTER.status']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':

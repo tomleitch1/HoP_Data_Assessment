@@ -5,22 +5,6 @@ def _is_blank(s):
     return s.isna() | (s.astype(str).str.strip().isin(['', 'nan', 'None']))
 
 
-def _unit4_supplier_not_in_atamis(df, frames):
-    """Flags active Unit4 suppliers (asuheader) whose apar_id has no matching
-    Creditor Ref in the Atamis supplier list. The reverse direction of
-    ATAMIS_SUPPLIER_NOT_IN_UNIT4 — a supplier can transact in Unit4 without ever
-    being registered in Atamis (e.g. payroll/HMRC-type suppliers that never go
-    through procurement), so this is Medium rather than High severity."""
-    if df.empty or 'atamis_suppliers' not in frames:
-        return pd.Series(False, index=df.index)
-
-    atamis_ids = set(
-        frames['atamis_suppliers']['creditor_ref'].dropna().astype(str).str.strip()
-    )
-    ids = df['apar_id'].astype(str).str.strip()
-    return ~ids.isin(atamis_ids)
-
-
 def _atamis_contract_ref_not_in_po(df, frames):
     """Flags HOC Atamis contracts whose Contract Reference has no matching
     contract_id anywhere in po_detail_HOC. PO is HoC-only (population is already
@@ -364,16 +348,6 @@ def get_atamis_checks():
          'atamis_suppliers', None,
          "WHERE \"Creditor Ref\" NOT IN (SELECT apar_id FROM asuheader)",
          lambda df: df['house'] == 'Unknown'),
-
-        ('UNIT4_SUPPLIER_NOT_IN_ATAMIS',
-         33, 'Unit4 Supplier', 'Consistency', 'Medium',
-         'Unit4 supplier has no matching Atamis record',
-         'Every active Unit4 supplier is expected to have a corresponding Creditor Ref entry in the Atamis supplier list if it has ever been contracted through procurement. '
-         'A supplier that transacts in Unit4 but was never registered in Atamis is not unusual for payroll, tax, or individual-type suppliers, but is still worth reviewing for anything that should have gone through procurement.',
-         'Confirm whether the affected supplier is expected to be in Atamis, and register it there if so.',
-         'asuheader', 'atamis_suppliers',
-         "WHERE apar_id NOT IN (SELECT \"Creditor Ref\" FROM supplier_data_report)",
-         _unit4_supplier_not_in_atamis),
 
         # ---------------------------------------------------------------
         # CONTRACT COMMITMENTS — unit4_commitments / contract_total_commitments.csv
