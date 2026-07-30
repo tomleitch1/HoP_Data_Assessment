@@ -12,6 +12,15 @@ Usage:
     python scripts/generate_full_export.py assets HOL
     python scripts/generate_full_export.py po HOC
 
+Versioned data run:
+    python scripts/generate_full_export.py customers HOL v2
+
+    When a version (e.g. v2) is supplied, the loader looks for files named
+    customer_master_HOL_v2.csv etc. before falling back to the standard name —
+    same mechanism as `python run_dashboard.py customers v2`. Tracker/evidence
+    filenames are unchanged, so point --port/output elsewhere if you need to
+    keep the v1 export around for comparison.
+
 Tracker saved to:  trackers/<tab>_tracker_<HOUSE>.xlsx  (same as generate_tracker.py)
 Evidence saved to: trackers/evidence/<HOUSE>_<Dimension>_<CHECK_ID>.xlsx
                    (only checks with at least one failing record)
@@ -263,7 +272,7 @@ def export_evidence(tab_key: str, house: str, dq_results: pd.DataFrame,
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run(tab: str, house: str) -> None:
+def run(tab: str, house: str, version: str = None) -> None:
     tab_key = TAB_ALIASES.get(tab.lower())
     if tab_key is None:
         print(f"Unknown tab '{tab}'. Valid: {', '.join(TAB_ALIASES)}")
@@ -273,6 +282,10 @@ def run(tab: str, house: str) -> None:
     if house not in ('HOC', 'HOL'):
         print("House must be HOC or HOL.")
         sys.exit(1)
+
+    if version:
+        os.environ['DASHBOARD_VERSION'] = version.lower()
+        print(f"Data version: {version.lower()} (falls back to standard if versioned file not found)")
 
     print(f"Loading data...")
     frames = load_data(tab=tab_key)
@@ -297,5 +310,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate DQ tracker + evidence exports')
     parser.add_argument('tab',   help='Tab name: suppliers, customers, gl, assets, po')
     parser.add_argument('house', help='House: HOC or HOL')
+    parser.add_argument('version', nargs='?', default=None,
+                         help='Optional data version (e.g. v2) — prefers versioned files, falls back to standard')
     args = parser.parse_args()
-    run(args.tab, args.house)
+    run(args.tab, args.house, args.version)
