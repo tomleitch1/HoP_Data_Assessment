@@ -7,22 +7,26 @@ USE Agresso_HoC;
 -- Place in : data/budgets/
 -- Notes    : HOC only — no HOL budget equivalent.
 --            Current FY 2025/26 = periods 202501–202515.
---            dim2 and dim6 not yet confirmed — eyeball values
---            before relying on them in DQ checks.
---            dim1 = account (unusual — not a separate column here)
---            dim3 = unit code
---            dim5 = HAIS code (level Finance forecasts at)
+--            Dimension mapping confirmed from balance table definition:
+--              dim1 = account (ACCOUNT — unusual, not a separate column)
+--              dim2 = cost_centre (COSTC)
+--              dim3 = unit_code (UNIT)
+--              dim4 = resno (RESNO — resource number, sparse: capital/project lines only)
+--              dim5 = hais_code (HAISCODE)
+--              dim6 = recharge (RECHARGE — HOC/HOL house split)
+--            amount column = GL actuals (pulled automatically by AGRDWS)
+--            ple_amount (Planner E) = CFSTSP: SAT-posted manual actuals + forecast
 -- ============================================================
 
 SELECT
     b.client,
     b.period,
     b.dim1                AS account,
-    b.dim2                AS dim2,               -- confirm: likely cost centre
-    b.dim3                AS unit_code,
-    b.dim4                AS dim4,               -- sparsely populated, likely project/contract
-    b.dim5                AS hais_code,
-    b.dim6                AS dim6,               -- confirm with Parliament
+    b.dim2                AS cost_centre,        -- COSTC
+    b.dim3                AS unit_code,          -- UNIT
+    b.dim4                AS resno,              -- RESNO: resource number, sparsely populated (capital/project lines only)
+    b.dim5                AS hais_code,          -- HAISCODE
+    b.dim6                AS recharge,           -- RECHARGE: HOC/HOL house split
     b.pla_amount          AS orig_budget,        -- 2026ORIG  : original budget set at year start
     b.plb_amount          AS curr_budget,        -- 2026CURR  : current budget
     b.ple_amount          AS forecast_actuals,   -- 2026CFSTSP: live forecast + SAT-posted actuals
