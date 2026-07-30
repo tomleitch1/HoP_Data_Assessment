@@ -71,6 +71,16 @@ python scripts/generate_tracker.py assets HOL
 ```
 Output saved to `trackers/<tab>_tracker_<HOUSE>.xlsx`. Columns: Test Reference, Description, Dimension, Severity, Failing Records, Total Assessed, Error Rate, RAG, Comments, Source System Cleansing Complete. Run on Parliament laptop against real data for a meaningful tracker.
 
+**Atamis is the one exception — one combined export, not split by house (`scripts/generate_atamis_export.py`, added August 2026, per direct request):**
+```bash
+python scripts/generate_atamis_export.py
+```
+Every other domain's tracker/evidence tooling (`generate_tracker.py`, `generate_full_export.py`) runs once per house and produces separate files. Atamis's dashboard tab already treats `Unknown` as a distinct, non-house bucket rather than a third house (see the Atamis Domain section below), and the user asked the export to mirror that directly: **one** tracker and **one** evidence file per check, covering HOC, HOL, and Unknown together, with a `House` column making clear which bucket each row belongs to — rather than three separate reports. Output goes to its own `trackers/atamis/` folder (`trackers/atamis/atamis_tracker.xlsx`, `trackers/atamis/evidence/<Dimension>_<CHECK_ID>.xlsx`), not split by house in the filename like every other domain's exports.
+
+Implementation: `make_tracker()` filters `dq_results` to Atamis's four scope IDs and `failing > 0` across every house at once (no per-house filter), sorted HOC → HOL → Unknown. `export_evidence()` groups by `check_id` (not `(check_id, house)`), calling `get_failing_records(check_id, house, frames, for_export=True)` once per house that check has any failing records under and concatenating the results into one sheet — each early-return block's own column shape (`ATAMIS_CONTRACTS.*`, `UNIT4_COMMITMENTS.*`, etc.) is preserved as-is via `pd.concat(..., sort=False)`, with a single clean `House` column always inserted at the front regardless of whether that check's own evidence columns already happened to include a lowercase `house` (some early-return blocks do, most don't — relying on that inconsistently would have been fragile, so it's always dropped and reinserted explicitly). Verified against dummy data: `ATAMIS_CONTRACT_NOT_IN_COMMITMENTS`'s combined evidence file showed 33 HOC + 8 HOL + 7 Unknown = 48 rows, matching the tracker's own combined failing count for that check exactly.
+
+`trackers/` is gitignored (added alongside `data/`) — generated output, never committed, and may contain real Parliament data once run on that laptop.
+
 ---
 
 ## Architecture
