@@ -72,7 +72,7 @@ def _atamis_open_contract_refs(frames: dict):
 _ATAMIS_OPEN_ONLY_CHECKS = {
     'UNIT4_COMMIT_NO_SUPPLIER_ID', 'UNIT4_COMMIT_DATE_INVALID', 'UNIT4_COMMIT_REMAINING_MISMATCH',
     'UNIT4_COMMIT_OVERSPEND', 'UNIT4_COMMIT_DUP_ID', 'UNIT4_COMMIT_SUPPLIER_ORPHAN',
-    'UNIT4_COMMIT_NOT_IN_CONTRACTS', 'UNIT4_COMMIT_VS_SPEND_MISMATCH',
+    'UNIT4_COMMIT_NOT_IN_CONTRACTS', 'UNIT4_COMMIT_VS_SPEND_MISMATCH', 'UNIT4_COMMIT_VS_PO_MISMATCH',
     'UNIT4_SPEND_CONTRACT_ORPHAN', 'UNIT4_SPEND_NEGATIVE_POSTED',
     'ATAMIS_CONTRACT_NOT_IN_COMMITMENTS',
 }
@@ -1493,6 +1493,7 @@ def get_check_columns():
         'UNIT4_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
         'UNIT4_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
         'UNIT4_COMMIT_NOT_IN_CONTRACTS':    ['u4_contract_id', 'contract_title', 'supplier_name', 'house'],
+        'UNIT4_COMMIT_VS_PO_MISMATCH':      ['u4_contract_id', 'contract_title', 'posted_amount', 'invoiced'],
 
         # Contract Spend (unit4_spend / contracts_spend_details — Unit4)
         'UNIT4_SPEND_CONTRACT_ORPHAN':      ['u4_contract_id', 'posted', 'amount_c'],
@@ -1660,6 +1661,32 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             failing = failing.merge(commit_link, on='UNIT4_SPEND.u4_contract_id', how='left')
         cols = ['UNIT4_SPEND.u4_contract_id', 'UNIT4_COMMITMENTS.supplier_name',
                 'UNIT4_COMMITMENTS.posted_amount', 'UNIT4_SPEND.posted', 'UNIT4_SPEND.amount_c']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'UNIT4_COMMIT_VS_PO_MISMATCH':
+        # Explicit named join — the generic auto-join below has no shared
+        # candidate key between unit4_commitments and apodetail at all (PO
+        # has no 'house' column), so it would never fire; this enriches with
+        # the same per-contract PO invoiced total the lambda itself computes,
+        # so the disagreement is directly visible alongside Commitments'
+        # own Posted Amount.
+        failing = failing.rename(columns={
+            'u4_contract_id':  'UNIT4_COMMITMENTS.u4_contract_id',
+            'contract_title':  'UNIT4_COMMITMENTS.contract_title',
+            'posted_amount':   'UNIT4_COMMITMENTS.posted_amount',
+        })
+        if 'apodetail' in frames:
+            dtl = frames['apodetail']
+            po_ref = dtl['contract_id'].astype(str).str.strip()
+            po_ref = po_ref.where(~_atamis_blank(dtl['contract_id']))
+            po_invoiced = (
+                pd.to_numeric(dtl['invoiced'], errors='coerce').fillna(0)
+                .groupby(po_ref).sum()
+                .rename('PO.invoiced_total').reset_index().rename(columns={'index': 'UNIT4_COMMITMENTS.u4_contract_id', po_ref.name: 'UNIT4_COMMITMENTS.u4_contract_id'})
+            )
+            failing = failing.merge(po_invoiced, on='UNIT4_COMMITMENTS.u4_contract_id', how='left')
+        cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title',
+                'UNIT4_COMMITMENTS.posted_amount', 'PO.invoiced_total']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'UNIT4_SUPPLIER_NOT_IN_ATAMIS':

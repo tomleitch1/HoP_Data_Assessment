@@ -60,6 +60,44 @@ def _unit4_commit_vs_spend_mismatch(df, frames):
     return (commit_posted.notna() & (diff > 1.00)).values
 
 
+def _unit4_commit_vs_po_mismatch(df, frames):
+    """Flags contracts where Unit4's own Commitments Posted Amount disagrees
+    materially with the actual invoiced spend recorded in PO for that same
+    contract. PO is HoC-only, and both tables share the same contract
+    identifier directly (u4_contract_id / apodetail.contract_id — confirmed,
+    same join as ATAMIS_CONTRACT_REF_NOT_IN_PO) — no need to go via Atamis's
+    own contract master at all for this comparison.
+
+    Uses PO's invoiced field, not amount — 'Posted' means an invoice has
+    actually gone through and hit the ledger, which is what invoiced
+    represents; amount is only the ordered/committed value (the PO-side
+    equivalent of Commitments' own committed_amount, a different check).
+    arr_amount is deliberately not used here — confirmed with the user as
+    not relevant to this comparison (see PO_FINISHED_WITH_BALANCE's own
+    documented arr_amount/invoiced ambiguity for why it's avoided).
+
+    Unmatched contracts (no PO lines tagged to this contract at all) are
+    left unflagged — nothing to compare against, that's a different
+    question (e.g. whether this contract has any PO-driven spend at all)."""
+    if df.empty or 'apodetail' not in frames:
+        return pd.Series(False, index=df.index)
+
+    dtl = frames['apodetail']
+    po_ref = dtl['contract_id'].astype(str).str.strip()
+    po_ref = po_ref.where(~_is_blank(dtl['contract_id']))
+    po_invoiced_by_contract = (
+        pd.to_numeric(dtl['invoiced'], errors='coerce').fillna(0)
+        .groupby(po_ref).sum()
+    )
+
+    ref = df['u4_contract_id'].astype(str).str.strip()
+    po_total = ref.map(po_invoiced_by_contract)
+    commit_posted = pd.to_numeric(df['posted_amount'], errors='coerce')
+    diff = (commit_posted - po_total).abs()
+    tolerance = (commit_posted.abs() * 0.02).clip(lower=1.00)  # 2% or £1, whichever is larger
+    return (po_total.notna() & (diff > tolerance)).values
+
+
 def _atamis_contract_not_in_commitments(df, frames):
     """Flags Atamis contracts whose Contract Reference has no matching Unit4
     contract reference — confirmed by the user as a direct join, contrary to
@@ -422,6 +460,16 @@ def get_atamis_checks():
          "WHERE \"Contract Id\" NOT IN (SELECT \"Contract Reference\" FROM contracts_report) "
          "-- HOC: contract_total_commitments; HOL: agldimvalue WHERE dim_position = '5' (Contract Number)",
          _unit4_commit_not_in_contracts),
+
+        ('UNIT4_COMMIT_VS_PO_MISMATCH',
+         31, 'Contract Commitment', 'Consistency', 'Medium',
+         "Commitments Posted Amount disagrees with PO's own invoiced spend",
+         "A contract's Posted Amount in the Commitments view is expected to agree with the actual invoiced spend recorded against it in PO (summed across every PO line sharing that Contract Id). "
+         'A material disagreement suggests the PO subledger and the Commitments ledger have fallen out of step for that contract, and should be reconciled before either is relied on for migration decisions.',
+         'Confirm with the PO and Commitments report owners which figure is correct for the affected contract, and reconcile the difference.',
+         'unit4_commitments', 'apodetail',
+         "WHERE ABS(contract_total_commitments.\"Posted Amount\" - SUM(apodetail.invoiced WHERE apodetail.contract_id = contract_total_commitments.\"Contract Id\")) > GREATEST(contract_total_commitments.\"Posted Amount\" * 0.02, 1.00)",
+         _unit4_commit_vs_po_mismatch),
 
         # ---------------------------------------------------------------
         # CONTRACT SPEND — unit4_spend / contracts_spend_details.csv
