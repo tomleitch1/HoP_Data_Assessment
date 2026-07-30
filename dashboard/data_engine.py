@@ -1487,7 +1487,7 @@ def get_check_columns():
         # Contract Commitments (unit4_commitments / contract_total_commitments — Unit4)
         'UNIT4_COMMIT_NO_SUPPLIER_ID':      ['u4_contract_id', 'contract_title', 'supplier_name'],
         'UNIT4_COMMIT_DATE_INVALID':        ['u4_contract_id', 'date_from', 'date_to'],
-        'UNIT4_COMMIT_REMAINING_MISMATCH':  ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
+        'UNIT4_COMMIT_REMAINING_MISMATCH':  ['u4_contract_id', 'amount_limit', 'remaining_amount'],
         'UNIT4_COMMIT_DUP_ID':              ['u4_contract_id', 'contract_title', 'supplier_id'],
         'UNIT4_COMMIT_SUPPLIER_ORPHAN':     ['u4_contract_id', 'supplier_id', 'supplier_name'],
         'UNIT4_COMMIT_OVERSPEND':           ['u4_contract_id', 'amount_limit', 'posted_amount', 'remaining_amount'],
@@ -1686,6 +1686,32 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             failing = failing.merge(po_invoiced, on='UNIT4_COMMITMENTS.u4_contract_id', how='left')
         cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title',
                 'UNIT4_COMMITMENTS.posted_amount', 'PO.invoiced_total']
+        return failing[[c for c in cols if c in failing.columns]]
+
+    if check_id == 'UNIT4_COMMIT_REMAINING_MISMATCH':
+        # Explicit named join — 'Committed Amount' for this check is the
+        # Spend Details view's Amount (C), not the Commitments view's own
+        # committed_amount column (per direct request), so the evidence
+        # needs to show the matched unit4_spend figure the lambda actually
+        # used rather than implying it came from unit4_commitments itself.
+        failing = failing.rename(columns={
+            'u4_contract_id':  'UNIT4_COMMITMENTS.u4_contract_id',
+            'contract_title':  'UNIT4_COMMITMENTS.contract_title',
+            'amount_limit':    'UNIT4_COMMITMENTS.amount_limit',
+            'remaining_amount': 'UNIT4_COMMITMENTS.remaining_amount',
+        })
+        if 'unit4_spend' in frames:
+            spend = frames['unit4_spend']
+            spend_ref = spend['u4_contract_id'].astype(str).str.strip()
+            spend_ref = spend_ref.where(~_atamis_blank(spend['u4_contract_id']))
+            committed = (
+                pd.to_numeric(spend['amount_c'], errors='coerce').fillna(0)
+                .groupby(spend_ref).sum()
+                .rename('UNIT4_SPEND.amount_c').reset_index().rename(columns={spend_ref.name: 'UNIT4_COMMITMENTS.u4_contract_id'})
+            )
+            failing = failing.merge(committed, on='UNIT4_COMMITMENTS.u4_contract_id', how='left')
+        cols = ['UNIT4_COMMITMENTS.u4_contract_id', 'UNIT4_COMMITMENTS.contract_title',
+                'UNIT4_COMMITMENTS.amount_limit', 'UNIT4_SPEND.amount_c', 'UNIT4_COMMITMENTS.remaining_amount']
         return failing[[c for c in cols if c in failing.columns]]
 
     if check_id == 'ATAMIS_CONTRACT_REF_NOT_IN_PO':

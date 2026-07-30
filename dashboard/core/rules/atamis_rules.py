@@ -5,6 +5,32 @@ def _is_blank(s):
     return s.isna() | (s.astype(str).str.strip().isin(['', 'nan', 'None']))
 
 
+def _unit4_commit_remaining_mismatch(df, frames):
+    """Flags contract commitments where Remaining Amount does not equal
+    Amount Limit minus Committed Amount. Per direct request, 'Committed
+    Amount' here is NOT the Commitments view's own committed_amount column
+    — it's the Spend Details view's Amount (C) field (contracts_spend_details
+    / unit4_spend.amount_c), summed per contract, joined on the same
+    u4_contract_id both tables share. A commitment with no matching Spend
+    Details record at all is left unflagged — nothing to compare against."""
+    if df.empty or 'unit4_spend' not in frames:
+        return pd.Series(False, index=df.index)
+
+    spend = frames['unit4_spend']
+    committed_by_contract = (
+        spend[~_is_blank(spend['u4_contract_id'])]
+        .assign(_ref=lambda d: d['u4_contract_id'].astype(str).str.strip())
+        .groupby('_ref')['amount_c'].sum()
+    )
+    ref = df['u4_contract_id'].astype(str).str.strip()
+    committed = pd.to_numeric(ref.map(committed_by_contract), errors='coerce')
+
+    amount_limit = pd.to_numeric(df['amount_limit'], errors='coerce').fillna(0)
+    remaining = pd.to_numeric(df['remaining_amount'], errors='coerce').fillna(0)
+    diff = ((amount_limit - committed) - remaining).abs()
+    return (committed.notna() & (diff > 1.00)).values
+
+
 def _atamis_contract_ref_not_in_po(df, frames):
     """Flags HOC Atamis contracts whose Contract Reference has no matching
     contract_id anywhere in po_detail_HOC. PO is HoC-only (population is already
@@ -396,15 +422,14 @@ def get_atamis_checks():
 
         ('UNIT4_COMMIT_REMAINING_MISMATCH',
          31, 'Contract Commitment', 'Validity', 'Medium',
-         "Remaining Amount does not equal Amount Limit minus Posted Amount",
-         "A contract commitment's Remaining Amount is expected to equal its Contract Amount Limit minus its Posted Amount. "
-         'A mismatch here points to raw data corruption or a calculation error in one of the three stored fields, not a process issue.',
-         'Investigate which of Amount Limit, Posted Amount, or Remaining Amount is wrong on the affected commitment record in Unit4.',
-         'unit4_commitments', None,
-         "WHERE ABS(\"Remaining Amount\" - (\"Contract Amount Limit\" - \"Posted Amount\")) > 1.00",
-         lambda df: ((pd.to_numeric(df['amount_limit'], errors='coerce').fillna(0)
-                      - pd.to_numeric(df['posted_amount'], errors='coerce').fillna(0))
-                     - pd.to_numeric(df['remaining_amount'], errors='coerce').fillna(0)).abs() > 1.00),
+         "Remaining Amount does not equal Amount Limit minus Committed Amount",
+         "A contract commitment's Remaining Amount is expected to equal its Contract Amount Limit minus its Committed Amount. "
+         "'Committed Amount' here is the Spend Details view's own Amount (C) figure for the same contract, not the Commitments view's own committed_amount column. "
+         'A mismatch here points to raw data corruption or a calculation error in one of the stored fields, not a process issue.',
+         'Investigate which of Amount Limit, Amount (C), or Remaining Amount is wrong on the affected commitment/spend record in Unit4.',
+         'unit4_commitments', 'unit4_spend',
+         "WHERE ABS(contract_total_commitments.\"Remaining Amount\" - (contract_total_commitments.\"Contract Amount Limit\" - contracts_spend_details.\"Amount (C)\")) > 1.00",
+         _unit4_commit_remaining_mismatch),
 
         ('UNIT4_COMMIT_OVERSPEND',
          31, 'Contract Commitment', 'Consistency', 'Medium',
