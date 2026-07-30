@@ -110,9 +110,16 @@ app.layout = html.Div(style={
             id='hidden-table-for-assets',
             columns=[{"name": "i", "id": "i"}],
             data=[{"i": 1}]
-        ), 
+        ),
         style={'display': 'none'}
     ),
+
+    # Tracks which modal-populating callback most recently filled modal-content,
+    # and with what — the shared modal chrome's single Export button (below)
+    # needs this to know what to export, since it has no other way to tell a
+    # DQ-check drill-down apart from an Organisation Field Reliability cell
+    # click or a PO leakage "View all" click.
+    dcc.Store(id='modal-export-context'),
 
     # ── POPUP MODAL (Record Detail) ───────────────────────────────────────────
     html.Div(id='modal-overlay', style={
@@ -342,19 +349,21 @@ def close_summary_drill(n_clicks):
     [Output('modal-overlay', 'style', allow_duplicate=True),
      Output('modal-title', 'children', allow_duplicate=True),
      Output('modal-content', 'children', allow_duplicate=True),
+     Output('modal-export-context', 'data', allow_duplicate=True),
      Output({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData')],
     Input('btn-close-modal', 'n_clicks'),
     State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
     prevent_initial_call=True
 )
 def close_modal(n_clicks, chart_clicks):
-    return {'display': 'none'}, "", "", [None] * len(chart_clicks)
+    return {'display': 'none'}, "", "", None, [None] * len(chart_clicks)
 
 
 @app.callback(
     [Output('modal-overlay', 'style'),
      Output('modal-title', 'children'),
-     Output('modal-content', 'children')],
+     Output('modal-content', 'children'),
+     Output('modal-export-context', 'data', allow_duplicate=True)],
     [Input({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
      Input({'type': 'dim-results-table', 'index': dash.ALL}, 'active_cell')],
     [State({'type': 'dim-results-table', 'index': dash.ALL}, 'derived_viewport_data')],
@@ -363,7 +372,7 @@ def close_modal(n_clicks, chart_clicks):
 def handle_modal_logic(chart_clicks, table_cells, tables_data):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     trigger_id = ctx.triggered[0]['prop_id']
 
@@ -396,15 +405,15 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
                 house = row_data.get('House') or row_data.get('house')
 
     if not check_id or not house:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     # ── RENDER CONTENT ──
     is_xhouse = False
     df = get_failing_records(check_id, house, frames)
     check_info = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
-    
+
     if check_info.empty:
-        return {'display': 'flex'}, f"Error: {check_id}", "Check metadata not found."
+        return {'display': 'flex'}, f"Error: {check_id}", "Check metadata not found.", dash.no_update
 
     row = check_info.iloc[0]
     table_name = row['table']
@@ -1289,13 +1298,15 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
         }),
     ])
 
-    return {'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)', 'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center', 'padding': '20px', 'boxSizing': 'border-box'},            modal_title,            content
+    export_context = {'type': 'dq', 'check_id': check_id, 'house': house}
+    return {'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0, 'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)', 'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center', 'padding': '20px', 'boxSizing': 'border-box'},            modal_title,            content,            export_context
 
 
 @app.callback(
     [Output('modal-overlay', 'style', allow_duplicate=True),
      Output('modal-title', 'children', allow_duplicate=True),
-     Output('modal-content', 'children', allow_duplicate=True)],
+     Output('modal-content', 'children', allow_duplicate=True),
+     Output('modal-export-context', 'data', allow_duplicate=True)],
     Input({'type': 'atamis-org-rel-cell', 'org': dash.ALL, 'verdict': dash.ALL}, 'n_clicks'),
     prevent_initial_call=True,
 )
@@ -1309,11 +1320,11 @@ def handle_atamis_org_reliability_click(n_clicks_list):
     GL Contract Number dimension) resolved each one and to what house.
     """
     if not any(n_clicks_list):
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     triggered = dash.ctx.triggered_id
     if not triggered:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     org = triggered['org']
     verdict = triggered['verdict']
@@ -1387,13 +1398,15 @@ def handle_atamis_org_reliability_click(n_clicks_list):
         'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
         'padding': '20px', 'boxSizing': 'border-box',
     }
-    return modal_style, modal_title, content
+    export_context = {'type': 'atamis_org_rel', 'org': org, 'verdict': verdict}
+    return modal_style, modal_title, content, export_context
 
 
 @app.callback(
     [Output('modal-overlay', 'style', allow_duplicate=True),
      Output('modal-title', 'children', allow_duplicate=True),
-     Output('modal-content', 'children', allow_duplicate=True)],
+     Output('modal-content', 'children', allow_duplicate=True),
+     Output('modal-export-context', 'data', allow_duplicate=True)],
     Input('btn-po-leakage-view-all', 'n_clicks'),
     prevent_initial_call=True,
 )
@@ -1405,7 +1418,7 @@ def handle_po_leakage_view_all(n_clicks):
     own pagination/filter to make "everything" actually browsable rather
     than truncating in the card itself."""
     if not n_clicks:
-        return dash.no_update, dash.no_update, dash.no_update
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
     m = _po_compute_metrics(frames)
     detail = m.get('contract_leakage_detail', pd.DataFrame())
@@ -1476,51 +1489,61 @@ def handle_po_leakage_view_all(n_clicks):
         'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
         'padding': '20px', 'boxSizing': 'border-box',
     }
-    return modal_style, modal_title, content
+    export_context = {'type': 'po_leakage'}
+    return modal_style, modal_title, content, export_context
 
 
 @app.callback(
     Output("download-modal-csv", "data"),
     Input("btn-export-modal", "n_clicks"),
-    [State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
-     State({'type': 'dim-results-table', 'index': dash.ALL}, 'active_cell'),
-     State({'type': 'dim-results-table', 'index': dash.ALL}, 'derived_viewport_data')],
+    State('modal-export-context', 'data'),
     prevent_initial_call=True,
 )
-def export_modal_to_csv(n_clicks, chart_clicks, table_cells, tables_data):
-    ctx = dash.callback_context
-    if not ctx.triggered: return None
-    
-    check_id = None
-    house = None
-    
-    for click in chart_clicks:
-        if click:
-            point = click['points'][0]
-            if 'customdata' in point:
-                check_id = point['customdata'][0]
-                house = point['customdata'][1]
-                break
-    
-    if not check_id:
-        active_cell = next((c for c in table_cells if c), None)
-        table_data = next((t for t in tables_data if t), None)
-        if active_cell and table_data:
-            row_idx = active_cell['row']
-            if row_idx < len(table_data):
-                check_id = table_data[row_idx].get('check_id')
-                house = table_data[row_idx].get('House') or table_data[row_idx].get('house')
+def export_modal_to_csv(n_clicks, export_context):
+    """Exports whatever is currently shown in the shared modal — a DQ check
+    drill-down, an Organisation Field Reliability cell, or the PO 'Untagged
+    Spend' full list. The modal's single Export button is fixed chrome
+    shared by all three (see modal-overlay in the layout), so it can't tell
+    them apart on its own; each modal-populating callback stamps
+    'modal-export-context' with what it just showed, and this reads that
+    back rather than re-deriving it from chart/table click state (which only
+    ever reflected the DQ case and silently did nothing for the other two —
+    the bug the user reported)."""
+    if not export_context:
+        return None
 
-    if not check_id or not house: return None
+    kind = export_context.get('type')
 
-    df = get_failing_records(check_id, house, frames, for_export=True)
+    if kind == 'dq':
+        check_id = export_context.get('check_id')
+        house = export_context.get('house')
+        if not check_id or not house:
+            return None
+        df = get_failing_records(check_id, house, frames, for_export=True)
+        check_row = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
+        description = check_row.iloc[0]['description'] if not check_row.empty else check_id
+        safe_desc = re.sub(r'[^\w\s\-]', '', description).strip().replace(' ', '_')
+        filename = f"{house}_{safe_desc}.csv"
+        return dcc.send_data_frame(df.to_csv, filename, index=False)
 
-    check_row = dq_results[(dq_results['check_id'] == check_id) & (dq_results['house'] == house)]
-    description = check_row.iloc[0]['description'] if not check_row.empty else check_id
-    safe_desc = re.sub(r'[^\w\s\-]', '', description).strip().replace(' ', '_')
-    filename = f"{house}_{safe_desc}.csv"
+    if kind == 'atamis_org_rel':
+        org = export_context.get('org')
+        verdict = export_context.get('verdict')
+        df = get_atamis_org_reliability_records(frames, org, verdict)
+        if df.empty:
+            return None
+        safe_verdict = re.sub(r'[^\w\s\-]', '', str(verdict)).strip().replace(' ', '_')
+        filename = f"Org_Reliability_{org}_{safe_verdict}.csv"
+        return dcc.send_data_frame(df.to_csv, filename, index=False)
 
-    return dcc.send_data_frame(df.to_csv, filename, index=False)
+    if kind == 'po_leakage':
+        m = _po_compute_metrics(frames)
+        df = m.get('contract_leakage_detail', pd.DataFrame())
+        if df.empty:
+            return None
+        return dcc.send_data_frame(df.to_csv, 'PO_Untagged_Spend_Contracted_Suppliers.csv', index=False)
+
+    return None
 
 # --- Explorer Callbacks ---
 
