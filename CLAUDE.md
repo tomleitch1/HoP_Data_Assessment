@@ -812,17 +812,13 @@ OS is the most anomalous: 51k rows at HOC, 21k at HOL, all zero amount, no year-
 
 **VN count anomaly (HOC):** `dc_flag=1` has 487 VN rows but `dc_flag=-1` has only 477 — 10 revaluation transactions without a year-end reset mirror. These are likely recent postings not yet through a year-end close. No action required, but confirms the `dc_flag=1` filter is essential.
 
-### Amount sign convention — NOT YET CONFIRMED
+### Amount sign convention — CONFIRMED (September 2026)
 
-The NBV formula in the Python dashboard currently applies signs based on trans_type category (positive for CA/PC/VN, negative for ND/ED/FD/SA). Whether amounts in `aattrans` for these types are stored as absolute positives (formula applies the sign) or as signed values (ND already negative) has not been explicitly confirmed from real data. Run:
+Checked directly against real `asset_balances_HOC/HOL.csv` (the aggregated per-`(client, asset_id, depr_book_id, trans_type)` extract): the vast majority of `total_amount` values are positive across all trans_types, confirming **amounts are stored as absolute positive magnitudes, not pre-signed values**. The formula's existing category-based sign application (positive for CA/PC/VN, negative for ND/ED/FD/SA) is correct as written — no double-negation issue.
 
-```sql
-SELECT trans_type, MIN(amount), MAX(amount), AVG(amount)
-FROM aattrans WHERE dc_flag = 1 AND trans_type != 'CI'
-GROUP BY trans_type ORDER BY trans_type;
-```
+Only 105 negative `total_amount` instances exist in the extract, almost all on `ND`, and almost all small (~-0.02, consistent with rounding/correcting entries rather than a systemic convention). This is the opposite of what a signed-storage convention would produce (which would show negative values on the *majority* of `ND` rows, since depreciation is the routine transaction, not the exception) — so these are isolated anomalies, not evidence against the positive-magnitude conclusion.
 
-If ND always has negative MIN and MAX → amounts are signed (formula must not double-negate). If ND always has positive MIN and MAX → amounts are absolute (formula is correct as written).
+**One anomaly worth investigating directly:** a single asset shows `CA = -1,167` and `ND = -1,167` — an identical-magnitude negative pair, not rounding noise. Likely a capitalisation posted and later reversed, with a matching depreciation reversal. Not yet traced to a specific `asset_id` — worth pulling that asset's full transaction history to confirm before treating it as understood.
 
 ### Balance formula status
 
@@ -831,11 +827,10 @@ Current formula in `assets.py` / `get_asset_volumetrics`:
 NBV = (CA + PC + VN + ZU) − (ND + ED + FD + SA)
 ```
 
-Limitations as of June 2026:
+Limitations as of September 2026:
 - ZU excluded from real data — has no effect
-- NF, NT, RF, RT, TF, TT, WU, OS, TC all excluded — **TF/TT alone is £178m at HOL**
-- Amount sign convention unconfirmed — formula may double-negate depreciation
-- **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types and sign convention**
+- NF, NT, RF, RT, TF, TT, WU, OS, TC all excluded — **TF/TT alone is £178m at HOL**. This is now the only remaining blocker on trusting balance totals (sign convention is resolved — see above).
+- **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types (Q3)**
 
 ### Depreciation method codes — confirmed June 2026
 
@@ -864,7 +859,7 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 | Check | Dependency |
 |-------|-----------|
-| All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types and sign convention |
+| All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types (sign convention confirmed September 2026, no longer a blocker) |
 | Any check referencing `ZU` | ZU does not exist in real data |
 | DQ-AD-C05, DQ-AG-C03, DQ-AD-V04, DQ-AG-V05 | Live but unvalidated — depreciation method meanings confirmed, but no real data run yet to verify results are sensible |
 | DQ-MAN-* (any future MAN checks) | lifetime/depr_percent requirements for MAN not yet confirmed |
