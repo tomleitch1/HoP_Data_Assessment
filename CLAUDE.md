@@ -814,23 +814,26 @@ OS is the most anomalous: 51k rows at HOC, 21k at HOL, all zero amount, no year-
 
 ### Amount sign convention — CONFIRMED (September 2026)
 
-Checked directly against real `asset_balances_HOC/HOL.csv` (the aggregated per-`(client, asset_id, depr_book_id, trans_type)` extract): the vast majority of `total_amount` values are positive across all trans_types, confirming **amounts are stored as absolute positive magnitudes, not pre-signed values**. The formula's existing category-based sign application (positive for CA/PC/VN, negative for ND/ED/FD/SA) is correct as written — no double-negation issue.
+Checked directly against real `asset_balances_HOC/HOL.csv` (the aggregated per-`(client, asset_id, depr_book_id, trans_type)` extract): the vast majority of `total_amount` values are positive across all trans_types, confirming **amounts are stored as absolute positive magnitudes, not pre-signed values**. Whenever an NBV formula is built, it should apply signs by trans_type category (positive for CA/PC/VN, negative for ND/ED/FD/SA) rather than trusting a sign already present in the source data — no double-negation risk.
 
 Only 105 negative `total_amount` instances exist in the extract, almost all on `ND`, and almost all small (~-0.02, consistent with rounding/correcting entries rather than a systemic convention). This is the opposite of what a signed-storage convention would produce (which would show negative values on the *majority* of `ND` rows, since depreciation is the routine transaction, not the exception) — so these are isolated anomalies, not evidence against the positive-magnitude conclusion.
 
 **One anomaly worth investigating directly:** a single asset shows `CA = -1,167` and `ND = -1,167` — an identical-magnitude negative pair, not rounding noise. Likely a capitalisation posted and later reversed, with a matching depreciation reversal. Not yet traced to a specific `asset_id` — worth pulling that asset's full transaction history to confirm before treating it as understood.
 
-### Balance formula status
+### Balance formula status — NOT IMPLEMENTED (corrected September 2026)
 
-Current formula in `assets.py` / `get_asset_volumetrics`:
+**No NBV calculation exists anywhere in the codebase.** This section previously stated a formula was live in `assets.py` / `get_asset_volumetrics` — that was wrong. Checked directly: `assets.py`'s "Balances" card sums transaction **counts** by type (`conf_by_type`), not amounts, and has no `ZU` reference or amount-subtraction logic anywhere. `get_asset_volumetrics` (in `dashboard/core/volumetrics.py`) computes asset register counts (active/inactive/grant/stale/WIP) — it has nothing to do with NBV either, despite the name similarity. The only other "NBV" references in the codebase are two DQ check stubs (`DQ-AB-K04`, `DQ-AB-K05` — see below, both always return `False`) and a cosmetic label on an unrelated join-path diagram in `app.py`. **No test, check, tracker, or export has ever calculated or reported an NBV figure to Parliament.**
+
+The intended formula, once built, would be:
 ```
 NBV = (CA + PC + VN + ZU) − (ND + ED + FD + SA)
 ```
 
-Limitations as of September 2026:
-- ZU excluded from real data — has no effect
-- NF, NT, RF, RT, TF, TT, WU, OS, TC all excluded — **TF/TT alone is £178m at HOL**. This is now the only remaining blocker on trusting balance totals (sign convention is resolved — see above).
-- **Do not rely on balance totals from the dashboard until Parliament confirms the unknown trans_types (Q3)**
+Blockers before it can be implemented:
+- Sign convention is now confirmed (see above) — no longer a blocker
+- NF, NT, RF, RT, TF, TT, WU, OS, TC are all unclassified — **TF/TT alone is £178m at HOL, £15m/£10.9m at HOC** — and need a decision from Parliament on whether/how to include them before the formula can be written
+- ZU does not exist in real data, so it can be dropped from the formula entirely
+- **Do not build or rely on any NBV calculation until Parliament confirms the unknown trans_types (Q3)**
 
 ### Depreciation method codes — confirmed June 2026
 
@@ -859,8 +862,9 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 | Check | Dependency |
 |-------|-----------|
-| All balance-derived checks (DQ-AB-K01, K02, K04, K05) | Unknown trans_types (sign convention confirmed September 2026, no longer a blocker) |
-| Any check referencing `ZU` | ZU does not exist in real data |
+| `DQ-AB-K04`, `DQ-AB-K05` | **Not implemented** — both are stubs (`lambda df: pd.Series(False, index=df.index)`) that never flag anything. Blocked on an NBV calculation existing at all — see "Balance formula status" above. |
+| `DQ-AB-K01`, `DQ-AB-K02`, `DQ-AB-K03` | These three are genuinely implemented and live (trans_type presence/pairing logic, not NBV-dependent) — unaffected by the NBV gap |
+| Any future check referencing `ZU` | ZU does not exist in real data |
 | DQ-AD-C05, DQ-AG-C03, DQ-AD-V04, DQ-AG-V05 | Live but unvalidated — depreciation method meanings confirmed, but no real data run yet to verify results are sensible |
 | DQ-MAN-* (any future MAN checks) | lifetime/depr_percent requirements for MAN not yet confirmed |
 
@@ -1213,7 +1217,7 @@ If this report is used as the data source instead of the raw SQL extract, the fi
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
 - Customers / AR (master, open transactions, history) — full check suite live
-- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Balance-derived checks still unvalidated pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS) and amount sign convention. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
+- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Amount sign convention confirmed September 2026 (amounts are positive magnitudes). **No NBV calculation exists anywhere in the codebase** — `DQ-AB-K04`/`DQ-AB-K05` remain unimplemented stubs pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS). See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
