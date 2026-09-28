@@ -1,6 +1,51 @@
 import pandas as pd
 from datetime import date
 
+
+def _os_capitalised_asset_ids(df, frames):
+    """
+    Asset IDs whose only real capitalisation-type record is OS (historical,
+    pre-migration capitalisation, always £0 in aattrans) — i.e. no CA/PC/VN
+    transaction with a non-zero amount exists for the asset. House is taken
+    from the current chunk of df, since df is always single-house by the
+    time a check lambda runs.
+    """
+    ab = frames.get('asset_balances', pd.DataFrame())
+    if ab.empty or 'house' not in ab.columns or df.empty:
+        return set()
+    house = df['house'].iloc[0]
+    h = ab[ab['house'] == house]
+    if h.empty:
+        return set()
+    os_assets = set(h.loc[h['trans_type'] == 'OS', 'asset_id'])
+    if not os_assets:
+        return set()
+    real_cap = h[h['trans_type'].isin(['CA', 'PC', 'VN'])].copy()
+    real_cap['total_amount'] = pd.to_numeric(real_cap['total_amount'], errors='coerce').fillna(0)
+    real_cap_assets = set(real_cap.loc[real_cap['total_amount'] != 0, 'asset_id'])
+    return os_assets - real_cap_assets
+
+
+def _os_assets_with_real_depreciation(df, frames):
+    """
+    Asset IDs with a non-zero total ND/ED/FD/SA amount posted in aattrans —
+    real depreciation or disposal activity recorded since migration.
+    """
+    ab = frames.get('asset_balances', pd.DataFrame())
+    if ab.empty or 'house' not in ab.columns or df.empty:
+        return set()
+    house = df['house'].iloc[0]
+    h = ab[ab['house'] == house]
+    if h.empty:
+        return set()
+    depr = h[h['trans_type'].isin(['ND', 'ED', 'FD', 'SA'])].copy()
+    if depr.empty:
+        return set()
+    depr['total_amount'] = pd.to_numeric(depr['total_amount'], errors='coerce').fillna(0)
+    totals = depr.groupby('asset_id')['total_amount'].sum()
+    return set(totals[totals != 0].index)
+
+
 def get_asset_checks():
     """Returns a list of Asset DQ check definitions."""
     today = pd.Timestamp(date.today())
@@ -510,9 +555,38 @@ def get_asset_checks():
         ('DQ-AF-X04', 19, 'Asset Trans Flags', 'Timeliness', 'High',
          'trans_date in future',
          'Finds transactions with a date in the future. indicates a data entry or system clock error.',
-         'Correct trans_date.', 'asset_trans_flags', None, 
+         'Correct trans_date.', 'asset_trans_flags', None,
          'trans_date > TODAY',
          lambda df: pd.to_datetime(df['trans_date'], errors='coerce').notna() & (pd.to_datetime(df['trans_date'], errors='coerce') > today)),
+
+
+        # ======================================================================
+        # --- OS (LEGACY PRE-MIGRATION CAPITALISATION) ASSESSMENT (DQ-OS-) ---
+        # Added September 2026. OS is a historical capitalisation record for
+        # assets migrated from the predecessor system — confirmed always £0
+        # in aattrans. These three checks test where, if anywhere, an
+        # OS-capitalised asset's real original cost is actually recorded.
+        # ======================================================================
+        ('DQ-OS-C01', 19, 'Asset Master', 'Completeness', 'High',
+         'OS-capitalised asset with no cost recorded anywhere',
+         'Every asset capitalised through the historical OS migration record must have its original cost recorded somewhere in Unit4. The OS transaction itself always carries a zero amount, so the cost must exist elsewhere if it exists at all. Without it, this asset has no recoverable cost basis and cannot be valued for migration.',
+         'Confirm with the source system owner whether the original cost exists elsewhere. If not, treat this asset as having no captured financial value.', 'asset_master', 'asset_balances',
+         'OS-only capitalised AND org_amount IS NULL/0',
+         lambda df, frames: (df['status'] == 'N') & df['asset_id'].isin(_os_capitalised_asset_ids(df, frames)) & (pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) == 0)),
+
+        ('DQ-OS-K01', 19, 'Asset Master', 'Consistency', 'Critical',
+         'OS-capitalised asset has real depreciation but no recorded cost',
+         'An asset with real depreciation, extraordinary depreciation, final depreciation, or disposal activity must have a cost basis somewhere to justify that activity. This asset was capitalised only through the OS migration record, which carries a zero amount, and has no populated cost on the asset master either. Depreciation is being posted against a value this dataset cannot see.',
+         "Trace the cost basis actually used to calculate this asset's depreciation and confirm where it is held.", 'asset_master', 'asset_balances',
+         'OS-only capitalised AND real ND/ED/FD/SA activity AND org_amount IS NULL/0',
+         lambda df, frames: (df['status'] == 'N') & df['asset_id'].isin(_os_capitalised_asset_ids(df, frames)) & df['asset_id'].isin(_os_assets_with_real_depreciation(df, frames)) & (pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) == 0)),
+
+        ('DQ-OS-K02', 19, 'Asset Master', 'Consistency', 'Medium',
+         'OS-capitalised asset has a recorded cost that never reached the transaction history',
+         'An OS-capitalised asset with a populated org_amount on the asset master has a real recorded cost. That cost was never reflected as a transaction in the transaction history, where the OS record itself always shows zero. Migration valuation for this asset should use the master record, not the transaction history.',
+         'Use org_amount on the asset master as the cost basis for this asset instead of the transaction history.', 'asset_master', 'asset_balances',
+         'OS-only capitalised AND org_amount > 0',
+         lambda df, frames: (df['status'] == 'N') & df['asset_id'].isin(_os_capitalised_asset_ids(df, frames)) & (pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) > 0)),
 
     ]
     return checks

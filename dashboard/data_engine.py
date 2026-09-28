@@ -10,7 +10,7 @@ from datetime import date
 from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
-from dashboard.core.rules.asset_rules import get_asset_checks
+from dashboard.core.rules.asset_rules import get_asset_checks, _os_capitalised_asset_ids, _os_assets_with_real_depreciation
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
@@ -637,6 +637,11 @@ def _engine_sig() -> str:
     call sites are covered), but as separate functions their own bodies
     aren't part of run_dq_analysis's own source text, so an edit to just
     their logic wouldn't otherwise bust the cache either.
+
+    _os_capitalised_asset_ids and _os_assets_with_real_depreciation (asset_rules.py)
+    are the same class of gap again — DQ-OS-C01/K01/K02's lambdas call them, so
+    their call sites are covered by the per-check lambda source hash, but an
+    edit to just their internal logic wouldn't otherwise bust that hash either.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
@@ -647,6 +652,8 @@ def _engine_sig() -> str:
                 + _inspect.getsource(_build_unit4_contract_refs)
                 + _inspect.getsource(_atamis_filter_open_only)
                 + _inspect.getsource(_atamis_open_contract_refs)
+                + _inspect.getsource(_os_capitalised_asset_ids)
+                + _inspect.getsource(_os_assets_with_real_depreciation)
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
@@ -1517,6 +1524,11 @@ def get_check_columns():
         'DQ-AB-X02': ['asset_id', 'depr_book_id'],
         'DQ-AB-X03': ['asset_id', 'status'],
 
+        # OS (legacy pre-migration capitalisation) assessment
+        'DQ-OS-C01': ['asset_id', 'status', 'org_amount'],
+        'DQ-OS-K01': ['asset_id', 'status', 'org_amount'],
+        'DQ-OS-K02': ['asset_id', 'status', 'org_amount'],
+
         # Asset Register - Flags
         'DQ-AF-X01': ['trans_type', 'status'],
         'DQ-AF-X02': ['trans_type', 'trans_date', 'date_to'],
@@ -2065,7 +2077,29 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             failing = failing.merge(bal_link, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'ASSET_BALANCES.asset_id'], how='left')
         cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_BALANCES.asset_id']
         return failing[[c for c in cols if c in failing.columns]]
- 
+
+    if table == 'asset_master' and check_id in ('DQ-OS-C01', 'DQ-OS-K01', 'DQ-OS-K02'):
+        failing = failing.rename(columns={
+            'asset_id':   'ASSET_MASTER.asset_id',
+            'status':     'ASSET_MASTER.status',
+            'org_amount': 'ASSET_MASTER.org_amount',
+        })
+        ab = frames.get('asset_balances', pd.DataFrame())
+        if not ab.empty:
+            os_amt = ab[ab['trans_type'] == 'OS'].copy()
+            os_amt['total_amount'] = pd.to_numeric(os_amt['total_amount'], errors='coerce').fillna(0)
+            os_amt = os_amt.groupby(['house', 'asset_id'], as_index=False)['total_amount'].sum()
+            os_amt = os_amt.rename(columns={'total_amount': 'ASSET_BALANCES.os_amount'})
+            failing = failing.merge(os_amt, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'asset_id'], how='left')
+
+            depr = ab[ab['trans_type'].isin(['ND', 'ED', 'FD', 'SA'])].copy()
+            depr['total_amount'] = pd.to_numeric(depr['total_amount'], errors='coerce').fillna(0)
+            depr = depr.groupby(['house', 'asset_id'], as_index=False)['total_amount'].sum()
+            depr = depr.rename(columns={'total_amount': 'ASSET_BALANCES.depreciation_total'})
+            failing = failing.merge(depr, left_on=['house', 'ASSET_MASTER.asset_id'], right_on=['house', 'asset_id'], how='left')
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_MASTER.org_amount', 'ASSET_BALANCES.os_amount', 'ASSET_BALANCES.depreciation_total']
+        return failing[[c for c in cols if c in failing.columns]]
+
     if table == 'asset_trans_flags' and check_id == 'DQ-AF-X01':
         failing = failing.rename(columns={'asset_id': 'ASSET_TRANS_FLAGS.asset_id', 'trans_type': 'ASSET_TRANS_FLAGS.trans_type'})
         if 'asset_master' in frames:
