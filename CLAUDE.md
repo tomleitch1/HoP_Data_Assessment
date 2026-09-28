@@ -870,6 +870,18 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 **Note:** `DQ-AB-V01` (unexpected trans_type) was removed. `DQ-AB-K02` and `DQ-AB-K03` now treat `OS` (historical capitalisation from prior system) as equivalent to `CA` — assets with only an `OS` capitalisation record are no longer flagged.
 
+### OS (legacy pre-migration capitalisation) assessment — DQ-OS-* (added September 2026)
+
+Three checks in `asset_rules.py` test where, if anywhere, an `OS`-capitalised asset's real original cost is actually recorded, since the `OS` transaction itself always carries a zero amount (confirmed against real data — see above). Two shared helpers, `_os_capitalised_asset_ids()` and `_os_assets_with_real_depreciation()`, identify assets whose only capitalisation-type record is `OS` (no `CA`/`PC`/`VN` with a non-zero amount) and assets with real `ND`/`ED`/`FD`/`SA` activity, both read from `asset_balances`. Both are added to `_engine_sig()` alongside the existing Atamis helpers, since a future edit to their internal logic wouldn't otherwise bust the per-check cache (same class of gap documented for Atamis's house-derivation helpers).
+
+- `DQ-OS-C01` (Completeness, High) — OS-only asset with no cost on `asset_master.org_amount` either. No recoverable cost basis anywhere.
+- `DQ-OS-K01` (Consistency, Critical) — OS-only asset with real depreciation/disposal activity posted against it, but still no cost anywhere. The most diagnostic of the three: proves depreciation is being calculated against a value this dataset can't see, rather than the asset simply being dormant.
+- `DQ-OS-K02` (Consistency, Medium) — OS-only asset whose cost lives on `asset_master.org_amount` but was never reflected in the transaction history. Confirms migration valuation for these assets should be sourced from the master record, not `aattrans`.
+
+All three scoped to active assets (`status == 'N'`) — moot in practice anyway, since `asset_balances`'s own extract already excludes closed assets entirely.
+
+Verified via a forced synthetic case (four assets covering all three conditions plus a genuinely `CA`-capitalised control) — each check fires exactly as intended, and the `CA`-capitalised control correctly triggers none of them. **Shows 0% on dummy data** — `scripts/generate_asset_data.py` doesn't produce any `OS` transaction type at all (only `CA`/`ND`/`SA`) — confirmed as a generator gap, not a logic bug. Real-data behaviour depends on Parliament's answer to the open question these checks were built to investigate (see "Amount sign convention" and the `OS` discussion above).
+
 ---
 
 ## Purchase Orders (PO) Domain — Implementation Details
