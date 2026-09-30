@@ -17,6 +17,10 @@ from dashboard.tabs.suppliers import render_tab as render_suppliers
 from dashboard.tabs.customers import render_tab as render_customers
 from dashboard.tabs.gl import render_tab as render_gl
 from dashboard.tabs.assets import render_tab as render_assets
+from dashboard.tabs.assets_nbv import (
+    get_nbv_records, records_table as nbv_records_table,
+    render_asset_detail as render_nbv_asset_detail, asset_search_options as nbv_asset_search_options,
+)
 from dashboard.tabs.po import render_tab as render_po, _compute_metrics as _po_compute_metrics
 from dashboard.tabs.pbf import render_tab as render_pbf
 from dashboard.tabs.atamis import (
@@ -350,13 +354,15 @@ def close_summary_drill(n_clicks):
      Output('modal-title', 'children', allow_duplicate=True),
      Output('modal-content', 'children', allow_duplicate=True),
      Output('modal-export-context', 'data', allow_duplicate=True),
-     Output({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData')],
+     Output({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
+     Output({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData')],
     Input('btn-close-modal', 'n_clicks'),
     State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
+    State({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData'),
     prevent_initial_call=True
 )
-def close_modal(n_clicks, chart_clicks):
-    return {'display': 'none'}, "", "", None, [None] * len(chart_clicks)
+def close_modal(n_clicks, chart_clicks, nbv_clicks):
+    return {'display': 'none'}, "", "", None, [None] * len(chart_clicks), [None] * len(nbv_clicks)
 
 
 @app.callback(
@@ -670,7 +676,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
     }, children=[left_sidebar, right_content])
 
     # ── TABLE DATA PREPARATION ──
-    prefixed_tables = ['ASSET_DEPRECIATION.', 'ASSET_MASTER.', 'ASSET_MASTER (TARGET).', 'ASSET_BALANCES.', 
+    prefixed_tables = ['ASSET_DEPRECIATION.', 'ASSET_MASTER.', 'ASSET_MASTER (TARGET).', 'ASSET_BALANCES.', 'ASSET_NBV.',
                        'ASSET_GROUPS.', 'ASSET_TRANS_FLAGS.', 'SUPPLIER_MASTER.',
                        'AR_INVOICES.', 'CUSTOMER_MASTER.',
                        'AP_INVOICES.', 'AP_HISTORY.',
@@ -1493,6 +1499,83 @@ def handle_po_leakage_view_all(n_clicks):
     return modal_style, modal_title, content, export_context
 
 
+_NBV_KIND_LABELS = {'group': 'Asset group', 'band': 'NBV band', 'origin': 'Origin'}
+
+
+@app.callback(
+    [Output('modal-overlay', 'style', allow_duplicate=True),
+     Output('modal-title', 'children', allow_duplicate=True),
+     Output('modal-content', 'children', allow_duplicate=True),
+     Output('modal-export-context', 'data', allow_duplicate=True)],
+    [Input({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData'),
+     Input({'type': 'nbv-origin-btn', 'index': dash.ALL}, 'n_clicks')],
+    prevent_initial_call=True,
+)
+def handle_asset_nbv_click(chart_clicks, origin_clicks):
+    """Drill-down for the Assets tab's NBV charts and origin tiles (see
+    dashboard/tabs/assets_nbv.py), shown in the shared modal."""
+    trig = dash.ctx.triggered_id
+    value = dash.ctx.triggered[0]['value'] if dash.ctx.triggered else None
+    if not trig or not value:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if trig['type'] == 'nbv-chart':
+        kind = trig['index']
+        key = value['points'][0].get('customdata')
+    else:
+        kind, key = 'origin', trig['index']
+    if not key:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    df = get_nbv_records(frames, kind, key)
+    if df.empty:
+        content = html.Div('No assets found.', style={'padding': '48px', 'textAlign': 'center', 'color': '#94a3b8'})
+    else:
+        content = html.Div([
+            html.Div(f'{len(df):,} active assets · CURR NBV £{df["curr_nbv"].sum():,.0f} · '
+                     f'HIST NBV £{df["hist_nbv"].sum():,.0f}. Pick any asset in the inspector on the tab to see its postings.',
+                     style={'padding': '12px 16px', 'fontSize': '12px', 'color': '#5c5470'}),
+            nbv_records_table(df, page_size=20),
+        ])
+
+    title = html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'minWidth': 0}, children=[
+        html.Span('HOC NBV', style={'background': HOUSE_HEX['HOC'], 'color': '#fff', 'fontSize': '9px', 'fontWeight': '800',
+                                    'letterSpacing': '0.12em', 'padding': '3px 8px', 'borderRadius': '4px', 'flexShrink': '0'}),
+        html.Span('/', style={'color': 'rgba(255,255,255,0.2)', 'fontSize': '14px'}),
+        html.Span(f'{_NBV_KIND_LABELS.get(kind, kind)}: {key}', style={
+            'fontSize': '13px', 'fontWeight': '500', 'color': 'rgba(255,255,255,0.85)',
+            'overflow': 'hidden', 'textOverflow': 'ellipsis', 'whiteSpace': 'nowrap'}),
+    ])
+    modal_style = {
+        'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0,
+        'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)',
+        'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
+        'padding': '20px', 'boxSizing': 'border-box',
+    }
+    return modal_style, title, content, {'type': 'asset_nbv', 'kind': kind, 'key': key}
+
+
+@app.callback(
+    Output('nbv-asset-detail', 'children'),
+    Input('nbv-asset-select', 'value'),
+    prevent_initial_call=True,
+)
+def update_nbv_asset_detail(asset_id):
+    return render_nbv_asset_detail(frames, asset_id)
+
+
+@app.callback(
+    Output('nbv-asset-select', 'options'),
+    Input('nbv-asset-select', 'search_value'),
+    State('nbv-asset-select', 'value'),
+    prevent_initial_call=True,
+)
+def update_nbv_asset_options(search, current):
+    if not search:
+        return dash.no_update
+    return nbv_asset_search_options(frames, search=search, keep=current)
+
+
 @app.callback(
     Output("download-modal-csv", "data"),
     Input("btn-export-modal", "n_clicks"),
@@ -1542,6 +1625,13 @@ def export_modal_to_csv(n_clicks, export_context):
         if df.empty:
             return None
         return dcc.send_data_frame(df.to_csv, 'PO_Untagged_Spend_Contracted_Suppliers.csv', index=False)
+
+    if kind == 'asset_nbv':
+        df = get_nbv_records(frames, export_context.get('kind'), export_context.get('key'))
+        if df.empty:
+            return None
+        safe_key = re.sub(r'_+', '_', re.sub(r'[^\w\-]', '_', str(export_context.get('key')))).strip('_')
+        return dcc.send_data_frame(df.to_csv, f"HOC_NBV_{export_context.get('kind')}_{safe_key}.csv", index=False)
 
     return None
 

@@ -56,7 +56,7 @@ There are no automated tests. The scripts in `scripts/` generate dummy data for 
 ```bash
 python scripts/generate_ap_dummy_data.py   # Supplier / AP data (HOC + HOL split files)
 python scripts/generate_dummy_data.py      # Customer / AR data
-python scripts/generate_asset_data.py      # Asset data
+python scripts/generate_asset_data.py      # Asset data (also runs generate_asset_nbv_dummy_data.py for HoC NBV)
 python scripts/generate_gl_dummy_data.py   # GL data
 ```
 
@@ -861,12 +861,45 @@ Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold build
 
 `asset_balances_HOC.csv` has been re-extracted with the `account` column on the Parliament laptop (September 2026).
 
+**Built (September 2026)** — see "NBV section of the Assets tab" below.
+
 **Still to do:**
-- Build the NBV calculation in code — **no NBV code exists yet**.
-- Implement `DQ-AB-K04`/`DQ-AB-K05` on top of it, plus the revaluation reserve reconciliation check above.
-- `scripts/generate_asset_data.py` does not yet produce an `account` column or OS rows — update it before building NBV code so dummy data exercises the logic.
+- Run on the Parliament laptop against real data — everything below was built and verified on dummy data only.
 - **HOL is unconfirmed.** HOL accounts use a letter-prefix format (e.g. `A1000`), so the "starts with 1" rule can't transfer as-is. Get HOL's equivalent from Parliament before applying NBV to HOL. HOL's `asset_balances` re-extract is also still blocked by the `aatasset` permission issue.
 - A land/buildings asset should show `depr_method = 'NOD'` in `asset_depreciation` — worth confirming on `LB1PARLI`, since it would let revalued assets be identified directly.
+
+### NBV section of the Assets tab (HoC only, September 2026)
+
+**Calculation — `dashboard/core/asset_nbv.py`.** `build_asset_nbv(frames)` is called at the end of `load_data()` (like `unit4_contract_refs`, rebuilt every load, never pickled) and adds two frames, HoC only:
+- `asset_nbv_books` — one row per `(client, asset_id, depr_book_id)`: `cost` (1xx00 accounts), `depreciation` (1xx15), `nbv` = cost + depreciation, `reserve` (70000), `other`, `net_all_accounts`, trans types present, plus the book's `depr_method`.
+- `asset_nbv` — one row per asset, CURR and HIST side by side (`curr_nbv`, `hist_nbv`, `curr_cost`, …), `reval_reserve`, `reval_expected` (HIST − CURR), `reval_variance`, `origin` (`Capitalised in Unit4` / `Migrated (OS)` / `Migrated + Unit4 additions`), `nbv_band`, and master fields (description, group, status). This is the table the DQ checks and the tab use.
+Neither frame is added if `asset_balances` has no `account` column (an extract from before September 2026); the tab then shows a "re-run the extract" message. Tolerance for "zero" and reconciliation is £1 (`TOLERANCE`). `build_asset_nbv` and `nbv_population` are hashed into `_engine_sig()`; `run_dq_analysis` tracks `asset_balances`/`asset_master`/`asset_depreciation` as the per-check cache sources for `asset_nbv` checks.
+
+**Tab — `dashboard/tabs/assets_nbv.py`**, rendered by `assets.py` between the intro cards and the general DQ section. All figures are active assets (status `N`) with at least one NBV account:
+- Rule banner and KPI strip (CURR NBV, HIST NBV, revaluation reserve vs HIST − CURR, assets valued, nil NBV, negative NBV)
+- NBV by asset group (CURR vs HIST) and assets by NBV band — both clickable
+- Origin tiles (legacy OS vs Unit4-capitalised) — clickable
+- Top 15 assets by CURR NBV
+- Asset inspector: searchable dropdown (`nbv-asset-select`, options filtered server-side, top 50 matches) rendering the account × trans_type pivot per book — the same breakdown Parliament used to confirm the rule — with NBV rows highlighted, the NBV total, the all-accounts net, and the revaluation reserve reconciliation. Account descriptions come from `aglaccounts` when it's loaded (full dashboard mode only, not `run_dashboard.py assets`).
+- NBV data quality scorecard + grid (`render_dimension_grid(..., key_prefix='nbv-')`). The general asset DQ section below excludes `DQ-NBV-*` so they aren't shown twice.
+
+Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origin-btn', ...}`) open the shared modal via `handle_asset_nbv_click` in `app.py` (export context type `asset_nbv`, handled in `export_modal_to_csv`); `close_modal` also resets `nbv-chart` clickData so the same bar can be clicked again. Verified with raw `_dash-update-component` round trips for every callback.
+
+**DQ checks — `DQ-NBV-*` in `asset_rules.py`, table `asset_nbv`, scope 19.** Populations live in `nbv_population()` (shared by `run_dq_analysis` and `get_failing_records`), not in the lambdas. Drill-down evidence always shows the same NBV columns (`NBV_EVIDENCE_COLS`, prefixed `ASSET_NBV.`).
+
+| Check | Dimension / Severity | Population (all active) | Fails when |
+|---|---|---|---|
+| `DQ-NBV-C01` | Completeness / High | assets with postings | no 1xx00 or 1xx15 account at all |
+| `DQ-NBV-V01` | Validity / High | with an NBV account | CURR or HIST NBV < −£1 |
+| `DQ-NBV-K01` | Consistency / Medium | with an NBV account, CURR book, no SA | CURR NBV within £1 of zero — fully written down, still on the register |
+| `DQ-NBV-K02` | Consistency / High | CURR and HIST books | account 70000 differs from HIST − CURR by > £1 |
+| `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book — based on `LB1PARLI`, where they do; watch this one on real data |
+| `DQ-NBV-K04` | Consistency / Medium | with an SA transaction | CURR NBV not cleared after disposal (may be a partial disposal) |
+| `DQ-NBV-K05` | Consistency / Low | CURR method LNA/LNB, cost > £1 | no accumulated depreciation |
+
+These replace the old `DQ-AB-K04`/`DQ-AB-K05` stubs, which were removed.
+
+**Dummy data — `scripts/generate_asset_nbv_dummy_data.py`**, run automatically at the end of `generate_asset_data.py`. Reshapes the HoC files only: books become CURR/HIST (every clean asset gets both), dummy method codes map to real ones (LNA/LNB/MAN, buildings NOD), each balance row becomes account-level postings with contra entries so accounts net to zero, ~40% of active buildings become legacy OS assets, CURR-only revaluations post to 70000, and one planted asset (`ANBV00xx`, `_edge_case` = check ID) per `DQ-NBV-*` check. Every planted case is caught; the other hits come from older `DQ-AB-*` planted edge cases (e.g. depreciation with no capitalisation, which genuinely gives a negative NBV). HoL dummy files are untouched.
 
 ### Depreciation method codes — confirmed June 2026
 
@@ -895,7 +928,7 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 | Check | Dependency |
 |-------|-----------|
-| `DQ-AB-K04`, `DQ-AB-K05` | **Not implemented** — both are stubs (`lambda df: pd.Series(False, index=df.index)`) that never flag anything. No longer blocked on Parliament — the NBV rule is confirmed (see "NBV calculation — confirmed rule" above); blocked only on the NBV code being built. |
+| `DQ-NBV-*` | Built on the confirmed NBV rule, verified on dummy data only. `DQ-NBV-K03` rests on one real example (`LB1PARLI`). The old `DQ-AB-K04`/`DQ-AB-K05` stubs were removed and replaced by these. |
 | `DQ-AB-K01`, `DQ-AB-K02`, `DQ-AB-K03` | These three are genuinely implemented and live (trans_type presence/pairing logic, not NBV-dependent) — unaffected by the NBV gap |
 | Any future check referencing `ZU` | ZU does not exist in real data |
 | DQ-AD-C05, DQ-AG-C03, DQ-AD-V04, DQ-AG-V05 | Live but unvalidated — depreciation method meanings confirmed, but no real data run yet to verify results are sensible |
@@ -1264,7 +1297,7 @@ If this report is used as the data source instead of the raw SQL extract, the fi
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
 - Customers / AR (master, open transactions, history) — full check suite live
-- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Amount sign convention confirmed September 2026 (amounts are positive magnitudes). **NBV rule confirmed September 2026** (HOC only: sum all trans_types where `account` starts `1` and ends `00`/`15`, per depreciation book), and `asset_balances` now extracted by `account` — but **no NBV code exists yet**, so `DQ-AB-K04`/`DQ-AB-K05` remain stubs. `DQ-OS-*` checks rest on a disproven premise and need rebuilding or retiring. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
+- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Amount sign convention confirmed September 2026 (amounts are positive magnitudes). **NBV rule confirmed September 2026** (HOC only: sum all trans_types where `account` starts `1` and ends `00`/`15`, per depreciation book), and `asset_balances` now extracted by `account`. **NBV section built on the Assets tab** (HoC only — analytics, drill-downs, asset inspector, 7 `DQ-NBV-*` checks), verified on dummy data, not yet run on real data. `DQ-OS-*` checks rest on a disproven premise and need rebuilding or retiring. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle

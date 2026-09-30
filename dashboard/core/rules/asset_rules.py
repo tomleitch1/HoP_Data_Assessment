@@ -491,19 +491,6 @@ def get_asset_checks():
          'Depr exists, CA/OS/TC(HoL) missing',
          lambda df: df.index.isin(df.groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: g['trans_type'].isin(['ND','ED','FD']).any() and not g['trans_type'].isin(['CA', 'OS'] + (['TC'] if (g['house'] == 'HOL').all() else [])).any()).index)),
 
-        ('DQ-AB-K04', 19, 'Asset Balances', 'Consistency', 'Low',
-         'NBV=0 and no disposal',
-         'Flags assets with an NBV of zero but no disposal transaction. likely fully depreciated assets still sitting as active.',
-         'Review asset.', 'asset_balances', None, 
-         'NBV=0 AND no SA',
-         lambda df: pd.Series(False, index=df.index)),
-
-        ('DQ-AB-K05', 19, 'Asset Balances', 'Consistency', 'Low',
-         'No depreciation for depreciating asset',
-         'Identifies active depreciating assets with no depreciation transactions. suggests the depreciation run has not been executed for this asset.',
-         'Review asset.', 'asset_balances', 'asset_depreciation', 
-         'No ND/ED/FD',
-         lambda df: pd.Series(False, index=df.index)),
 
         ('DQ-AB-X01', 19, 'Asset Balances', 'Referential Integrity', 'Critical',
          'Orphaned balance',
@@ -587,6 +574,62 @@ def get_asset_checks():
          'Use org_amount on the asset master as the cost basis for this asset instead of the transaction history.', 'asset_master', 'asset_balances',
          'OS-only capitalised AND org_amount > 0',
          lambda df, frames: (df['status'] == 'N') & df['asset_id'].isin(_os_capitalised_asset_ids(df, frames)) & (pd.to_numeric(df['org_amount'], errors='coerce').fillna(0) > 0)),
+
+
+        # ======================================================================
+        # --- NET BOOK VALUE (asset_nbv) — HoC only (DQ-NBV-) ---
+        # asset_nbv is built by dashboard/core/asset_nbv.py: one row per asset,
+        # CURR and HIST side by side, using the confirmed account rule. Each
+        # check's population lives in nbv_population(), not in the lambda.
+        # ======================================================================
+        ('DQ-NBV-C01', 19, 'Asset NBV', 'Completeness', 'High',
+         'Active asset has transactions but no NBV account',
+         'Every active asset with transaction history must post to a cost account (starting 1, ending 00) or an accumulated depreciation account (starting 1, ending 15). Without one, the asset has no net book value that can be migrated, even though it has financial activity.',
+         'Identify which accounts this asset posts to and confirm with the asset team where its cost and depreciation are held.', 'asset_nbv', None,
+         "no account LIKE '1%00' OR '1%15' for the asset",
+         lambda df: ~df['has_nbv_account'].astype(bool)),
+
+        ('DQ-NBV-V01', 19, 'Asset NBV', 'Validity', 'High',
+         'Negative NBV in the CURR or HIST book',
+         'Net book value must not fall below zero. A negative NBV means accumulated depreciation exceeds the recorded cost, which would carry a negative asset balance into the new system.',
+         'Review the depreciation charged against this asset and correct any over-depreciation or missing cost.', 'asset_nbv', None,
+         'curr_nbv < -1 OR hist_nbv < -1',
+         lambda df: (pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0) < -1) | (pd.to_numeric(df['hist_nbv'], errors='coerce').fillna(0) < -1)),
+
+        ('DQ-NBV-K01', 19, 'Asset NBV', 'Consistency', 'Medium',
+         'Active asset with zero NBV and no disposal',
+         'An active asset with no remaining value and no disposal is fully depreciated but still on the register. Each one needs a decision on whether it is still in use or should be disposed of before migration.',
+         'Send to the asset team to confirm whether the asset is still in use or should be formally disposed.', 'asset_nbv', None,
+         'ABS(curr_nbv) < 1 AND no SA transaction',
+         lambda df: pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0).abs() < 1),
+
+        ('DQ-NBV-K02', 19, 'Asset NBV', 'Consistency', 'High',
+         'Revaluation reserve does not reconcile to HIST minus CURR NBV',
+         'The revaluation reserve (account 70000) must equal the historical book NBV minus the current book NBV for every asset. A difference means the two depreciation books and the reserve disagree, so at least one of the three figures migrated would be wrong.',
+         'Reconcile the revaluation reserve postings against the CURR and HIST book values for this asset.', 'asset_nbv', None,
+         'ABS(reserve_70000 - (hist_nbv - curr_nbv)) > 1',
+         lambda df: pd.to_numeric(df['reval_variance'], errors='coerce').fillna(0).abs() > 1),
+
+        ('DQ-NBV-K03', 19, 'Asset NBV', 'Consistency', 'Medium',
+         "Asset's postings do not net to zero across accounts",
+         "Every fixed asset posting has an equal and opposite entry, so an asset's postings across all accounts must net to zero in each book. A non-zero total means one side of a posting is missing from the asset module.",
+         'Trace the unbalanced postings for this asset and confirm the missing side of the entry.', 'asset_nbv', None,
+         'ABS(SUM(amount) across all accounts) > 1 in CURR or HIST',
+         lambda df: (pd.to_numeric(df['curr_net_all_accounts'], errors='coerce').fillna(0).abs() > 1) | (pd.to_numeric(df['hist_net_all_accounts'], errors='coerce').fillna(0).abs() > 1)),
+
+        ('DQ-NBV-K04', 19, 'Asset NBV', 'Consistency', 'Medium',
+         'Disposal posted but NBV not cleared',
+         'A disposal must remove the remaining value of the asset. An asset with a disposal transaction that still carries a net book value will migrate with a balance for something no longer owned.',
+         'Confirm whether this was a partial disposal. If not, correct the disposal posting.', 'asset_nbv', None,
+         'SA transaction exists AND ABS(curr_nbv) >= 1',
+         lambda df: pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0).abs() >= 1),
+
+        ('DQ-NBV-K05', 19, 'Asset NBV', 'Consistency', 'Low',
+         'Depreciating asset has no accumulated depreciation',
+         'An asset set to depreciate (method LNA or LNB) with a recorded cost must build up accumulated depreciation over time. None at all means the depreciation run has not been applied to it, unless it was capitalised very recently.',
+         'Check the capitalisation date and confirm whether depreciation should have started.', 'asset_nbv', None,
+         'curr_depr_method IN (LNA, LNB) AND curr_cost > 0 AND curr_depreciation = 0',
+         lambda df: pd.to_numeric(df['curr_depreciation'], errors='coerce').fillna(0).abs() < 1),
 
     ]
     return checks

@@ -2,6 +2,7 @@ from dash import html
 import pandas as pd
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid, render_dimensions_table
 from dashboard.core.theme import UI, HOUSE_HEX, DISPLAY_FONT
+from dashboard.tabs.assets_nbv import render_nbv_section
 
 # ── Design tokens (warm amber) ─────────────────────────────────────────────────
 _HDR     = '#1f1a0f'
@@ -391,7 +392,7 @@ def _card_balances(hoc, hol):
     return _extract_card(
         _card_header_row(
             'Balance History', 'aattrans  (aggregated)', False,
-            'Lifetime financial transactions aggregated to one row per asset / book / transaction type. Used to derive cost, accumulated depreciation, and NBV. Several transaction type codes are unexplained and currently excluded from balance calculations.',
+            'Lifetime financial transactions aggregated to one row per asset / book / transaction type / account. HoC NBV is derived from these by account (see Net Book Value below). Several transaction type codes are still unconfirmed.',
         ),
         [html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
             _col('HOC', hoc), _col('HOL', hol),
@@ -439,11 +440,11 @@ def _known_gaps_section():
                 ],
             ),
             _gap_panel(
-                'Unknown transaction types in balance history',
+                'Unconfirmed transaction types and HoL NBV',
                 [
-                    'The following transaction type codes appear in aattrans but their meanings are unconfirmed: NF, NT, TF, TT, RF, RT, OS, WU, TC.',
-                    'These are excluded from the current NBV formula. TF/TT alone represents approximately £178m at HOL and £15m at HOC.',
-                    'Affected: all balance-derived DQ checks (DQ-AB-K01, K02, K03) and the valid transaction type check (DQ-AB-V01). See Q3 in Questions for Parliament.',
+                    'NF, NT, TF, TT, RF, RT, WU and TC are still listed as unconfirmed by Parliament. OS is confirmed as historical assets migrated at 31 Mar 2013.',
+                    'HoC NBV no longer depends on these: it is calculated by account, so every transaction type is included through the account it posts to.',
+                    'HoL NBV is not calculated yet. HoL uses a different chart of accounts format, and its equivalent rule needs confirming.',
                 ],
             ),
         ]),
@@ -496,10 +497,14 @@ def _dq_section_header():
 
 def render_tab(dq_results, frames):
     intro_data = get_asset_intro_data(frames)
+    is_nbv = dq_results['check_id'].str.startswith('DQ-NBV-') if not dq_results.empty else pd.Series(dtype=bool)
+    nbv_dq = dq_results[is_nbv] if not dq_results.empty else dq_results
+    other_dq = dq_results[~is_nbv] if not dq_results.empty else dq_results
     return html.Div([
         _render_intro(intro_data),
+        render_nbv_section(frames, nbv_dq),
         _dq_section_header(),
-        render_dimension_scorecard(dq_results),
-        render_dimension_grid(dq_results),
+        render_dimension_scorecard(other_dq),
+        render_dimension_grid(other_dq),
         html.Div(id='dim-drill-down-container', style={'marginTop': '24px'}),
     ])

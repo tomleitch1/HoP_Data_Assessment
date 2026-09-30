@@ -11,6 +11,7 @@ from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks, _os_capitalised_asset_ids, _os_assets_with_real_depreciation
+from dashboard.core.asset_nbv import build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
@@ -642,6 +643,9 @@ def _engine_sig() -> str:
     are the same class of gap again — DQ-OS-C01/K01/K02's lambdas call them, so
     their call sites are covered by the per-check lambda source hash, but an
     edit to just their internal logic wouldn't otherwise bust that hash either.
+
+    build_asset_nbv and nbv_population (core/asset_nbv.py) build the asset_nbv
+    frame and set every DQ-NBV-* check's population — same gap again.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
@@ -654,6 +658,8 @@ def _engine_sig() -> str:
                 + _inspect.getsource(_atamis_open_contract_refs)
                 + _inspect.getsource(_os_capitalised_asset_ids)
                 + _inspect.getsource(_os_assets_with_real_depreciation)
+                + _inspect.getsource(build_asset_nbv)
+                + _inspect.getsource(nbv_population)
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
@@ -1038,6 +1044,11 @@ def load_data(tab=None):
     if 'budgets_report' in frames:
         _derive_budget_houses(frames)
 
+    # Derived NBV frames (HoC only) — rebuilt every load, never pickled, same
+    # as unit4_contract_refs.
+    if 'asset_balances' in frames:
+        build_asset_nbv(frames)
+
     return frames
 
 def get_dq_checks():
@@ -1095,6 +1106,9 @@ def run_dq_analysis(frames, tab=None):
             # the joined_table pattern above).
             rel_fps.append(_cache_path('unit4_commitments'))
             rel_fps.append(_cache_path('agldimvalue'))
+        if table == 'asset_nbv':
+            # Derived from these three, never pickled itself.
+            rel_fps += [_cache_path(t) for t in ('asset_balances', 'asset_master', 'asset_depreciation')]
 
         _dq_version = os.environ.get('DASHBOARD_VERSION', '').strip()
         _houses = ATAMIS_HOUSES if table in ATAMIS_TABLES else CLIENTS
@@ -1173,6 +1187,8 @@ def run_dq_analysis(frames, tab=None):
                 h_df = df_table[df_table['house'] == house]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'asset_nbv':
+                h_df = nbv_population(df_table[df_table['house'] == house], check_id)
             elif table == 'apoheader':
                 if check_id == 'PO_DUP_HEADER':
                     h_df = df_table[df_table['house'] == house]
@@ -1524,6 +1540,15 @@ def get_check_columns():
         'DQ-AB-X02': ['asset_id', 'depr_book_id'],
         'DQ-AB-X03': ['asset_id', 'status'],
 
+        # Asset NBV (asset_nbv, HoC only)
+        'DQ-NBV-C01': ['asset_id', 'trans_types'],
+        'DQ-NBV-V01': ['curr_nbv', 'hist_nbv', 'curr_cost', 'curr_depreciation'],
+        'DQ-NBV-K01': ['curr_nbv', 'curr_cost', 'curr_depreciation'],
+        'DQ-NBV-K02': ['reval_reserve', 'reval_expected', 'reval_variance', 'curr_nbv', 'hist_nbv'],
+        'DQ-NBV-K03': ['curr_net_all_accounts', 'hist_net_all_accounts'],
+        'DQ-NBV-K04': ['curr_nbv', 'trans_types'],
+        'DQ-NBV-K05': ['curr_depr_method', 'curr_cost', 'curr_depreciation'],
+
         # OS (legacy pre-migration capitalisation) assessment
         'DQ-OS-C01': ['asset_id', 'status', 'org_amount'],
         'DQ-OS-K01': ['asset_id', 'status', 'org_amount'],
@@ -1669,6 +1694,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         h_df = df_table[df_table['house'] == house]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
+    elif table == 'asset_nbv':
+        h_df = nbv_population(df_table[df_table['house'] == house], check_id)
     elif table == 'apoheader':
         if check_id == 'PO_DUP_HEADER':
             h_df = df_table[df_table['house'] == house]
@@ -1724,6 +1751,15 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     failing = h_df[mask].copy()
     if failing.empty:
         return failing
+    if table == 'asset_nbv':
+        cols =[c for c in NBV_EVIDENCE_COLS if c in failing.columns]
+        out = failing[cols].copy()
+        money = out.select_dtypes('number').columns
+        out[money] = out[money].round(2)
+        if for_export:
+            return out
+        return out.rename(columns={c: f'ASSET_NBV.{c}' for c in cols})
+
     if for_export and check_id not in _PO_JOIN_EXPORT_CHECKS:
         return failing
 

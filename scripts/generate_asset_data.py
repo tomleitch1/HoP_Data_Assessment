@@ -505,6 +505,9 @@ def main():
         print(f"  -> {len(df_bal)} balance rows")
         print(f"  -> {len(df_trans)} trans flags rows")
 
+    from generate_asset_nbv_dummy_data import main as reshape_hoc_for_nbv
+    reshape_hoc_for_nbv()
+
     print("\nDone. Files written to ./data/")
 
 if __name__ == '__main__':
