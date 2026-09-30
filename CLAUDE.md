@@ -752,8 +752,8 @@ Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, perio
 | `asset_master_HOL_run.sql` | `agresso_HoL` | `asset_master_HOL.csv` |
 | `asset_depreciation_HOC_run.sql` | `Agresso_HoC` | `asset_depreciation_HOC.csv` |
 | `asset_depreciation_HOL_run.sql` | `agresso_HoL` | `asset_depreciation_HOL.csv` |
-| `asset_balances_HOC_run.sql` | `Agresso_HoC` | `asset_balances_HOC.csv` — joins `aatasset` to exclude closed assets (`status != 'C'`) |
-| `asset_balances_HOL_run.sql` | `agresso_HoL` | `asset_balances_HOL.csv` — same join added but blocked by permissions on `aatasset` in HOL db (database refresh June 2026 reset permissions — needs re-granting before this can be run) |
+| `asset_balances_HOC_run.sql` | `Agresso_HoC` | `asset_balances_HOC.csv` — joins `aatasset` to exclude closed assets (`status != 'C'`); grouped by `account` since September 2026 |
+| `asset_balances_HOL_run.sql` | `agresso_HoL` | `asset_balances_HOL.csv` — same join and `account` grouping, but blocked by permissions on `aatasset` in HOL db (database refresh June 2026 reset permissions — needs re-granting before this can be run) |
 | `asset_groups_HOC_run.sql` | `Agresso_HoC` | `asset_groups_HOC.csv` |
 | `asset_groups_HOL_run.sql` | `agresso_HoL` | `asset_groups_HOL.csv` |
 | `asset_trans_flags_HOC_run.sql` | `Agresso_HoC` | `asset_trans_flags_HOC.csv` |
@@ -782,8 +782,8 @@ The following were verified by running `SELECT trans_type, dc_flag, COUNT(*), SU
 | CA | Capitalisation (original cost) | 62,737 | 10,131 |
 | PC | Post-capitalisation addition / betterment | 263 | 1,340 |
 | ND | Normal (periodic) depreciation | 2,594,255 | 382,061 |
-| ED | Extraordinary depreciation | 366 | 34 |
-| FD | Final depreciation at disposal | 12 | 2,354 |
+| ED | Unconfirmed — Parliament's own reference table lists it as "??" (September 2026). Previously assumed "Extraordinary depreciation". | 366 | 34 |
+| FD | **Manual depreciation** — per Parliament's reference table (September 2026). Previously documented as "Final depreciation at disposal", which was wrong. Checks grouping FD with ND/ED as generic depreciation (`DQ-AB-K03`, `DQ-AF-X02`) are unaffected, but nothing should treat FD as disposal-related. | 12 | 2,354 |
 | SA | Disposal | 98,109 | 25,829 |
 | VN | Revaluation movement | 487 | 327 |
 | CI | Calculatory Interest — **excluded from extract** (internal mgmt charge, does not affect NBV or GL) | 6 | 36 |
@@ -806,9 +806,22 @@ The following were verified by running `SELECT trans_type, dc_flag, COUNT(*), SU
 | WU | — | — | 179 | £12.7m | HOL only |
 | TC | 8 | £31k | 10 | £0 | Small/zero |
 
-The NF/NT, RF/RT, and TF/TT pairs are almost certainly **internal asset transfer types** — when an asset moves between cost centres or entities, one side is debited and the other credited. TF/TT is significant: £178m at HOL. The NBV formula cannot be finalised until Parliament confirms whether these should be included and on which side.
+**Descriptions from Parliament's own reference table (September 2026)** — still listed by them as "unconfirmed", but they give meanings:
 
-OS is the most anomalous: 51k rows at HOC, 21k at HOL, all zero amount, no year-end reversal entry. Likely a marker or flag transaction rather than a financial posting.
+| Code | Parliament's description |
+|------|--------------------------|
+| NF | Change category From (HAIS code) |
+| NT | Change category To (HAIS code) |
+| OS | Historical assets — capitalisation imported from the predecessor system at migration (31 Mar 2013) |
+| RF | Regroup From (asset group) |
+| RT | Regroup To (asset group) |
+| TC | Transfer to, capitalisation transaction |
+| TF | Transfer from |
+| TT | Transfer to |
+
+This confirms the NF/NT, RF/RT, TF/TT pairs are internal reclassification/transfer movements. Parliament queried why TF/TT counts don't match each other the way NF/NT and RF/RT do — still open. **None of this blocks the NBV formula any more** — see "NBV calculation — confirmed rule" below: NBV is account-based, so every trans_type is included automatically by the account it posts to, and there's no need to classify each type as add/subtract.
+
+**OS is not zero-value.** The "all zero amount" figures in the table above came from our own extract summing every GL account for a trans_type together. OS postings hit a cost account and its contra/control account (and a depreciation account and its P&L contra), which are designed to net to zero. Split by `account`, OS rows carry the asset's full opening position at migration. Confirmed on asset `LB1PARLI` (1 Parliament Street): OS rows in accounts `14000` + `14015` = £14,817,600 (CURR) and £7,561,260 (HIST), exactly Parliament's own NBV at 31 Mar 2013.
 
 **VN count anomaly (HOC):** `dc_flag=1` has 487 VN rows but `dc_flag=-1` has only 477 — 10 revaluation transactions without a year-end reset mirror. These are likely recent postings not yet through a year-end close. No action required, but confirms the `dc_flag=1` filter is essential.
 
@@ -824,16 +837,36 @@ Only 105 negative `total_amount` instances exist in the extract, almost all on `
 
 **No NBV calculation exists anywhere in the codebase.** This section previously stated a formula was live in `assets.py` / `get_asset_volumetrics` — that was wrong. Checked directly: `assets.py`'s "Balances" card sums transaction **counts** by type (`conf_by_type`), not amounts, and has no `ZU` reference or amount-subtraction logic anywhere. `get_asset_volumetrics` (in `dashboard/core/volumetrics.py`) computes asset register counts (active/inactive/grant/stale/WIP) — it has nothing to do with NBV either, despite the name similarity. The only other "NBV" references in the codebase are two DQ check stubs (`DQ-AB-K04`, `DQ-AB-K05` — see below, both always return `False`) and a cosmetic label on an unrelated join-path diagram in `app.py`. **No test, check, tracker, or export has ever calculated or reported an NBV figure to Parliament.**
 
-The intended formula, once built, would be:
+The trans_type-based formula previously planned here (`NBV = (CA + PC + VN + ZU) − (ND + ED + FD + SA)`) is **superseded** — see below. It was never implemented, and it would have needed every unknown trans_type classified first.
+
+### NBV calculation — confirmed rule (September 2026, HOC only)
+
+NBV is derived **by GL account, not by trans_type**. Rule given directly by Parliament's asset team:
+
 ```
-NBV = (CA + PC + VN + ZU) − (ND + ED + FD + SA)
+NBV (per asset, per depr_book) = SUM(amount) across ALL trans_types
+                                 WHERE account starts with '1'
+                                 AND account ends in '00' (cost/valuation) or '15' (accumulated depreciation)
 ```
 
-Blockers before it can be implemented:
-- Sign convention is now confirmed (see above) — no longer a blocker
-- NF, NT, RF, RT, TF, TT, WU, OS, TC are all unclassified — **TF/TT alone is £178m at HOL, £15m/£10.9m at HOC** — and need a decision from Parliament on whether/how to include them before the formula can be written
-- ZU does not exist in real data, so it can be dropped from the formula entirely
-- **Do not build or rely on any NBV calculation until Parliament confirms the unknown trans_types (Q3)**
+Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold buildings control, contra to `14000`), `57000` (Depreciation – Tangible FA, P&L contra to `14015`), `70000` (Fixed asset revaluation reserve). Across all five accounts an asset's postings net to zero; only the `…00`/`…15` accounts form NBV.
+
+**`aattrans` has a native `account` column** — confirmed by querying `LB1PARLI` directly. `asset_balances_HOC_run.sql` / `asset_balances_HOL_run.sql` now include `account` in the `SELECT` and `GROUP BY`, so `asset_balances` is one row per `(client, asset_id, depr_book_id, trans_type, account)`. `data_engine.py` needed no change — `account` is already in the global `string_cols` list.
+
+**Validation on real HOC data:**
+- `LB1PARLI`: OS rows alone reproduce Parliament's NBV at the 31 Mar 2013 migration date to the penny (CURR £14,817,600, HIST £7,561,260). Summing all trans_types on the same accounts gives the current NBV (~£53m) — the movement since 2013 is revaluation, since land and buildings are **revalued, not depreciated**. So NBV must always include every trans_type, not just OS.
+- `LB22JOHN` (22 John Islip): the revaluation reserve reconciles — account `70000` total (−£308,239.69) = HIST NBV total (£43,760.32) − CURR NBV total (£352,000.00), matching Parliament's spreadsheet (£308,240). This gives a candidate DQ check: `account_70000_total ≈ HIST_total − CURR_total` per asset (not yet built).
+- Coverage: 593 HOC assets have no account matching the pattern. All 593 have **zero** `aattrans` history (564 active + 29 not active), so none is a counter-example to the rule — they're the same no-history population `DQ-AB-X03` targets.
+- `bflag`/`res_bal`/`account_type` on `aglaccounts` do not cleanly separate NBV accounts from contra accounts. Don't look for a field-based rule — the account-number rule is the confirmed one.
+
+`asset_balances_HOC.csv` has been re-extracted with the `account` column on the Parliament laptop (September 2026).
+
+**Still to do:**
+- Build the NBV calculation in code — **no NBV code exists yet**.
+- Implement `DQ-AB-K04`/`DQ-AB-K05` on top of it, plus the revaluation reserve reconciliation check above.
+- `scripts/generate_asset_data.py` does not yet produce an `account` column or OS rows — update it before building NBV code so dummy data exercises the logic.
+- **HOL is unconfirmed.** HOL accounts use a letter-prefix format (e.g. `A1000`), so the "starts with 1" rule can't transfer as-is. Get HOL's equivalent from Parliament before applying NBV to HOL. HOL's `asset_balances` re-extract is also still blocked by the `aatasset` permission issue.
+- A land/buildings asset should show `depr_method = 'NOD'` in `asset_depreciation` — worth confirming on `LB1PARLI`, since it would let revalued assets be identified directly.
 
 ### Depreciation method codes — confirmed June 2026
 
@@ -862,7 +895,7 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 
 | Check | Dependency |
 |-------|-----------|
-| `DQ-AB-K04`, `DQ-AB-K05` | **Not implemented** — both are stubs (`lambda df: pd.Series(False, index=df.index)`) that never flag anything. Blocked on an NBV calculation existing at all — see "Balance formula status" above. |
+| `DQ-AB-K04`, `DQ-AB-K05` | **Not implemented** — both are stubs (`lambda df: pd.Series(False, index=df.index)`) that never flag anything. No longer blocked on Parliament — the NBV rule is confirmed (see "NBV calculation — confirmed rule" above); blocked only on the NBV code being built. |
 | `DQ-AB-K01`, `DQ-AB-K02`, `DQ-AB-K03` | These three are genuinely implemented and live (trans_type presence/pairing logic, not NBV-dependent) — unaffected by the NBV gap |
 | Any future check referencing `ZU` | ZU does not exist in real data |
 | DQ-AD-C05, DQ-AG-C03, DQ-AD-V04, DQ-AG-V05 | Live but unvalidated — depreciation method meanings confirmed, but no real data run yet to verify results are sensible |
@@ -880,7 +913,9 @@ Three checks in `asset_rules.py` test where, if anywhere, an `OS`-capitalised as
 
 All three scoped to active assets (`status == 'N'`) — moot in practice anyway, since `asset_balances`'s own extract already excludes closed assets entirely.
 
-Verified via a forced synthetic case (four assets covering all three conditions plus a genuinely `CA`-capitalised control) — each check fires exactly as intended, and the `CA`-capitalised control correctly triggers none of them. **Shows 0% on dummy data** — `scripts/generate_asset_data.py` doesn't produce any `OS` transaction type at all (only `CA`/`ND`/`SA`) — confirmed as a generator gap, not a logic bug. Real-data behaviour depends on Parliament's answer to the open question these checks were built to investigate (see "Amount sign convention" and the `OS` discussion above).
+Verified via a forced synthetic case (four assets covering all three conditions plus a genuinely `CA`-capitalised control) — each check fires exactly as intended, and the `CA`-capitalised control correctly triggers none of them. **Shows 0% on dummy data** — `scripts/generate_asset_data.py` doesn't produce any `OS` transaction type at all (only `CA`/`ND`/`SA`) — confirmed as a generator gap, not a logic bug.
+
+**The premise behind these three checks has since been disproven (September 2026).** They assume OS's £0 aggregated `total_amount` means no cost was captured. That £0 was an artifact of the old extract netting accounts together — split by `account`, OS carries the full migration-date position (see "NBV calculation — confirmed rule"). Both helpers read `total_amount` without applying the account rule (e.g. `_os_assets_with_real_depreciation()` sums across every account per asset, so contra accounts cancel out), so their results can't be trusted on the new account-level extract either. Expect `DQ-OS-C01`/`DQ-OS-K01` to give misleading results on real data until rebuilt on the account rule. Don't extend them — revisit once NBV code exists, and likely retire them in favour of NBV-based checks.
 
 ---
 
@@ -1229,7 +1264,7 @@ If this report is used as the data source instead of the raw SQL extract, the fi
 **Implemented and running against real data on Parliament laptop:**
 - Suppliers / AP (master, open transactions, history) — full check suite live
 - Customers / AR (master, open transactions, history) — full check suite live
-- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Amount sign convention confirmed September 2026 (amounts are positive magnitudes). **No NBV calculation exists anywhere in the codebase** — `DQ-AB-K04`/`DQ-AB-K05` remain unimplemented stubs pending Parliament confirmation of unknown `aattrans` trans_type codes (TF/TT/NF/NT/RF/RT/WU/OS). See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
+- Fixed Assets (master, depreciation, balances, groups, transactions) — checks live. Depreciation method codes confirmed (LNA/LNB/MAN/NOD) and checks updated accordingly. Amount sign convention confirmed September 2026 (amounts are positive magnitudes). **NBV rule confirmed September 2026** (HOC only: sum all trans_types where `account` starts `1` and ends `00`/`15`, per depreciation book), and `asset_balances` now extracted by `account` — but **no NBV code exists yet**, so `DQ-AB-K04`/`DQ-AB-K05` remain stubs. `DQ-OS-*` checks rest on a disproven premise and need rebuilding or retiring. See Fixed Assets Domain section above and QUESTIONS_FOR_PARLIAMENT.md Q3. `asset_balances_HOC.csv` re-extracted to exclude closed assets (join to `aatasset WHERE status != 'C'`); HOL re-extract blocked by SELECT permission on `aatasset` in `agresso_HoL` — permission likely reset by database refresh (June 2026).
 - Executive Summary (cross-domain overview, scope heatmap, severity breakdown)
 - Modal drill-down inspector (dark header, sidebar metrics, flat content panels)
 - Aging analysis (AP and AR) with HOC/HOL/Both toggle
