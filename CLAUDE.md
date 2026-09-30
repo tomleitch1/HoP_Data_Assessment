@@ -903,6 +903,8 @@ Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origi
 | `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book — based on `LB1PARLI`, where they do; watch this one on real data |
 | `DQ-NBV-K04` | Consistency / Medium | with a real disposal | CURR NBV not cleared after disposal (may be a partial disposal) |
 
+**NBV checks never vanish for HoC.** Elsewhere, `run_dq_analysis` drops any check whose population is empty (`total == 0`), so it disappears from the grid entirely. For `asset_nbv` checks with house `HOC` it keeps the row instead (0 assessed, 0 flagged, Green) — found when `DQ-NBV-K04` vanished from the Consistency widget on real data after the zero-SA fix emptied its population. Scoped to NBV/HoC only, since other checks (e.g. HOC-only or Atamis existence checks) rely on empty rows being dropped.
+
 **"Real disposal" (`has_disposal`)** = an SA posting of at least £1 (either sign) to a `1xx00`/`1xx15` account. Real data has SA rows with a zero amount; the first version counted any SA row as a disposal, which put 100% of `DQ-NBV-K04`'s population in failure on real data (found by the user, September 2026). Zero-value SA rows are now ignored, so those assets fall into `DQ-NBV-K01`'s population instead.
 | `DQ-NBV-K05` | Consistency / Low | CURR method LNA/LNB, cost > £1 | no accumulated depreciation |
 

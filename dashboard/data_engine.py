@@ -11,7 +11,7 @@ from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig, AssetConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks, _os_capitalised_asset_ids, _os_assets_with_real_depreciation
-from dashboard.core.asset_nbv import build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS
+from dashboard.core.asset_nbv import build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS, NBV_HOUSE
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
@@ -1270,7 +1270,9 @@ def run_dq_analysis(frames, tab=None):
                 h_df = df_table[df_table['house'] == house]
 
             total = len(h_df)
-            if total == 0:
+            # NBV checks stay visible for HoC with nothing in scope (0 of 0,
+            # green) rather than vanishing from the NBV section's grid.
+            if total == 0 and not (table == 'asset_nbv' and house == NBV_HOUSE):
                 continue
 
             # Run check
