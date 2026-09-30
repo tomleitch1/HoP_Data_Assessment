@@ -53,7 +53,7 @@ FROM
         ON  m.client   = t.client
         AND m.asset_id = t.asset_id
 WHERE
-    t.client IN ('CA', 'CM')
+    t.client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
     AND t.trans_type != 'CI'
     AND t.dc_flag = 1
     AND m.status != 'C'

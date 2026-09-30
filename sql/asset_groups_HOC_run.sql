@@ -70,7 +70,7 @@ FROM
         ON  g.client      = gb.client
         AND g.asset_group = gb.asset_group
 WHERE
-    g.client IN ('CA', 'CM')
+    g.client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
 ORDER BY
     g.client,
     g.asset_group,

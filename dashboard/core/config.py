@@ -47,6 +47,13 @@ class SupplierConfig:
     HOC_CLIENTS = ['CA', 'CM']  # Only these client codes are in scope for HOC
     HOL_CLIENTS = ['LA']        # Only this client code is in scope for HOL
 
+class AssetConfig:
+    # Fixed assets are narrower than suppliers: CM is out of scope for assets
+    # (confirmed September 2026), so HoC is CA only.
+    HOC_CLIENTS = ['CA']
+    HOL_CLIENTS = ['LA']
+    TABLES = ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags', 'asset_groups']
+
 class CustomerConfig:
     ACTIVE_STATUSES = ['N']
     INACTIVE_STATUSES = ['C']

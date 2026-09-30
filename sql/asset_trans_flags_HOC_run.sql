@@ -31,7 +31,7 @@ SELECT
 FROM
     aattrans
 WHERE
-    client IN ('CA', 'CM')
+    client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
     AND trans_type IN ('CA', 'SA')
 
 UNION ALL
@@ -51,7 +51,7 @@ SELECT
 FROM
     aattrans
 WHERE
-    client IN ('CA', 'CM')
+    client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
     AND trans_type IN ('ND', 'ED', 'FD')
 GROUP BY
     client,

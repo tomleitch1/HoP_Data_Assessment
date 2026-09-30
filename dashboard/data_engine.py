@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import os
 from datetime import date
-from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig
+from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig, AssetConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks, _os_capitalised_asset_ids, _os_assets_with_real_depreciation
@@ -480,6 +480,22 @@ def _build_unit4_contract_refs(frames: dict) -> None:
     frames['unit4_contract_refs'] = base
 
 
+def _apply_asset_client_scope(frames: dict) -> None:
+    """Drops asset rows for out-of-scope client codes (CM for HoC). Applied on
+    every load, after the pickle cache, so extracts taken before the SQL was
+    narrowed to CA are filtered too without re-extracting."""
+    allowed = {'HOC': set(AssetConfig.HOC_CLIENTS), 'HOL': set(AssetConfig.HOL_CLIENTS)}
+    for table in AssetConfig.TABLES:
+        df = frames.get(table)
+        if df is None or df.empty or 'client' not in df.columns or 'house' not in df.columns:
+            continue
+        client = df['client'].astype(str).str.strip()
+        keep = pd.Series(True, index=df.index)
+        for house, clients in allowed.items():
+            keep &= (df['house'] != house) | client.isin(clients)
+        frames[table] = df[keep].reset_index(drop=True)
+
+
 def _derive_budget_houses(frames: dict) -> None:
     """Assigns a 'house' column to budgets_report in place.
 
@@ -646,6 +662,11 @@ def _engine_sig() -> str:
 
     build_asset_nbv and nbv_population (core/asset_nbv.py) build the asset_nbv
     frame and set every DQ-NBV-* check's population — same gap again.
+
+    _apply_asset_client_scope (and AssetConfig's client lists) filter every
+    asset table after the pickle cache, so the frame pickles don't change
+    when the scope does — they must be in the signature or every asset check
+    would keep serving results that still include CM.
     """
     global _ENGINE_SIG_CACHE
     if _ENGINE_SIG_CACHE is None:
@@ -660,6 +681,8 @@ def _engine_sig() -> str:
                 + _inspect.getsource(_os_assets_with_real_depreciation)
                 + _inspect.getsource(build_asset_nbv)
                 + _inspect.getsource(nbv_population)
+                + _inspect.getsource(_apply_asset_client_scope)
+                + repr((AssetConfig.HOC_CLIENTS, AssetConfig.HOL_CLIENTS, AssetConfig.TABLES))
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
@@ -1043,6 +1066,8 @@ def load_data(tab=None):
     # 'house' column if it was built before this derivation existed.
     if 'budgets_report' in frames:
         _derive_budget_houses(frames)
+
+    _apply_asset_client_scope(frames)
 
     # Derived NBV frames (HoC only) — rebuilt every load, never pickled, same
     # as unit4_contract_refs.

@@ -52,7 +52,7 @@ SELECT
 FROM
     aatassetbook
 WHERE
-    client IN ('CA', 'CM')
+    client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
 ORDER BY
     client,
     asset_id,

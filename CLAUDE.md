@@ -167,6 +167,7 @@ All tables in every domain use **per-house split files** (`*_HOC.csv` + `*_HOL.c
 **Confirmed Unit4 client codes:**
 - HoC (`Agresso_HoC`): `CA`, `CM` — these are the only two in scope. `CF` exists in the database but is not extracted.
 - HoL (`agresso_HoL`): `LA`
+- **Exception — fixed assets are `CA` only for HoC** (confirmed September 2026; CM is out of scope for assets). See "Client scope" in the Fixed Assets section.
 
 All DQ analysis runs per-house. `dq_results` always has a `house` column. Charts typically show HOC and HOL side by side.
 
@@ -758,6 +759,12 @@ Columns extracted: `client, voucher_no, sequence_no, account, fiscal_year, perio
 | `asset_groups_HOL_run.sql` | `agresso_HoL` | `asset_groups_HOL.csv` |
 | `asset_trans_flags_HOC_run.sql` | `Agresso_HoC` | `asset_trans_flags_HOC.csv` |
 | `asset_trans_flags_HOL_run.sql` | `agresso_HoL` | `asset_trans_flags_HOL.csv` |
+
+### Client scope — HoC assets are CA only (September 2026)
+
+CM is out of scope for fixed assets, so HoC assets are client `CA` only (HoL stays `LA`). Applied in two places:
+- **SQL:** all five `asset_*_HOC_run.sql` files now filter `client = 'CA'` (previously `IN ('CA', 'CM')`).
+- **Engine:** `_apply_asset_client_scope()` in `data_engine.py` drops out-of-scope clients from every asset table (`AssetConfig.TABLES`) on every load, after the pickle cache and before the NBV frames are built — so extracts taken before the SQL change are filtered too, with no re-extract needed. Client lists live in `AssetConfig` in `config.py` (separate from `SupplierConfig`, which keeps CA + CM for suppliers). The function and the `AssetConfig` lists are hashed into `_engine_sig()`, since the frame pickles don't change when the scope does.
 
 ### `aatassetgrbook` — depreciation book IDs confirmed from real data (June 2026)
 
