@@ -891,10 +891,12 @@ Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origi
 |---|---|---|---|
 | `DQ-NBV-C01` | Completeness / High | assets with postings | no 1xx00 or 1xx15 account at all |
 | `DQ-NBV-V01` | Validity / High | with an NBV account | CURR or HIST NBV < −£1 |
-| `DQ-NBV-K01` | Consistency / Medium | with an NBV account, CURR book, no SA | CURR NBV within £1 of zero — fully written down, still on the register |
+| `DQ-NBV-K01` | Consistency / Medium | with an NBV account, CURR book, no real disposal | CURR NBV within £1 of zero — fully written down, still on the register |
 | `DQ-NBV-K02` | Consistency / High | CURR and HIST books | reserve (−SUM(70000)) differs from CURR − HIST by > £1 |
 | `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book — based on `LB1PARLI`, where they do; watch this one on real data |
-| `DQ-NBV-K04` | Consistency / Medium | with an SA transaction | CURR NBV not cleared after disposal (may be a partial disposal) |
+| `DQ-NBV-K04` | Consistency / Medium | with a real disposal | CURR NBV not cleared after disposal (may be a partial disposal) |
+
+**"Real disposal" (`has_disposal`)** = an SA posting of at least £1 (either sign) to a `1xx00`/`1xx15` account. Real data has SA rows with a zero amount; the first version counted any SA row as a disposal, which put 100% of `DQ-NBV-K04`'s population in failure on real data (found by the user, September 2026). Zero-value SA rows are now ignored, so those assets fall into `DQ-NBV-K01`'s population instead.
 | `DQ-NBV-K05` | Consistency / Low | CURR method LNA/LNB, cost > £1 | no accumulated depreciation |
 
 These replace the old `DQ-AB-K04`/`DQ-AB-K05` stubs, which were removed.

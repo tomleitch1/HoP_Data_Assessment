@@ -598,9 +598,9 @@ def get_asset_checks():
 
         ('DQ-NBV-K01', 19, 'Asset NBV', 'Consistency', 'Medium',
          'Active asset with zero NBV and no disposal',
-         'An active asset with no remaining value and no disposal is fully depreciated but still on the register. Each one needs a decision on whether it is still in use or should be disposed of before migration.',
+         'An active asset with no remaining value and no disposal is fully depreciated but still on the register. Each one needs a decision on whether it is still in use or should be disposed of before migration. A zero-value SA transaction does not count as a disposal.',
          'Send to the asset team to confirm whether the asset is still in use or should be formally disposed.', 'asset_nbv', None,
-         'ABS(curr_nbv) < 1 AND no SA transaction',
+         'ABS(curr_nbv) < 1 AND no non-zero SA posting to a 1xx00/1xx15 account',
          lambda df: pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0).abs() < 1),
 
         ('DQ-NBV-K02', 19, 'Asset NBV', 'Consistency', 'High',
@@ -619,9 +619,9 @@ def get_asset_checks():
 
         ('DQ-NBV-K04', 19, 'Asset NBV', 'Consistency', 'Medium',
          'Disposal posted but NBV not cleared',
-         'A disposal must remove the remaining value of the asset. An asset with a disposal transaction that still carries a net book value will migrate with a balance for something no longer owned.',
+         'A disposal must remove the remaining value of the asset. An asset with a disposal posted against its cost or depreciation account that still carries a net book value will migrate with a balance for something no longer owned. Zero-value SA transactions are not treated as disposals.',
          'Confirm whether this was a partial disposal. If not, correct the disposal posting.', 'asset_nbv', None,
-         'SA transaction exists AND ABS(curr_nbv) >= 1',
+         'non-zero SA posting to a 1xx00/1xx15 account AND ABS(curr_nbv) >= 1',
          lambda df: pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0).abs() >= 1),
 
         ('DQ-NBV-K05', 19, 'Asset NBV', 'Consistency', 'Low',

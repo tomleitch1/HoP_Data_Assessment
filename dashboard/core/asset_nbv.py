@@ -104,11 +104,16 @@ def build_asset_nbv(frames):
     amt['nbv'] = amt['cost'] + amt['depreciation']
     amt['net_all_accounts'] = amt[['cost', 'depreciation', 'reserve', 'other']].sum(axis=1)
 
+    # A disposal only counts if SA actually moved value on a cost or depreciation
+    # account. Real data has SA rows with a zero amount, which aren't disposals.
+    rows['_real_disposal'] = ((rows['trans_type'] == 'SA')
+                              & rows['account_class'].isin(['cost', 'depreciation'])
+                              & (rows['total_amount'].abs() >= TOLERANCE))
     g = rows.groupby(keys)
     meta = pd.DataFrame({
         'trans_types': g['trans_type'].agg(lambda s: ', '.join(sorted(set(s.dropna().astype(str))))),
         'has_nbv_account': g['account_class'].agg(lambda s: s.isin(['cost', 'depreciation']).any()),
-        'has_disposal': g['trans_type'].agg(lambda s: (s == 'SA').any()),
+        'has_disposal': g['_real_disposal'].any(),
         'has_os': g['trans_type'].agg(lambda s: (s == 'OS').any()),
         'has_ca': g['trans_type'].agg(lambda s: s.isin(['CA', 'PC']).any()),
         'transaction_count': g['transaction_count'].sum() if 'transaction_count' in rows.columns else g.size(),
