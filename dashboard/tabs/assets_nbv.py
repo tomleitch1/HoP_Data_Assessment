@@ -156,7 +156,7 @@ def _rule_banner():
         html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '6px'}, children=[
             legend('1xx00', 'Cost / valuation', _GREEN, True),
             legend('1xx15', 'Accumulated depreciation', _GREEN, True),
-            legend('70000', 'Revaluation reserve (checked against HIST − CURR)', _AMBER, False),
+            legend('70000', 'Revaluation reserve (should equal CURR − HIST)', _AMBER, False),
             legend('other', 'Control, P&L and disposal contra accounts', '#64748b', False),
         ]),
     ])
@@ -173,7 +173,7 @@ def _kpis(a):
         _kpi('NBV — CURR book', gbp(curr, short=True), f'Cost {gbp(valued["curr_cost"].sum(), True)} less '
              f'depreciation {gbp(-valued["curr_depreciation"].sum(), True)}'),
         _kpi('NBV — HIST book', gbp(hist, short=True), 'Historical cost basis', _AMBER),
-        _kpi('Revaluation reserve', gbp(reserve, short=True), f'HIST − CURR = {gbp(hist - curr, True)}', '#0891b2'),
+        _kpi('Revaluation reserve', gbp(reserve, short=True), f'CURR − HIST = {gbp(curr - hist, True)}', '#0891b2'),
         _kpi('Assets valued', f'{len(valued):,}', f'of {len(a):,} active assets with postings', _GREEN),
         _kpi('Nil NBV', f'{nil:,}', 'Active, fully written down (CURR)', _AMBER if nil else _GREEN),
         _kpi('Negative NBV', f'{neg:,}', 'Depreciation exceeds cost', _NEG if neg else _GREEN),
@@ -330,7 +330,7 @@ def render_asset_detail(frames, asset_id):
     if pd.notna(r['reval_variance']):
         ok = abs(r['reval_variance']) <= TOLERANCE
         recon = html.Div(style={'fontSize': '12px', 'marginTop': '10px', 'color': _GREEN if ok else _NEG, 'fontWeight': '600'},
-                         children=f'Revaluation reserve {gbp(r["reval_reserve"])} vs HIST − CURR {gbp(r["reval_expected"])}: '
+                         children=f'Revaluation reserve {gbp(r["reval_reserve"])} vs CURR − HIST {gbp(r["reval_expected"])}: '
                                   + ('reconciles' if ok else f'out by {gbp(r["reval_variance"])}'))
     else:
         recon = html.Div('Only one depreciation book, so the revaluation reserve check does not apply.',

@@ -604,10 +604,10 @@ def get_asset_checks():
          lambda df: pd.to_numeric(df['curr_nbv'], errors='coerce').fillna(0).abs() < 1),
 
         ('DQ-NBV-K02', 19, 'Asset NBV', 'Consistency', 'High',
-         'Revaluation reserve does not reconcile to HIST minus CURR NBV',
-         'The revaluation reserve (account 70000) must equal the historical book NBV minus the current book NBV for every asset. A difference means the two depreciation books and the reserve disagree, so at least one of the three figures migrated would be wrong.',
+         'Revaluation reserve does not equal CURR minus HIST NBV',
+         'The revaluation reserve (account 70000) must equal the current book NBV minus the historical book NBV for every asset. A difference means the two depreciation books and the reserve disagree, so at least one of the three figures migrated would be wrong.',
          'Reconcile the revaluation reserve postings against the CURR and HIST book values for this asset.', 'asset_nbv', None,
-         'ABS(reserve_70000 - (hist_nbv - curr_nbv)) > 1',
+         'ABS(-SUM(account 70000) - (curr_nbv - hist_nbv)) > 1',
          lambda df: pd.to_numeric(df['reval_variance'], errors='coerce').fillna(0).abs() > 1),
 
         ('DQ-NBV-K03', 19, 'Asset NBV', 'Consistency', 'Medium',

@@ -4,8 +4,10 @@ Rule confirmed by Parliament's asset team (September 2026): per asset and
 depreciation book, NBV is the sum of every aattrans posting, of any trans_type,
 to an account that starts with '1' and ends in '00' (cost/valuation) or '15'
 (accumulated depreciation). Every other account is a contra/control, P&L or
-reserve account and is excluded. Account 70000 is the revaluation reserve,
-which should equal HIST NBV minus CURR NBV for each asset.
+reserve account and is excluded. Account 70000 is the revaluation reserve:
+per asset, the reserve should equal CURR NBV minus HIST NBV (confirmed on
+22 John Islip: £352,000 − £43,760 = £308,240). 70000 holds it as a ledger
+credit, so reval_reserve is the 70000 total with its sign reversed.
 
 HoC only. HoL's chart of accounts uses a letter-prefix format, so the rule
 can't be applied there until Parliament confirms HoL's equivalent.
@@ -21,7 +23,7 @@ DEPRECIATING_METHODS = {'LNA', 'LNB'}
 ACCOUNT_CLASS_LABELS = {
     'cost': 'Cost / valuation',
     'depreciation': 'Accumulated depreciation',
-    'reserve': 'Revaluation reserve',
+    'reserve': 'Revaluation reserve (ledger credit)',
     'other': 'Other (contra / P&L)',
 }
 
@@ -167,8 +169,9 @@ def build_asset_nbv(frames):
         if c not in assets.columns:
             assets[c] = np.nan
 
+    assets['reval_reserve'] = -assets['reval_reserve']
     both = assets['has_curr'] & assets['has_hist']
-    expected = assets['hist_nbv'].fillna(0) - assets['curr_nbv'].fillna(0)
+    expected = assets['curr_nbv'].fillna(0) - assets['hist_nbv'].fillna(0)
     assets['reval_expected'] = np.where(both, expected, np.nan)
     assets['reval_variance'] = np.where(both, assets['reval_reserve'] - expected, np.nan)
     assets['origin'] = np.where(assets['has_os'] & ~assets['has_ca'], 'Migrated (OS)',

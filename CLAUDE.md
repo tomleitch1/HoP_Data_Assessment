@@ -855,7 +855,7 @@ Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold build
 
 **Validation on real HOC data:**
 - `LB1PARLI`: OS rows alone reproduce Parliament's NBV at the 31 Mar 2013 migration date to the penny (CURR £14,817,600, HIST £7,561,260). Summing all trans_types on the same accounts gives the current NBV (~£53m) — the movement since 2013 is revaluation, since land and buildings are **revalued, not depreciated**. So NBV must always include every trans_type, not just OS.
-- `LB22JOHN` (22 John Islip): the revaluation reserve reconciles — account `70000` total (−£308,239.69) = HIST NBV total (£43,760.32) − CURR NBV total (£352,000.00), matching Parliament's spreadsheet (£308,240). This gives a candidate DQ check: `account_70000_total ≈ HIST_total − CURR_total` per asset (not yet built).
+- `LB22JOHN` (22 John Islip): the revaluation reserve reconciles. Parliament's convention: **RR = Current value − Historical value** = £352,000.00 − £43,760.32 = £308,240, which is the total posted to account `70000`. `70000` holds it as a ledger credit (−£308,239.69), so the dashboard shows the reserve as `−SUM(70000)` (positive) and compares it to CURR − HIST. The per-period movements reconcile too (e.g. period 201200: 70000 −275,534.88 = HIST 140,465.12 − CURR 416,000), but our extract has no period column, so only the lifetime total is checked.
 - Coverage: 593 HOC assets have no account matching the pattern. All 593 have **zero** `aattrans` history (564 active + 29 not active), so none is a counter-example to the rule — they're the same no-history population `DQ-AB-X03` targets.
 - `bflag`/`res_bal`/`account_type` on `aglaccounts` do not cleanly separate NBV accounts from contra accounts. Don't look for a field-based rule — the account-number rule is the confirmed one.
 
@@ -872,11 +872,11 @@ Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold build
 
 **Calculation — `dashboard/core/asset_nbv.py`.** `build_asset_nbv(frames)` is called at the end of `load_data()` (like `unit4_contract_refs`, rebuilt every load, never pickled) and adds two frames, HoC only:
 - `asset_nbv_books` — one row per `(client, asset_id, depr_book_id)`: `cost` (1xx00 accounts), `depreciation` (1xx15), `nbv` = cost + depreciation, `reserve` (70000), `other`, `net_all_accounts`, trans types present, plus the book's `depr_method`.
-- `asset_nbv` — one row per asset, CURR and HIST side by side (`curr_nbv`, `hist_nbv`, `curr_cost`, …), `reval_reserve`, `reval_expected` (HIST − CURR), `reval_variance`, `origin` (`Capitalised in Unit4` / `Migrated (OS)` / `Migrated + Unit4 additions`), `nbv_band`, and master fields (description, group, status). This is the table the DQ checks and the tab use.
+- `asset_nbv` — one row per asset, CURR and HIST side by side (`curr_nbv`, `hist_nbv`, `curr_cost`, …), `reval_reserve` (−SUM(70000), positive), `reval_expected` (CURR − HIST), `reval_variance`, `origin` (`Capitalised in Unit4` / `Migrated (OS)` / `Migrated + Unit4 additions`), `nbv_band`, and master fields (description, group, status). This is the table the DQ checks and the tab use.
 Neither frame is added if `asset_balances` has no `account` column (an extract from before September 2026); the tab then shows a "re-run the extract" message. Tolerance for "zero" and reconciliation is £1 (`TOLERANCE`). `build_asset_nbv` and `nbv_population` are hashed into `_engine_sig()`; `run_dq_analysis` tracks `asset_balances`/`asset_master`/`asset_depreciation` as the per-check cache sources for `asset_nbv` checks.
 
 **Tab — `dashboard/tabs/assets_nbv.py`**, rendered by `assets.py` between the intro cards and the general DQ section. All figures are active assets (status `N`) with at least one NBV account:
-- Rule banner and KPI strip (CURR NBV, HIST NBV, revaluation reserve vs HIST − CURR, assets valued, nil NBV, negative NBV)
+- Rule banner and KPI strip (CURR NBV, HIST NBV, revaluation reserve vs CURR − HIST, assets valued, nil NBV, negative NBV)
 - NBV by asset group (CURR vs HIST) and assets by NBV band — both clickable
 - Origin tiles (legacy OS vs Unit4-capitalised) — clickable
 - Top 15 assets by CURR NBV
@@ -892,7 +892,7 @@ Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origi
 | `DQ-NBV-C01` | Completeness / High | assets with postings | no 1xx00 or 1xx15 account at all |
 | `DQ-NBV-V01` | Validity / High | with an NBV account | CURR or HIST NBV < −£1 |
 | `DQ-NBV-K01` | Consistency / Medium | with an NBV account, CURR book, no SA | CURR NBV within £1 of zero — fully written down, still on the register |
-| `DQ-NBV-K02` | Consistency / High | CURR and HIST books | account 70000 differs from HIST − CURR by > £1 |
+| `DQ-NBV-K02` | Consistency / High | CURR and HIST books | reserve (−SUM(70000)) differs from CURR − HIST by > £1 |
 | `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book — based on `LB1PARLI`, where they do; watch this one on real data |
 | `DQ-NBV-K04` | Consistency / Medium | with an SA transaction | CURR NBV not cleared after disposal (may be a partial disposal) |
 | `DQ-NBV-K05` | Consistency / Low | CURR method LNA/LNB, cost > £1 | no accumulated depreciation |
