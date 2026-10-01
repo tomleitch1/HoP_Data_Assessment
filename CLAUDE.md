@@ -892,7 +892,9 @@ Neither frame is added if `asset_balances` has no `account` column (an extract f
 
 Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origin-btn', ...}`) open the shared modal via `handle_asset_nbv_click` in `app.py` (export context type `asset_nbv`, handled in `export_modal_to_csv`); `close_modal` also resets `nbv-chart` clickData so the same bar can be clicked again. Verified with raw `_dash-update-component` round trips for every callback.
 
-**DQ checks — `DQ-NBV-*` in `asset_rules.py`, table `asset_nbv`, scope 19.** Populations live in `nbv_population()` (shared by `run_dq_analysis` and `get_failing_records`), not in the lambdas. Drill-down evidence always shows the same NBV columns (`NBV_EVIDENCE_COLS`, prefixed `ASSET_NBV.`).
+**DQ checks — `DQ-NBV-*` in `asset_rules.py`, table `asset_nbv`, scope 19.** Populations live in `nbv_population()` (shared by `run_dq_analysis` and `get_failing_records`), not in the lambdas. Drill-down evidence always shows the same NBV columns (`NBV_EVIDENCE_COLS`, prefixed `ASSET_NBV.`), with CURR and HIST cost, accumulated depreciation and NBV side by side.
+
+**Column names — `COLUMN_LABELS` in `asset_nbv.py`** is the one source of display names for the tab tables, check drill-downs, "Critical fields" chips and all NBV exports. Terminology, agreed with the user: the `1xx00` account is **"cost / valuation"** in the CURR book (revalued land and buildings carry a current valuation there, not what was paid) and plain **"cost"** in the HIST book (never revalued); the `1xx15` account is **"accumulated depreciation"** in both. Revaluation is not depreciation: it moves the `1xx00` account against the `70000` reserve, and buildings are depreciated as well as revalued (only land isn't). `00` = cost and `15` = depreciation was inferred from `LB1PARLI`'s account names and then confirmed by the user against `aglaccounts` descriptions for every matching account. Labels use plain hyphens, not "−", so they survive opening the CSV exports in Excel.
 
 | Check | Dimension / Severity | Population (all active) | Fails when |
 |---|---|---|---|

@@ -31,10 +31,35 @@ ACCOUNT_CLASS_LABELS = {
 # so the reviewer sees the asset's whole NBV position.
 NBV_EVIDENCE_COLS = [
     'asset_id', 'description', 'asset_group', 'status', 'origin', 'curr_depr_method',
-    'curr_cost', 'curr_depreciation', 'curr_nbv', 'hist_nbv',
+    'curr_cost', 'curr_depreciation', 'curr_nbv',
+    'hist_cost', 'hist_depreciation', 'hist_nbv',
     'reval_reserve', 'reval_expected', 'reval_variance',
     'curr_net_all_accounts', 'hist_net_all_accounts', 'trans_types',
 ]
+
+# Display names for asset_nbv columns, shared by the tab tables, DQ drill-downs
+# and exports. CURR "cost" is cost or valuation: revalued assets (land and
+# buildings) carry a current valuation in the 1xx00 account, not what was paid.
+COLUMN_LABELS = {
+    'asset_id': 'Asset',
+    'description': 'Description',
+    'asset_group': 'Group',
+    'status': 'Status',
+    'origin': 'Origin',
+    'curr_depr_method': 'Method (CURR)',
+    'curr_cost': 'CURR cost / valuation',
+    'curr_depreciation': 'CURR accumulated depreciation',
+    'curr_nbv': 'CURR NBV',
+    'hist_cost': 'HIST cost',
+    'hist_depreciation': 'HIST accumulated depreciation',
+    'hist_nbv': 'HIST NBV',
+    'reval_reserve': 'Revaluation reserve (70000)',
+    'reval_expected': 'Expected reserve (CURR NBV - HIST NBV)',
+    'reval_variance': 'Reserve difference',
+    'curr_net_all_accounts': 'CURR all accounts net (should be 0)',
+    'hist_net_all_accounts': 'HIST all accounts net (should be 0)',
+    'trans_types': 'Trans types',
+}
 
 NBV_BANDS =['Negative', 'Nil', 'Under £1k', '£1k – £10k', '£10k – £100k', '£100k – £1m', 'Over £1m']
 

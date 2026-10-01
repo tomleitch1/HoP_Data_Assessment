@@ -11,7 +11,9 @@ from dashboard.core.config import RAG_THRESHOLDS, SupplierConfig, AssetConfig
 from dashboard.core.rules.ap_rules import get_ap_checks
 from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks, _os_capitalised_asset_ids, _os_assets_with_real_depreciation
-from dashboard.core.asset_nbv import build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS, NBV_HOUSE
+from dashboard.core.asset_nbv import (
+    build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS, NBV_HOUSE, COLUMN_LABELS as NBV_COLUMN_LABELS,
+)
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
@@ -1568,13 +1570,15 @@ def get_check_columns():
         'DQ-AB-X03': ['asset_id', 'status'],
 
         # Asset NBV (asset_nbv, HoC only)
-        'DQ-NBV-C01': ['asset_id', 'trans_types'],
-        'DQ-NBV-V01': ['curr_nbv', 'hist_nbv', 'curr_cost', 'curr_depreciation'],
-        'DQ-NBV-K01': ['curr_nbv', 'curr_cost', 'curr_depreciation'],
-        'DQ-NBV-K02': ['reval_reserve', 'reval_expected', 'reval_variance', 'curr_nbv', 'hist_nbv'],
-        'DQ-NBV-K03': ['curr_net_all_accounts', 'hist_net_all_accounts'],
-        'DQ-NBV-K04': ['curr_nbv', 'trans_types'],
-        'DQ-NBV-K05': ['curr_depr_method', 'curr_cost', 'curr_depreciation'],
+        **{cid: [NBV_COLUMN_LABELS[c] for c in cols] for cid, cols in {
+            'DQ-NBV-C01': ['asset_id', 'trans_types'],
+            'DQ-NBV-V01': ['curr_nbv', 'hist_nbv', 'curr_depreciation', 'hist_depreciation'],
+            'DQ-NBV-K01': ['curr_nbv', 'curr_cost', 'curr_depreciation'],
+            'DQ-NBV-K02': ['reval_reserve', 'reval_expected', 'reval_variance', 'curr_nbv', 'hist_nbv'],
+            'DQ-NBV-K03': ['curr_net_all_accounts', 'hist_net_all_accounts'],
+            'DQ-NBV-K04': ['curr_nbv', 'trans_types'],
+            'DQ-NBV-K05': ['curr_depr_method', 'curr_cost', 'curr_depreciation'],
+        }.items()},
 
         # OS (legacy pre-migration capitalisation) assessment
         'DQ-OS-C01': ['asset_id', 'status', 'org_amount'],
@@ -1784,8 +1788,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         money = out.select_dtypes('number').columns
         out[money] = out[money].round(2)
         if for_export:
-            return out
-        return out.rename(columns={c: f'ASSET_NBV.{c}' for c in cols})
+            return out.rename(columns=NBV_COLUMN_LABELS)
+        return out.rename(columns={c: f'ASSET_NBV.{NBV_COLUMN_LABELS.get(c, c)}' for c in cols})
 
     if for_export and check_id not in _PO_JOIN_EXPORT_CHECKS:
         return failing

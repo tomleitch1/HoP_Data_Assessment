@@ -21,6 +21,7 @@ from dashboard.tabs.assets_nbv import (
     get_nbv_records, records_table as nbv_records_table,
     render_asset_detail as render_nbv_asset_detail, asset_search_options as nbv_asset_search_options,
 )
+from dashboard.core.asset_nbv import COLUMN_LABELS as NBV_COLUMN_LABELS
 from dashboard.tabs.po import render_tab as render_po, _compute_metrics as _po_compute_metrics
 from dashboard.tabs.pbf import render_tab as render_pbf
 from dashboard.tabs.atamis import (
@@ -1631,7 +1632,8 @@ def export_modal_to_csv(n_clicks, export_context):
         if df.empty:
             return None
         safe_key = re.sub(r'_+', '_', re.sub(r'[^\w\-]', '_', str(export_context.get('key')))).strip('_')
-        return dcc.send_data_frame(df.to_csv, f"HOC_NBV_{export_context.get('kind')}_{safe_key}.csv", index=False)
+        df = df.rename(columns=NBV_COLUMN_LABELS)
+        return dcc.send_data_frame(df.to_csv,f"HOC_NBV_{export_context.get('kind')}_{safe_key}.csv", index=False)
 
     return None
 

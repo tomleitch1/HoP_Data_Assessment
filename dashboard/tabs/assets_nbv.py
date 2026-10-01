@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from dash import html, dcc, dash_table
 
 from dashboard.core.asset_nbv import (
-    ACCOUNT_CLASS_LABELS, NBV_BANDS, NBV_HOUSE, TOLERANCE, asset_account_detail,
+    ACCOUNT_CLASS_LABELS, COLUMN_LABELS, NBV_BANDS, NBV_HOUSE, TOLERANCE, asset_account_detail,
 )
 from dashboard.core.theme import UI, HOUSE_HEX, DISPLAY_FONT
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid
@@ -30,14 +30,13 @@ ORIGIN_NOTES = {
     'Migrated + Unit4 additions': 'Imported through OS, with further capitalisation since.',
 }
 
-RECORD_COLUMNS = [
-    ('asset_id', 'Asset'), ('description', 'Description'), ('asset_group', 'Group'),
-    ('origin', 'Origin'), ('curr_depr_method', 'Method'),
-    ('curr_cost', 'CURR cost'), ('curr_depreciation', 'CURR accum. depreciation'),
-    ('curr_nbv', 'CURR NBV'), ('hist_nbv', 'HIST NBV'), ('reval_reserve', 'Reval reserve (70000)'),
-    ('trans_types', 'Trans types'),
-]
-_MONEY = {'curr_cost', 'curr_depreciation', 'curr_nbv', 'hist_nbv', 'reval_reserve'}
+RECORD_COLUMNS = [(c, COLUMN_LABELS[c]) for c in (
+    'asset_id', 'description', 'asset_group', 'origin', 'curr_depr_method',
+    'curr_cost', 'curr_depreciation', 'curr_nbv',
+    'hist_cost', 'hist_depreciation', 'hist_nbv',
+    'reval_reserve', 'trans_types',
+)]
+_MONEY = {'curr_cost', 'curr_depreciation', 'curr_nbv', 'hist_cost', 'hist_depreciation', 'hist_nbv', 'reval_reserve'}
 
 
 def gbp(v, short=False):
@@ -170,9 +169,10 @@ def _kpis(a):
     nil = int((valued['curr_nbv'].abs() < TOLERANCE).sum())
     neg = int(((valued['curr_nbv'] <= -TOLERANCE) | (valued['hist_nbv'] <= -TOLERANCE)).sum())
     return html.Div(style={'display': 'flex', 'gap': '12px', 'flexWrap': 'wrap', 'marginBottom': '16px'}, children=[
-        _kpi('NBV — CURR book', gbp(curr, short=True), f'Cost {gbp(valued["curr_cost"].sum(), True)} less '
+        _kpi('NBV — CURR book', gbp(curr, short=True), f'Cost / valuation {gbp(valued["curr_cost"].sum(), True)} less '
              f'depreciation {gbp(-valued["curr_depreciation"].sum(), True)}'),
-        _kpi('NBV — HIST book', gbp(hist, short=True), 'Historical cost basis', _AMBER),
+        _kpi('NBV — HIST book', gbp(hist, short=True), f'Cost {gbp(valued["hist_cost"].sum(), True)} less '
+             f'depreciation {gbp(-valued["hist_depreciation"].sum(), True)}', _AMBER),
         _kpi('Revaluation reserve', gbp(reserve, short=True), f'CURR − HIST = {gbp(curr - hist, True)}', '#0891b2'),
         _kpi('Assets valued', f'{len(valued):,}', f'of {len(a):,} active assets with postings', _GREEN),
         _kpi('Nil NBV', f'{nil:,}', 'Active, fully written down (CURR)', _AMBER if nil else _GREEN),
