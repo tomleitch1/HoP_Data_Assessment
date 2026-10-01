@@ -12,9 +12,9 @@
 -- Aggregates aattrans to one row per (client, asset_id, depr_book_id,
 -- trans_type, account).
 -- CI (Calculatory Interest) excluded — does not affect NBV or GL balance.
--- dc_flag = 1 filters to real transactions only. dc_flag = -1 entries are
--- the AT module's year-end reset reversals — including them causes every
--- trans_type group to SUM to zero. Confirmed from real HoC data June 2026.
+-- ALL dc_flag values are included (corrected September 2026) — dc_flag = -1
+-- rows are real postings, not reset reversals. See asset_balances_HOC_run.sql.
+-- Confirmed on HoC data only; assumed to be the same AT module behaviour for HoL.
 -- Closed assets (aatasset.status = 'C') are excluded — balance checks are
 -- only relevant for assets still in scope for migration.
 --
@@ -48,7 +48,6 @@ FROM
 WHERE
     t.client = 'LA'
     AND t.trans_type != 'CI'
-    AND t.dc_flag = 1
     AND m.status != 'C'
 GROUP BY
     t.client,

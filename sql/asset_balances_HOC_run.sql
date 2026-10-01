@@ -12,9 +12,13 @@
 -- Aggregates aattrans to one row per (client, asset_id, depr_book_id,
 -- trans_type, account).
 -- CI (Calculatory Interest) excluded — does not affect NBV or GL balance.
--- dc_flag = 1 filters to real transactions only. dc_flag = -1 entries are
--- the AT module's year-end reset reversals — including them causes every
--- trans_type group to SUM to zero. Confirmed from real HoC data June 2026.
+-- ALL dc_flag values are included (corrected September 2026). dc_flag = -1
+-- rows were previously excluded as "year-end reset reversals", which was
+-- wrong: they are real postings, the other side of each entry. Every posting
+-- has both sides in aattrans on different accounts (e.g. 14015 / 57000), which
+-- is why each trans_type sums to zero across all accounts. Validated on
+-- LB22JOHN: including dc_flag = -1 reproduces Parliament's CURR NBV £352,000,
+-- HIST NBV £43,760.32 and reserve −£308,239.69; dc_flag = 1 alone does not.
 -- Closed assets (aatasset.status = 'C') are excluded — balance checks are
 -- only relevant for assets still in scope for migration.
 --
@@ -55,7 +59,6 @@ FROM
 WHERE
     t.client = 'CA'  -- CM is out of scope for assets (confirmed September 2026)
     AND t.trans_type != 'CI'
-    AND t.dc_flag = 1
     AND m.status != 'C'
 GROUP BY
     t.client,

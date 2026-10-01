@@ -56,12 +56,13 @@
 -- ASSUMPTIONS
 -- A1. CI (Calculatory Interest) does not affect NBV or the GL balance sheet.
 --     Excluded from this extract by the WHERE clause.
--- A2. dc_flag = 1 marks real transactions; dc_flag = -1 marks the AT
---     module's year-end reset reversals. Every real transaction is
---     exactly mirrored by a dc_flag=-1 entry, causing SUM(amount) across
---     all history to equal zero. The WHERE clause must include dc_flag = 1
---     to extract real transactions only. Confirmed from real HoC data
---     June 2026.
+-- A2. CORRECTED September 2026: include ALL dc_flag values. dc_flag = -1
+--     rows were believed to be year-end reset reversals (June 2026), but
+--     they are real postings: the other side of each entry, on a different
+--     account. Both sides sit in aattrans, which is why SUM(amount) per
+--     trans_type across all accounts is zero. Including dc_flag = -1
+--     reproduces Parliament's NBV and revaluation reserve for LB22JOHN;
+--     dc_flag = 1 alone does not.
 -- A3. RV (Reversal) transactions fully offset the transaction they reverse.
 --     Including them in the aggregation means they net out automatically.
 --     If Unit4 stores reversals as equal and opposite amounts, the net effect

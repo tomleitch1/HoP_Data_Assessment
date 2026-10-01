@@ -774,9 +774,13 @@ Parliament uses exactly **two depreciation book IDs** across both houses:
 
 Multi-book assets therefore have one CURR row and one HIST row in `asset_depreciation`. The `depr_book_id` column in `asset_groups` and `asset_depreciation` will always be one of these two values. Do not expect other book names.
 
-### `aattrans` — dc_flag mechanism (confirmed from real HoC data, June 2026)
+### `aattrans` — dc_flag: include BOTH values (corrected September 2026)
 
-`aattrans` stores every real transaction with `dc_flag = 1`, **and** mirrors each one with an equal-and-opposite year-end reset entry at `dc_flag = -1`. The reset entries are an internal AT module housekeeping mechanism — they are not real financial movements. Without `AND dc_flag = 1` in the WHERE clause, `SUM(amount)` nets to zero for every asset and every trans_type. **All run SQL files include `dc_flag = 1`.** The spec file `asset_balances.sql` documents this in assumptions but omitted it from the WHERE clause — the run files are correct.
+**`dc_flag = -1` rows are real postings and must be included.** In June 2026 they were read as year-end reset reversals of the `dc_flag = 1` rows, because `SUM(amount)` per trans_type came to zero once both were included, and every run file filtered to `dc_flag = 1`. That reading was wrong. Each posting has both sides in `aattrans`, on different accounts (cost `1xx00` against control `1xx05`, depreciation `1xx15` against the P&L charge `57000`, revaluation against reserve `70000`). Two sides of the same entry always sum to zero, which explains the June result without any reversals.
+
+Proven on `LB22JOHN` (September 2026): summing all `dc_flag` values reproduces Parliament's CURR NBV £352,000.00, HIST NBV £43,760.32 and reserve −£308,239.69 exactly. `dc_flag = 1` alone does not. `LB1PARLI` matched under the old filter only because its postings are all OS, and OS has no `dc_flag = -1` rows. The filter has been removed from `asset_balances_HOC_run.sql` / `asset_balances_HOL_run.sql`, so the HoC extract must be re-run. Under the old filter, NBV was understated for any asset with activity since 2013, `DQ-NBV-K03` (postings net to zero) failed by millions, and `DQ-NBV-K02`'s reserve was wrong.
+
+The row counts and amounts in the trans_type table below are `dc_flag = 1` only, so they describe one side of each posting.
 
 ### `aattrans` — trans_type codes confirmed from real data (June 2026)
 
@@ -830,9 +834,11 @@ This confirms the NF/NT, RF/RT, TF/TT pairs are internal reclassification/transf
 
 **OS is not zero-value.** The "all zero amount" figures in the table above came from our own extract summing every GL account for a trans_type together. OS postings hit a cost account and its contra/control account (and a depreciation account and its P&L contra), which are designed to net to zero. Split by `account`, OS rows carry the asset's full opening position at migration. Confirmed on asset `LB1PARLI` (1 Parliament Street): OS rows in accounts `14000` + `14015` = £14,817,600 (CURR) and £7,561,260 (HIST), exactly Parliament's own NBV at 31 Mar 2013.
 
-**VN count anomaly (HOC):** `dc_flag=1` has 487 VN rows but `dc_flag=-1` has only 477 — 10 revaluation transactions without a year-end reset mirror. These are likely recent postings not yet through a year-end close. No action required, but confirms the `dc_flag=1` filter is essential.
+**VN count anomaly (HOC):** `dc_flag=1` has 487 VN rows but `dc_flag=-1` has only 477. Originally read as 10 revaluations "without a year-end reset mirror"; given the corrected `dc_flag` reading above, it more likely means 10 revaluations whose two sides are split differently. Not investigated.
 
-### Amount sign convention — CONFIRMED (September 2026)
+### Amount sign convention — SUPERSEDED (September 2026)
+
+This analysis was done on `dc_flag = 1` rows only, aggregated by trans_type, and is no longer relevant. NBV now sums signed account-level amounts across both `dc_flag` values, so no sign is applied by trans_type. Kept for history only.
 
 Checked directly against real `asset_balances_HOC/HOL.csv` (the aggregated per-`(client, asset_id, depr_book_id, trans_type)` extract): the vast majority of `total_amount` values are positive across all trans_types, confirming **amounts are stored as absolute positive magnitudes, not pre-signed values**. Whenever an NBV formula is built, it should apply signs by trans_type category (positive for CA/PC/VN, negative for ND/ED/FD/SA) rather than trusting a sign already present in the source data — no double-negation risk.
 
@@ -861,12 +867,13 @@ Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold build
 **`aattrans` has a native `account` column** — confirmed by querying `LB1PARLI` directly. `asset_balances_HOC_run.sql` / `asset_balances_HOL_run.sql` now include `account` in the `SELECT` and `GROUP BY`, so `asset_balances` is one row per `(client, asset_id, depr_book_id, trans_type, account)`. `data_engine.py` needed no change — `account` is already in the global `string_cols` list.
 
 **Validation on real HOC data:**
-- `LB1PARLI`: OS rows alone reproduce Parliament's NBV at the 31 Mar 2013 migration date to the penny (CURR £14,817,600, HIST £7,561,260). Summing all trans_types on the same accounts gives the current NBV (~£53m) — the movement since 2013 is revaluation, since land and buildings are **revalued, not depreciated**. So NBV must always include every trans_type, not just OS.
+- `LB22JOHN`: with **all `dc_flag` values** included, CURR NBV £352,000.00 and HIST NBV £43,760.32 match Parliament exactly (`dc_flag = 1` alone does not; see the dc_flag section above).
+- `LB1PARLI`: OS rows alone reproduce Parliament's NBV at the 31 Mar 2013 migration date to the penny (CURR £14,817,600, HIST £7,561,260). OS has no `dc_flag = -1` rows, so this asset couldn't have exposed the `dc_flag` filter problem. Summing all trans_types on the same accounts gives the current NBV (~£53m) — the movement since 2013 is revaluation, since land and buildings are **revalued, not depreciated**. So NBV must always include every trans_type, not just OS.
 - `LB22JOHN` (22 John Islip): the revaluation reserve reconciles. Parliament's convention: **RR = Current value − Historical value** = £352,000.00 − £43,760.32 = £308,240, which is the total posted to account `70000`. `70000` holds it as a ledger credit (−£308,239.69), so the dashboard shows the reserve as `−SUM(70000)` (positive) and compares it to CURR − HIST. The per-period movements reconcile too (e.g. period 201200: 70000 −275,534.88 = HIST 140,465.12 − CURR 416,000), but our extract has no period column, so only the lifetime total is checked.
 - Coverage: 593 HOC assets have no account matching the pattern. All 593 have **zero** `aattrans` history (564 active + 29 not active), so none is a counter-example to the rule — they're the same no-history population `DQ-AB-X03` targets.
 - `bflag`/`res_bal`/`account_type` on `aglaccounts` do not cleanly separate NBV accounts from contra accounts. Don't look for a field-based rule — the account-number rule is the confirmed one.
 
-`asset_balances_HOC.csv` has been re-extracted with the `account` column on the Parliament laptop (September 2026).
+`asset_balances_HOC.csv` has been re-extracted with the `account` column on the Parliament laptop (September 2026). **It must be re-extracted again** without the `dc_flag = 1` filter (see the dc_flag section above).
 
 **Built (September 2026)** — see "NBV section of the Assets tab" below.
 
@@ -902,7 +909,7 @@ Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origi
 | `DQ-NBV-V01` | Validity / High | with an NBV account | CURR or HIST NBV < −£1 |
 | `DQ-NBV-K01` | Consistency / Medium | with an NBV account, CURR book, no real disposal | CURR NBV within £1 of zero — fully written down, still on the register |
 | `DQ-NBV-K02` | Consistency / High | CURR and HIST books | reserve (−SUM(70000)) differs from CURR − HIST by > £1 |
-| `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book — based on `LB1PARLI`, where they do; watch this one on real data |
+| `DQ-NBV-K03` | Consistency / Medium | assets with postings | all accounts don't net to zero in a book. Failed by millions on real data under the old `dc_flag = 1` filter, which dropped one side of most postings; should mostly pass once the extract includes both values |
 | `DQ-NBV-K04` | Consistency / Medium | with a real disposal | CURR NBV not cleared after disposal (may be a partial disposal) |
 
 **NBV checks never vanish for HoC.** Elsewhere, `run_dq_analysis` drops any check whose population is empty (`total == 0`), so it disappears from the grid entirely. For `asset_nbv` checks with house `HOC` it keeps the row instead (0 assessed, 0 flagged, Green) — found when `DQ-NBV-K04` vanished from the Consistency widget on real data after the zero-SA fix emptied its population. Scoped to NBV/HoC only, since other checks (e.g. HOC-only or Atamis existence checks) rely on empty rows being dropped.
