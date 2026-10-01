@@ -1209,7 +1209,8 @@ def run_dq_analysis(frames, tab=None):
                 # SQL already filters to status IS NULL OR status = '' (actual postings only)
                 h_df = df_table[df_table['house'] == house]
             elif table == 'asset_master' and check_id == 'DQ-AB-V02':
-                h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+                # Every non-closed asset, matching the balances extract (and the original V02)
+                h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             elif table == 'asset_nbv':
@@ -1559,7 +1560,7 @@ def get_check_columns():
         'DQ-AB-C03': ['trans_type'],
         'DQ-AB-C04': ['total_amount'],
         'DQ-AB-V01': ['trans_type'],
-        'DQ-AB-V02': ['Asset', 'Trans types', 'Balance rows (all £0)'],
+        'DQ-AB-V02': ['Asset', 'Status', 'Trans types', 'Non-zero rows (other trans types)'],
         'DQ-AB-V03': ['max_trans_date'],
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
@@ -1716,7 +1717,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     elif table == 'gl_journals':
         h_df = df_table[df_table['house'] == house]
     elif table == 'asset_master' and check_id == 'DQ-AB-V02':
-        h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
+        h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
     elif table == 'asset_nbv':
@@ -1792,14 +1793,14 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             per_asset = ab.groupby('asset_id').agg(
                 books=('depr_book_id', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
                 trans_types=('trans_type', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
-                zero_rows=('trans_type', 'size'),
+                nonzero_other=('total_amount', lambda s: int((pd.to_numeric(s, errors='coerce').abs() >= 0.005).sum())),
                 lines=('transaction_count', 'sum'),
             ).reset_index()
             failing = failing.merge(per_asset, on='asset_id', how='left')
         renames = {'asset_id': 'Asset', 'description': 'Description', 'asset_group': 'Group',
                    'status': 'Status', 'cap_date_from': 'Capitalisation date', 'org_amount': 'Original amount (master)',
-                   'books': 'Books', 'trans_types': 'Trans types', 'zero_rows': 'Balance rows (all £0)',
-                   'lines': 'Transaction lines'}
+                   'books': 'Books', 'trans_types': 'Trans types',
+                   'nonzero_other': 'Non-zero rows (other trans types)', 'lines': 'Transaction lines'}
         out = failing[[c for c in renames if c in failing.columns]].rename(columns=renames)
         if for_export:
             return out

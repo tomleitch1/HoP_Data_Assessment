@@ -425,9 +425,9 @@ def get_asset_checks():
         # that count each asset several times. One row per active asset now.
         ('DQ-AB-V02', 19, 'Asset Balances', 'Validity', 'High',
          'Asset never capitalised (capitalisation abandoned, no journal posted)',
-         'Every active asset must have been fully capitalised, with its journal posted to the GL. Capitalisation is a three step process: create the record, add the transaction details, then post the journal. An asset where every posting is zero stopped before the journal step and has no value, even if depreciation runs have since posted zero lines against it. It should be excluded from migration rather than carried across as an empty record.',
+         'Every asset on the register must have been fully capitalised, with its journal posted to the GL. Capitalisation is a three step process: create the record, add the transaction details, then post the journal. An asset whose capitalisation postings are all zero stopped before the journal step and was never valued. It should be excluded from migration rather than carried across as an empty record.',
          'Exclude from migration. Confirm with the asset team and close the record in Unit4.', 'asset_master', 'asset_balances',
-         'every asset_balances row for the asset = 0 (any trans_type, all accounts, both books)',
+         'every CA row for the asset = 0 (all accounts, both books); other trans_types ignored',
          lambda df, frames: df['asset_id'].isin(
              not_capitalised_asset_ids(frames, df['house'].iloc[0] if not df.empty else None))),
 

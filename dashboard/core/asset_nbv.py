@@ -97,22 +97,22 @@ def nbv_band(values):
 
 def not_capitalised_asset_ids(frames, house):
     """Assets whose capitalisation was abandoned before the journal was posted:
-    every row is £0, whatever the transaction type, on every account and book.
-    Confirmed by Parliament: step 1 creates the record, step 2 adds the
-    transaction details, step 3 posts the journal to the GL; these stopped
-    after step 2 errors, so nothing was ever valued. Depreciation runs still
-    post £0 ND lines against them, so the test can't require CA rows only.
-    A real capitalisation's rows also net to zero (cost vs control), so the
-    test is every row zero, not the total. Doesn't need the account rule,
-    so works for both houses."""
+    they have CA rows and every CA row is £0, on every account and book.
+    Other transaction types are ignored, matching the original row-level
+    DQ-AB-V02 that Parliament reviewed (58 assets, all confirmed as never
+    capitalised). Parliament's explanation: step 1 creates the record,
+    step 2 adds the transaction details, step 3 posts the journal to the GL;
+    these stopped after step 2 errors. Each CA row is tested, not the total,
+    because a real capitalisation's rows net to zero too (cost vs control).
+    Doesn't need the account rule, so works for both houses."""
     ab = frames.get('asset_balances', pd.DataFrame())
     if ab.empty or 'house' not in ab.columns or not house:
         return set()
-    h = ab[ab['house'] == house]
-    if h.empty:
+    ca = ab[(ab['house'] == house) & (ab['trans_type'] == 'CA')]
+    if ca.empty:
         return set()
-    amt = pd.to_numeric(h['total_amount'], errors='coerce')
-    all_zero = (amt.notna() & (amt.abs() < 0.005)).groupby(h['asset_id']).all()
+    amt = pd.to_numeric(ca['total_amount'], errors='coerce')
+    all_zero = (amt.notna() & (amt.abs() < 0.005)).groupby(ca['asset_id']).all()
     return set(all_zero.index[all_zero])
 
 
@@ -228,8 +228,12 @@ def build_asset_nbv(frames):
     assets['origin'] = np.where(assets['has_os'] & ~assets['has_ca'], 'Migrated (OS)',
                         np.where(assets['has_os'], 'Migrated + Unit4 additions', 'Capitalised in Unit4'))
     assets['nbv_band'] = nbv_band(assets['curr_nbv'])
-    # Reported by DQ-AB-V02 instead, and kept out of every NBV figure and check.
-    assets['not_capitalised'] = assets['asset_id'].isin(not_capitalised_asset_ids(frames, NBV_HOUSE))
+    # Reported by DQ-AB-V02 instead, and kept out of every NBV figure and check —
+    # but only if nothing of value sits on its cost or depreciation accounts, so
+    # a valued asset (e.g. a legacy OS asset) with a stray £0 CA line stays in.
+    no_value = assets[['curr_cost', 'curr_depreciation', 'hist_cost', 'hist_depreciation']] \
+        .fillna(0).abs().lt(0.005).all(axis=1)
+    assets['not_capitalised'] = assets['asset_id'].isin(not_capitalised_asset_ids(frames, NBV_HOUSE)) & no_value
     assets['asset_group'] = assets['asset_group'].fillna('(no group)')
     frames['asset_nbv'] = assets
 
