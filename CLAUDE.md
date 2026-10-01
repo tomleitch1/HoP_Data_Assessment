@@ -962,6 +962,7 @@ Removed from `asset_rules.py`, `data_engine.py` (column highlights, drill-down b
 
 - **`DQ-OS-C01`, `DQ-OS-K01`, `DQ-OS-K02`** (and helpers `_os_capitalised_asset_ids`, `_os_assets_with_real_depreciation`). Built on "OS carries £0, so the original cost may never have been captured". Disproven: the £0 came from the old extract netting cost against its control account. Split by account, OS carries the asset's full 2013 opening position. The helpers also ignored the account rule. The NBV checks cover the real question.
 - **`DQ-AB-X02`** "Balance for missing book" (balance row's `(asset_id, depr_book_id)` not in `asset_depreciation`). Removed per direct request after it flagged assets whose book visibly exists in the depreciation extract; the exact-match join on unstripped IDs was the likely cause, not investigated further.
+- **`DQ-AB-X01`** "Orphaned balance" and **`DQ-AM-R01`** "Transaction with no matching master record" (identical logic: balance `asset_id` not in `asset_master`). Removed per direct request: they flagged assets that are definitely in master. The balances extract inner-joins `aatasset`, so a genuine orphan can't occur in HoC anyway. (`DQ-AM-R03` was already gone; its leftover join-path banner was removed too.)
 - **`DQ-AF-X01`** "SA transaction on active asset". Counted any SA row in `asset_trans_flags`, including the zero-value SA rows found on real data, which aren't disposals. Overlaps `DQ-NBV-K04`, which uses the corrected disposal rule.
 
 ### DQ-AB-V02 rebuilt — capitalisation never completed (October 2026)

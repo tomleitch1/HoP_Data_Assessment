@@ -192,13 +192,6 @@ def get_asset_checks():
          )),
 
 
-        ('DQ-AM-R01', 19, 'Asset Master', 'Referential Integrity', 'Critical',
-         'Transaction with no matching master record',
-         'Finds balance transactions referencing an asset ID that does not exist in the asset master. orphaned financial data with no parent record.',
-         'Create master record.', 'asset_balances', 'asset_master', 
-         'asset_id NOT IN master',
-         lambda df, frames: ~df['asset_id'].isin(frames.get('asset_master', pd.DataFrame())['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
-
         ('DQ-AM-R02', 19, 'Asset Master', 'Referential Integrity', 'Critical',
          'Depreciation book with no matching master record',
          'Finds depreciation books referencing an asset ID that does not exist in the asset master. the book cannot be migrated without a parent asset.',
@@ -453,13 +446,6 @@ def get_asset_checks():
          'Depr exists, CA/OS/TC(HoL) missing',
          lambda df: df.index.isin(df.groupby(['house', 'asset_id', 'depr_book_id']).filter(lambda g: g['trans_type'].isin(['ND','ED','FD']).any() and not g['trans_type'].isin(['CA', 'OS'] + (['TC'] if (g['house'] == 'HOL').all() else [])).any()).index)),
 
-
-        ('DQ-AB-X01', 19, 'Asset Balances', 'Referential Integrity', 'Critical',
-         'Orphaned balance',
-         'Finds balance records referencing an asset ID with no matching master record. orphaned financial data.',
-         'Create master.', 'asset_balances', 'asset_master', 
-         'asset_id NOT IN master',
-         lambda df, frames: ~df['asset_id'].isin(frames.get('asset_master', pd.DataFrame())['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
         ('DQ-AB-X03', 19, 'Asset Balances', 'Referential Integrity', 'High',
          'Active asset with no balances',

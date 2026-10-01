@@ -750,18 +750,6 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
             html.Span("Asset Groups [Asset Group]", style={'color': '#1E40AF'}),
         ])
     
-    elif table_name == 'asset_balances' and check_id == 'DQ-AM-R01':
-        join_map = html.Div(style={
-            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
-            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
-            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
-        }, children=[
-            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
-            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
-            html.Span("➔", style={'color': '#CBD5E1'}),
-            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
-        ])
-    
     elif table_name == 'asset_depreciation' and check_id == 'DQ-AM-R02':
         join_map = html.Div(style={
             'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
@@ -784,18 +772,6 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
             html.Span("Asset Depreciation [Asset ID]", style={'color': '#991B1B'}),
             html.Span("➔", style={'color': '#CBD5E1'}),
             html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
-        ])
-
-    elif table_name == 'asset_balances' and check_id == 'DQ-AM-R03':
-        join_map = html.Div(style={
-            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
-            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
-            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
-        }, children=[
-            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
-            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
-            html.Span("➔", style={'color': '#CBD5E1'}),
-            html.Span("Asset Master [Status]", style={'color': '#1E40AF'}),
         ])
 
     elif table_name == 'asset_master' and check_id == 'DQ-AM-R04':
@@ -856,18 +832,6 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
             html.Span("Asset Depreciation [Asset ID / Book ID]", style={'color': '#991B1B'}),
             html.Span("➔", style={'color': '#CBD5E1'}),
             html.Span("Asset Balances [Asset ID / Book ID]", style={'color': '#1E40AF'}),
-        ])
-
-    elif table_name == 'asset_balances' and check_id == 'DQ-AB-X01':
-        join_map = html.Div(style={
-            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
-            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
-            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
-        }, children=[
-            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
-            html.Span("Asset Balances [Asset ID]", style={'color': '#991B1B'}),
-            html.Span("➔", style={'color': '#CBD5E1'}),
-            html.Span("Asset Master [Asset ID]", style={'color': '#1E40AF'}),
         ])
 
     elif table_name == 'asset_master' and check_id == 'DQ-AB-X03':
@@ -1073,7 +1037,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
                 source = "ASSET MASTER (BRIDGE)"
             elif check_id in ['DQ-AG-X01', 'DQ-AM-R05', 'DQ-AD-X02', 'DQ-AB-X03', 'DQ-AM-C06']:
                 source = "ASSET MASTER"
-            elif check_id in ['DQ-AD-K05', 'DQ-AD-X03', 'DQ-AF-X02','DQ-AM-R01', 'DQ-AM-R02', 'DQ-AM-R03', 'DQ-AM-C06','DQ-AD-X01', 'DQ-AB-X01']:
+            elif check_id in ['DQ-AD-K05', 'DQ-AD-X03', 'DQ-AF-X02', 'DQ-AM-R02', 'DQ-AM-C06','DQ-AD-X01']:
                 source = "ASSET MASTER (TARGET)"
             elif check_id.startswith('DQ-AM-') or check_id.startswith('DQ-AD-') or check_id.startswith('DQ-AB-') or check_id.startswith('DQ-AF-') or check_id.startswith('DQ-AG-'):
                 source = "ASSET MASTER"
@@ -1087,8 +1051,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
                 source = "ASSET GROUPS"
             name = "Group " + c.split('.', 1)[1].replace('_', ' ').title()
         elif 'ASSET_BALANCES.' in c:
-            if check_id in ['DQ-AM-R01', 'DQ-AM-R03', 'DQ-AB-X01',
-                            'DQ-AB-C01', 'DQ-AB-C02', 'DQ-AB-C03', 'DQ-AB-C04',
+            if check_id in ['DQ-AB-C01', 'DQ-AB-C02', 'DQ-AB-C03', 'DQ-AB-C04',
                             'DQ-AB-V01', 'DQ-AB-V02', 'DQ-AB-V03',
                             'DQ-AB-K01', 'DQ-AB-K02', 'DQ-AB-K03']:
                 source = "ASSET BALANCES"
