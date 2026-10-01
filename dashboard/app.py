@@ -906,17 +906,6 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
             html.Span("GL Opening Balances [Fixed Assets]", style={'color': '#1E40AF'}),
         ])
 
-    elif table_name == 'asset_trans_flags' and check_id == 'DQ-AF-X01':
-        join_map = html.Div(style={
-            'background': '#F8FAFC', 'padding': '12px 20px', 'borderRadius': '8px',
-            'border': '1px solid #E2E8F0', 'marginBottom': '20px', 'display': 'flex',
-            'alignItems': 'center', 'gap': '15px', 'fontSize': '12px', 'fontWeight': '600'
-        }, children=[
-            html.Div("JOIN PATH:", style={'color': '#64748B', 'fontSize': '10px', 'fontWeight': '800'}),
-            html.Span("Asset Trans Flags [Asset ID]", style={'color': '#991B1B'}),
-            html.Span("➔", style={'color': '#CBD5E1'}),
-            html.Span("Asset Master [Status]", style={'color': '#1E40AF'}),
-        ])
 
     elif table_name == 'asset_trans_flags' and check_id == 'DQ-AF-X02':
         join_map = html.Div(style={
@@ -1096,7 +1085,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
                 source = "ASSET MASTER (BRIDGE)"
             elif check_id in ['DQ-AG-X01', 'DQ-AM-R05', 'DQ-AD-X02', 'DQ-AB-X03', 'DQ-AM-C06']:
                 source = "ASSET MASTER"
-            elif check_id in ['DQ-AD-K05', 'DQ-AD-X03', 'DQ-AF-X01', 'DQ-AF-X02','DQ-AM-R01', 'DQ-AM-R02', 'DQ-AM-R03', 'DQ-AM-C06','DQ-AD-X01', 'DQ-AB-X01']:
+            elif check_id in ['DQ-AD-K05', 'DQ-AD-X03', 'DQ-AF-X02','DQ-AM-R01', 'DQ-AM-R02', 'DQ-AM-R03', 'DQ-AM-C06','DQ-AD-X01', 'DQ-AB-X01']:
                 source = "ASSET MASTER (TARGET)"
             elif check_id.startswith('DQ-AM-') or check_id.startswith('DQ-AD-') or check_id.startswith('DQ-AB-') or check_id.startswith('DQ-AF-') or check_id.startswith('DQ-AG-'):
                 source = "ASSET MASTER"

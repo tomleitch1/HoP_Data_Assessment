@@ -419,14 +419,6 @@ def generate_house_data(house: str, clients: list, n_baseline: int):
     add_case('DQ-AB-K03', 'balances', mod_ab_k03)
     
     # Trans Flags Edge Cases
-    add_case('DQ-AF-X01', 'trans_flags', lambda tlist: tlist + [{
-        'client': tlist[0]['client'], 'asset_id': tlist[0]['asset_id'],
-        'depr_book_id': tlist[0]['depr_book_id'], 'trans_type': 'SA',
-        'trans_date': TODAY.isoformat(), 'at_trans_date': TODAY.isoformat(),
-        'fiscal_year': TODAY.year, 'amount': 1000, 'dc_flag': -1,
-        'row_type': 'INDIVIDUAL', '_edge_case': 'DQ-AF-X01'
-    }])
-    
     def mod_af_x02(tlist):
         for t in tlist:
             if t['trans_type'] == 'ND':
