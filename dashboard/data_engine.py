@@ -496,7 +496,13 @@ def _apply_asset_client_scope(frames: dict) -> None:
         keep = pd.Series(True, index=df.index)
         for house, clients in allowed.items():
             keep &= (df['house'] != house) | client.isin(clients)
-        frames[table] = df[keep].reset_index(drop=True)
+        df = df[keep].reset_index(drop=True)
+        # SQL Server ignores trailing spaces when joining, pandas doesn't, so
+        # trim the join keys or the same asset fails to match across extracts
+        for key in ('asset_id', 'depr_book_id'):
+            if key in df.columns:
+                df[key] = df[key].where(df[key].isna(), df[key].astype(str).str.strip())
+        frames[table] = df
 
 
 def _derive_budget_houses(frames: dict) -> None:
