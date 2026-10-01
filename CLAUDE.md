@@ -961,6 +961,7 @@ Removed as no longer applicable: `DQ-AD-V01`, `DQ-AG-V01` (valid method list was
 Removed from `asset_rules.py`, `data_engine.py` (column highlights, drill-down blocks, `_engine_sig`), `app.py` (join-path banner) and the dummy generator. Listed here so earlier tracker comments on them can be reconciled:
 
 - **`DQ-OS-C01`, `DQ-OS-K01`, `DQ-OS-K02`** (and helpers `_os_capitalised_asset_ids`, `_os_assets_with_real_depreciation`). Built on "OS carries £0, so the original cost may never have been captured". Disproven: the £0 came from the old extract netting cost against its control account. Split by account, OS carries the asset's full 2013 opening position. The helpers also ignored the account rule. The NBV checks cover the real question.
+- **`DQ-AB-X02`** "Balance for missing book" (balance row's `(asset_id, depr_book_id)` not in `asset_depreciation`). Removed per direct request after it flagged assets whose book visibly exists in the depreciation extract; the exact-match join on unstripped IDs was the likely cause, not investigated further.
 - **`DQ-AF-X01`** "SA transaction on active asset". Counted any SA row in `asset_trans_flags`, including the zero-value SA rows found on real data, which aren't disposals. Overlaps `DQ-NBV-K04`, which uses the corrected disposal rule.
 
 ### DQ-AB-V02 rebuilt — capitalisation never completed (October 2026)

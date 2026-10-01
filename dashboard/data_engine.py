@@ -1565,7 +1565,6 @@ def get_check_columns():
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
         'DQ-AB-X01': ['asset_id'],
-        'DQ-AB-X02': ['asset_id', 'depr_book_id'],
         'DQ-AB-X03': ['asset_id', 'status'],
 
         # Asset NBV (asset_nbv, HoC only)
@@ -2135,19 +2134,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             master_link = master_link.rename(columns={'asset_id': 'ASSET_MASTER.asset_id'})
             failing = failing.merge(master_link, left_on=['house', 'ASSET_BALANCES.asset_id'], right_on=['house', 'ASSET_MASTER.asset_id'], how='left')
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_MASTER.asset_id']
-        return failing[[c for c in cols if c in failing.columns]]
- 
-    if table == 'asset_balances' and check_id == 'DQ-AB-X02':
-        failing = failing.rename(columns={'asset_id': 'ASSET_BALANCES.asset_id', 'depr_book_id': 'ASSET_BALANCES.depr_book_id'})
-        if 'asset_depreciation' in frames:
-            depr_link = frames['asset_depreciation'][['house', 'asset_id', 'depr_book_id']].copy()
-            depr_link = depr_link.drop_duplicates(subset=['house', 'asset_id', 'depr_book_id'])
-            depr_link = depr_link.rename(columns={'asset_id': 'ASSET_DEPRECIATION.asset_id', 'depr_book_id': 'ASSET_DEPRECIATION.depr_book_id'})
-            failing = failing.merge(depr_link,
-                left_on=['house', 'ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id'],
-                right_on=['house', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id'],
-                how='left')
-        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.depr_book_id', 'ASSET_DEPRECIATION.asset_id', 'ASSET_DEPRECIATION.depr_book_id']
         return failing[[c for c in cols if c in failing.columns]]
  
     if table == 'asset_master' and check_id == 'DQ-AB-X03':

@@ -461,13 +461,6 @@ def get_asset_checks():
          'asset_id NOT IN master',
          lambda df, frames: ~df['asset_id'].isin(frames.get('asset_master', pd.DataFrame())['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
 
-        ('DQ-AB-X02', 19, 'Asset Balances', 'Referential Integrity', 'Critical',
-         'Balance for missing book',
-         'Finds balance records referencing a depreciation book that does not exist. the balance cannot be attributed to a valid book.',
-         'Create depr book.', 'asset_balances', 'asset_depreciation', 
-         'key NOT IN depr',
-         lambda df, frames: ~df.set_index(['house', 'asset_id', 'depr_book_id']).index.isin(frames.get('asset_depreciation', pd.DataFrame()).set_index(['house', 'asset_id', 'depr_book_id']).index if 'asset_depreciation' in frames else []),),
-
         ('DQ-AB-X03', 19, 'Asset Balances', 'Referential Integrity', 'High',
          'Active asset with no balances',
          'Identifies active assets with no balance transactions. the asset has never been capitalised and has no financial history.',
