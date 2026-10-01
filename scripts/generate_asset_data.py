@@ -389,7 +389,10 @@ def generate_house_data(house: str, clients: list, n_baseline: int):
     add_case('DQ-AB-C03', 'balances', {'trans_type': None})
     add_case('DQ-AB-C04', 'balances', {'total_amount': None})
     add_case('DQ-AB-V01', 'balances', {'trans_type': 'XX'})
-    add_case('DQ-AB-V02', 'balances', {'trans_type': 'CA', 'total_amount': 0.0})
+    # Capitalisation abandoned before the journal: CA rows only, all £0
+    add_case('DQ-AB-V02', 'balances', lambda blist: [
+        dict(b, total_amount=0.0, total_cur_amount=0.0, _edge_case='DQ-AB-V02')
+        for b in blist if b['trans_type'] == 'CA'])
     add_case('DQ-AB-V03', 'balances', {'max_trans_date': '2099-01-01'})
     
     def mod_ab_k01(blist):

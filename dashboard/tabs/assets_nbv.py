@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from dash import html, dcc, dash_table
 
 from dashboard.core.asset_nbv import (
-    ACCOUNT_CLASS_LABELS, COLUMN_LABELS, NBV_BANDS, NBV_HOUSE, TOLERANCE, asset_account_detail,
+    ACCOUNT_CLASS_LABELS, COLUMN_LABELS, NBV_BANDS, NBV_HOUSE, TOLERANCE, active, asset_account_detail,
 )
 from dashboard.core.theme import UI, HOUSE_HEX, DISPLAY_FONT
 from dashboard.shared.dimensions import render_dimension_scorecard, render_dimension_grid
@@ -52,10 +52,18 @@ def gbp(v, short=False):
 
 
 def active_assets(frames):
+    """Active, capitalised assets. Abandoned capitalisations (DQ-AB-V02) are excluded."""
     nbv = frames.get('asset_nbv', pd.DataFrame())
     if nbv.empty:
         return nbv
-    return nbv[nbv['status'] == 'N']
+    return nbv[active(nbv)]
+
+
+def not_capitalised_count(frames):
+    nbv = frames.get('asset_nbv', pd.DataFrame())
+    if nbv.empty:
+        return 0
+    return int(((nbv['status'] == 'N') & nbv['not_capitalised']).sum())
 
 
 def get_nbv_records(frames, kind, key):
@@ -149,7 +157,8 @@ def _rule_banner():
             html.Div('How NBV is calculated', style={'fontSize': '12px', 'fontWeight': '700', 'color': '#7a4a00'}),
             html.Div('For each asset and depreciation book (CURR and HIST), add up every posting of any transaction '
                      'type to accounts that start with 1 and end in 00 or 15. Rule confirmed by the asset team and '
-                     'checked against 1 Parliament Street and 22 John Islip. Figures cover active assets (status N).',
+                     'checked against 1 Parliament Street and 22 John Islip. Figures cover active assets (status N), '
+                     'excluding capitalisations abandoned before the journal was posted.',
                      style={'fontSize': '12px', 'color': UI['text_secondary'], 'lineHeight': '1.6', 'marginTop': '4px'}),
         ]),
         html.Div(style={'display': 'flex', 'flexDirection': 'column', 'gap': '6px'}, children=[
@@ -161,7 +170,7 @@ def _rule_banner():
     ])
 
 
-def _kpis(a):
+def _kpis(a, excluded):
     valued = a[a['has_nbv_account']]
     curr = valued['curr_nbv'].sum()
     hist = valued['hist_nbv'].sum()
@@ -174,7 +183,8 @@ def _kpis(a):
         _kpi('NBV — HIST book', gbp(hist, short=True), f'Cost {gbp(valued["hist_cost"].sum(), True)} less '
              f'depreciation {gbp(-valued["hist_depreciation"].sum(), True)}', _AMBER),
         _kpi('Revaluation reserve', gbp(reserve, short=True), f'CURR − HIST = {gbp(curr - hist, True)}', '#0891b2'),
-        _kpi('Assets valued', f'{len(valued):,}', f'of {len(a):,} active assets with postings', _GREEN),
+        _kpi('Assets valued', f'{len(valued):,}', f'of {len(a):,} active assets with postings. '
+             f'{excluded:,} never capitalised, excluded (DQ-AB-V02)', _GREEN),
         _kpi('Nil NBV', f'{nil:,}', 'Active, fully written down (CURR)', _AMBER if nil else _GREEN),
         _kpi('Negative NBV', f'{neg:,}', 'Depreciation exceeds cost', _NEG if neg else _GREEN),
     ])
@@ -381,7 +391,7 @@ def render_nbv_section(frames, nbv_dq):
     return html.Div(style={'marginBottom': '28px'}, children=[
         _header(),
         _rule_banner(),
-        _kpis(a),
+        _kpis(a, not_capitalised_count(frames)),
         html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginBottom': '16px'},
                  children=[_group_chart(a), _band_chart(a)]),
         html.Div(style={'marginBottom': '16px'}, children=[_origin_tiles(a)]),

@@ -13,6 +13,7 @@ from dashboard.core.rules.ar_rules import get_ar_checks
 from dashboard.core.rules.asset_rules import get_asset_checks
 from dashboard.core.asset_nbv import (
     build_asset_nbv, nbv_population, NBV_EVIDENCE_COLS, NBV_HOUSE, COLUMN_LABELS as NBV_COLUMN_LABELS,
+    not_capitalised_asset_ids, active,
 )
 from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
@@ -675,6 +676,8 @@ def _engine_sig() -> str:
                 + _inspect.getsource(_atamis_filter_open_only)
                 + _inspect.getsource(_atamis_open_contract_refs)
                 + _inspect.getsource(build_asset_nbv)
+                + _inspect.getsource(not_capitalised_asset_ids)
+                + _inspect.getsource(active)
                 + _inspect.getsource(nbv_population)
                 + _inspect.getsource(_apply_asset_client_scope)
                 + repr((AssetConfig.HOC_CLIENTS, AssetConfig.HOL_CLIENTS, AssetConfig.TABLES))
@@ -1205,6 +1208,8 @@ def run_dq_analysis(frames, tab=None):
             elif table == 'gl_journals':
                 # SQL already filters to status IS NULL OR status = '' (actual postings only)
                 h_df = df_table[df_table['house'] == house]
+            elif table == 'asset_master' and check_id == 'DQ-AB-V02':
+                h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
             elif table == 'asset_nbv':
@@ -1554,7 +1559,7 @@ def get_check_columns():
         'DQ-AB-C03': ['trans_type'],
         'DQ-AB-C04': ['total_amount'],
         'DQ-AB-V01': ['trans_type'],
-        'DQ-AB-V02': ['total_amount', 'trans_type'],
+        'DQ-AB-V02': ['Asset', 'Status', 'CA balance rows (all £0)'],
         'DQ-AB-V03': ['max_trans_date'],
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
@@ -1710,6 +1715,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table == 'gl_journals':
         h_df = df_table[df_table['house'] == house]
+    elif table == 'asset_master' and check_id == 'DQ-AB-V02':
+        h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
     elif table == 'asset_nbv':
@@ -1777,6 +1784,24 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         if for_export:
             return out.rename(columns=NBV_COLUMN_LABELS)
         return out.rename(columns={c: f'ASSET_NBV.{NBV_COLUMN_LABELS.get(c, c)}' for c in cols})
+
+    if table == 'asset_master' and check_id == 'DQ-AB-V02':
+        ab = frames.get('asset_balances', pd.DataFrame())
+        ab = ab[(ab['house'] == house) & ab['asset_id'].isin(failing['asset_id'])] if not ab.empty else ab
+        if not ab.empty:
+            per_asset = ab.groupby('asset_id').agg(
+                books=('depr_book_id', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
+                ca_rows=('trans_type', 'size'),
+                ca_lines=('transaction_count', 'sum'),
+            ).reset_index()
+            failing = failing.merge(per_asset, on='asset_id', how='left')
+        renames = {'asset_id': 'Asset', 'description': 'Description', 'asset_group': 'Group',
+                   'status': 'Status', 'cap_date_from': 'Capitalisation date', 'org_amount': 'Original amount (master)',
+                   'books': 'Books', 'ca_rows': 'CA balance rows (all £0)', 'ca_lines': 'CA transaction lines'}
+        out = failing[[c for c in renames if c in failing.columns]].rename(columns=renames)
+        if for_export:
+            return out
+        return out.rename(columns={c: f'ASSET_MASTER.{c}' for c in out.columns})
 
     if for_export and check_id not in _PO_JOIN_EXPORT_CHECKS:
         return failing
@@ -2517,14 +2542,6 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type']
         return failing[[c for c in cols if c in failing.columns]]
 
-    if table == 'asset_balances' and check_id == 'DQ-AB-V02':
-        failing = failing.rename(columns={
-            'asset_id':     'ASSET_BALANCES.asset_id',
-            'trans_type':   'ASSET_BALANCES.trans_type',
-            'total_amount': 'ASSET_BALANCES.total_amount',
-        })
-        cols = ['ASSET_BALANCES.asset_id', 'ASSET_BALANCES.trans_type', 'ASSET_BALANCES.total_amount']
-        return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_balances' and check_id == 'DQ-AB-V03':
         failing = failing.rename(columns={

@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import date
 
+from dashboard.core.asset_nbv import not_capitalised_asset_ids
+
 
 def get_asset_checks():
     """Returns a list of Asset DQ check definitions."""
@@ -418,12 +420,16 @@ def get_asset_checks():
          lambda df: df['total_amount'].isna()),
 
 
+        # Rebuilt October 2026, keeping the ID for tracker continuity. Was a
+        # row-level "CA total_amount = 0" test; the account-level extract made
+        # that count each asset several times. One row per active asset now.
         ('DQ-AB-V02', 19, 'Asset Balances', 'Validity', 'High',
-         'total_amount = 0 for CA',
-         'Finds capitalisation (CA) records with a zero amount. a zero-cost capitalisation adds nothing to the asset net book value.',
-         'Review amount.', 'asset_balances', None, 
-         'trans_type=CA AND total_amount=0',
-         lambda df: (df['trans_type'] == 'CA') & (pd.to_numeric(df['total_amount'], errors='coerce').fillna(0) == 0)),
+         'Asset never capitalised (capitalisation abandoned, no journal posted)',
+         'Every active asset must have been fully capitalised, with its journal posted to the GL. Capitalisation is a three step process: create the record, add the transaction details, then post the journal. An asset whose only transactions are capitalisation postings of zero stopped before the journal step and has no value. It should be excluded from migration rather than carried across as an empty record.',
+         'Exclude from migration. Confirm with the asset team and close the record in Unit4.', 'asset_master', 'asset_balances',
+         "asset's only trans_type is CA AND every CA row amount = 0 (all accounts, both books)",
+         lambda df, frames: df['asset_id'].isin(
+             not_capitalised_asset_ids(frames, df['house'].iloc[0] if not df.empty else None))),
 
         ('DQ-AB-V03', 19, 'Asset Balances', 'Timeliness', 'Medium',
          'max_trans_date in future',

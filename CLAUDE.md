@@ -963,8 +963,15 @@ Removed from `asset_rules.py`, `data_engine.py` (column highlights, drill-down b
 - **`DQ-OS-C01`, `DQ-OS-K01`, `DQ-OS-K02`** (and helpers `_os_capitalised_asset_ids`, `_os_assets_with_real_depreciation`). Built on "OS carries £0, so the original cost may never have been captured". Disproven: the £0 came from the old extract netting cost against its control account. Split by account, OS carries the asset's full 2013 opening position. The helpers also ignored the account rule. The NBV checks cover the real question.
 - **`DQ-AF-X01`** "SA transaction on active asset". Counted any SA row in `asset_trans_flags`, including the zero-value SA rows found on real data, which aren't disposals. Overlaps `DQ-NBV-K04`, which uses the corrected disposal rule.
 
+### DQ-AB-V02 rebuilt — capitalisation never completed (October 2026)
+
+Earlier tracker comment from Parliament on the old `V02` (58 HoC assets): capitalisation in Unit4 is three steps. Step 1 creates a blank asset record, step 2 adds the transaction details, step 3 posts the journal to the GL. These assets were abandoned after errors in step 2, so no journal was posted, the amounts are £0, and they **can be excluded from migration**.
+
+The old row-level test (`trans_type = CA AND total_amount = 0`) counted each asset several times once the extract became account-level. Rebuilt with the same ID, one row per active asset (`asset_master`, status `N`, both houses, joined to `asset_balances`): an asset fails if **its only transaction type is CA and every CA row is £0**, on every account and in both books. It's not "the total is zero", because a real capitalisation also nets to zero (cost against control). Logic lives in `not_capitalised_asset_ids()` in `core/asset_nbv.py`, hashed into `_engine_sig()`. Drill-down and export show asset, description, group, status, capitalisation date, the master's original amount, books, and the count of £0 CA rows.
+
+These assets are flagged `not_capitalised` in `asset_nbv` and excluded from every NBV figure and every `DQ-NBV-*` population (`active()` in `asset_nbv.py`), so they're reported once, here, rather than also showing up as "zero NBV" or "no NBV account". The NBV headline card shows how many were excluded. Assets abandoned at **step 1** have no `aattrans` rows at all, and are caught separately by `DQ-AB-X03`.
+
 **Asset check review (October 2026)** — still to decide, kept for now:
-- `DQ-AB-V02` (total_amount = 0 for CA): now runs per account with both `dc_flag` sides, so its meaning has shifted. It largely duplicates `DQ-AF-X03`.
 - `DQ-AB-K02` / `DQ-AB-K03` (disposal / depreciation without capitalisation): look for a `CA`/`OS` row, so assets that arrived by transfer, regroup or category change (`TF`/`TT`, `RF`/`RT`, `NF`/`NT`) will be flagged despite having a value. An NBV-based replacement would be "depreciation posted but nothing in the cost/valuation account".
 - `DQ-AB-C01`–`C04`, `V03`, `X01`, `X02`, `DQ-AM-R01` count rows in `asset_balances`, which is now one row per account with both sides of each posting, so counts rise without any change in data quality.
 - Every asset check's population is now `CA` only, so counts commented on before CM was removed won't reconcile.

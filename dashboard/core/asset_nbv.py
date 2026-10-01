@@ -95,6 +95,26 @@ def nbv_band(values):
     return np.select(conds, NBV_BANDS[:-1], default=NBV_BANDS[-1])
 
 
+def not_capitalised_asset_ids(frames, house):
+    """Assets whose capitalisation was abandoned before the journal was posted:
+    the only transaction type is CA and every row is £0, on every account and
+    book. Confirmed by Parliament: step 1 creates the record, step 2 adds the
+    transaction details, step 3 posts the journal to the GL; these stopped
+    after step 2 errors, so nothing was ever valued. A real capitalisation's
+    rows also net to zero (cost vs control), so the test is every row zero,
+    not the total. Doesn't need the account rule, so works for both houses."""
+    ab = frames.get('asset_balances', pd.DataFrame())
+    if ab.empty or 'house' not in ab.columns or not house:
+        return set()
+    h = ab[ab['house'] == house]
+    if h.empty:
+        return set()
+    amt = pd.to_numeric(h['total_amount'], errors='coerce')
+    flags = h.assign(_ca=h['trans_type'] == 'CA', _zero=amt.notna() & (amt.abs() < 0.005)) \
+             .groupby('asset_id').agg(only_ca=('_ca', 'all'), all_zero=('_zero', 'all'))
+    return set(flags.index[flags['only_ca'] & flags['all_zero']])
+
+
 def account_rows(frames, house=NBV_HOUSE):
     """HoC asset_balances rows with a normalised account and its NBV class."""
     ab = frames.get('asset_balances', pd.DataFrame())
@@ -207,12 +227,15 @@ def build_asset_nbv(frames):
     assets['origin'] = np.where(assets['has_os'] & ~assets['has_ca'], 'Migrated (OS)',
                         np.where(assets['has_os'], 'Migrated + Unit4 additions', 'Capitalised in Unit4'))
     assets['nbv_band'] = nbv_band(assets['curr_nbv'])
+    # Reported by DQ-AB-V02 instead, and kept out of every NBV figure and check.
+    assets['not_capitalised'] = assets['asset_id'].isin(not_capitalised_asset_ids(frames, NBV_HOUSE))
     assets['asset_group'] = assets['asset_group'].fillna('(no group)')
     frames['asset_nbv'] = assets
 
 
 def active(df):
-    return df['status'] == 'N'
+    """Active assets that were actually capitalised — the NBV population."""
+    return (df['status'] == 'N') & ~df['not_capitalised'].astype(bool)
 
 
 def nbv_population(df, check_id):
