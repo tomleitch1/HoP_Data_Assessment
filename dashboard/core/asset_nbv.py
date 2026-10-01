@@ -97,12 +97,14 @@ def nbv_band(values):
 
 def not_capitalised_asset_ids(frames, house):
     """Assets whose capitalisation was abandoned before the journal was posted:
-    the only transaction type is CA and every row is £0, on every account and
-    book. Confirmed by Parliament: step 1 creates the record, step 2 adds the
+    every row is £0, whatever the transaction type, on every account and book.
+    Confirmed by Parliament: step 1 creates the record, step 2 adds the
     transaction details, step 3 posts the journal to the GL; these stopped
-    after step 2 errors, so nothing was ever valued. A real capitalisation's
-    rows also net to zero (cost vs control), so the test is every row zero,
-    not the total. Doesn't need the account rule, so works for both houses."""
+    after step 2 errors, so nothing was ever valued. Depreciation runs still
+    post £0 ND lines against them, so the test can't require CA rows only.
+    A real capitalisation's rows also net to zero (cost vs control), so the
+    test is every row zero, not the total. Doesn't need the account rule,
+    so works for both houses."""
     ab = frames.get('asset_balances', pd.DataFrame())
     if ab.empty or 'house' not in ab.columns or not house:
         return set()
@@ -110,9 +112,8 @@ def not_capitalised_asset_ids(frames, house):
     if h.empty:
         return set()
     amt = pd.to_numeric(h['total_amount'], errors='coerce')
-    flags = h.assign(_ca=h['trans_type'] == 'CA', _zero=amt.notna() & (amt.abs() < 0.005)) \
-             .groupby('asset_id').agg(only_ca=('_ca', 'all'), all_zero=('_zero', 'all'))
-    return set(flags.index[flags['only_ca'] & flags['all_zero']])
+    all_zero = (amt.notna() & (amt.abs() < 0.005)).groupby(h['asset_id']).all()
+    return set(all_zero.index[all_zero])
 
 
 def account_rows(frames, house=NBV_HOUSE):

@@ -1559,7 +1559,7 @@ def get_check_columns():
         'DQ-AB-C03': ['trans_type'],
         'DQ-AB-C04': ['total_amount'],
         'DQ-AB-V01': ['trans_type'],
-        'DQ-AB-V02': ['Asset', 'Status', 'CA balance rows (all £0)'],
+        'DQ-AB-V02': ['Asset', 'Trans types', 'Balance rows (all £0)'],
         'DQ-AB-V03': ['max_trans_date'],
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
@@ -1791,13 +1791,15 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         if not ab.empty:
             per_asset = ab.groupby('asset_id').agg(
                 books=('depr_book_id', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
-                ca_rows=('trans_type', 'size'),
-                ca_lines=('transaction_count', 'sum'),
+                trans_types=('trans_type', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
+                zero_rows=('trans_type', 'size'),
+                lines=('transaction_count', 'sum'),
             ).reset_index()
             failing = failing.merge(per_asset, on='asset_id', how='left')
         renames = {'asset_id': 'Asset', 'description': 'Description', 'asset_group': 'Group',
                    'status': 'Status', 'cap_date_from': 'Capitalisation date', 'org_amount': 'Original amount (master)',
-                   'books': 'Books', 'ca_rows': 'CA balance rows (all £0)', 'ca_lines': 'CA transaction lines'}
+                   'books': 'Books', 'trans_types': 'Trans types', 'zero_rows': 'Balance rows (all £0)',
+                   'lines': 'Transaction lines'}
         out = failing[[c for c in renames if c in failing.columns]].rename(columns=renames)
         if for_export:
             return out
