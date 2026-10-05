@@ -176,7 +176,6 @@ def _kpis(a, excluded):
     hist = valued['hist_nbv'].sum()
     reserve = valued['reval_reserve'].sum()
     nil = int((valued['curr_nbv'].abs() < TOLERANCE).sum())
-    neg = int(((valued['curr_nbv'] <= -TOLERANCE) | (valued['hist_nbv'] <= -TOLERANCE)).sum())
     return html.Div(style={'display': 'flex', 'gap': '12px', 'flexWrap': 'wrap', 'marginBottom': '16px'}, children=[
         _kpi('NBV — CURR book', gbp(curr, short=True), f'Cost / valuation {gbp(valued["curr_cost"].sum(), True)} less '
              f'depreciation {gbp(-valued["curr_depreciation"].sum(), True)}'),
@@ -186,28 +185,7 @@ def _kpis(a, excluded):
         _kpi('Assets valued', f'{len(valued):,}', f'of {len(a):,} active assets with postings. '
              f'{excluded:,} never capitalised, excluded (DQ-AB-V02)', _GREEN),
         _kpi('Nil NBV', f'{nil:,}', 'Active, fully written down (CURR)', _AMBER if nil else _GREEN),
-        _kpi('Negative NBV', f'{neg:,}', 'Depreciation exceeds cost', _NEG if neg else _GREEN),
     ])
-
-
-def _group_chart(a):
-    g = (a[a['has_nbv_account']].groupby('asset_group')
-         .agg(curr=('curr_nbv', 'sum'), hist=('hist_nbv', 'sum'), n=('asset_id', 'count'))
-         .sort_values('curr'))
-    fig = go.Figure()
-    for col, name, colour in (('hist', 'HIST', _HIST), ('curr', 'CURR', _CURR)):
-        fig.add_trace(go.Bar(
-            y=g.index, x=g[col], name=name, orientation='h', marker_color=colour,
-            customdata=g.index, text=[gbp(v, True) for v in g[col]], textposition='outside',
-            hovertemplate='<b>%{y}</b><br>' + name + ' NBV: %{text}<br>Click to see the assets<extra></extra>',
-        ))
-    fig.update_layout(**CHART_LAYOUT)
-    fig.update_layout(height=max(260, 46 * len(g) + 60), barmode='group', margin=dict(t=10, b=30, l=10, r=70),
-                      xaxis=dict(showgrid=True, gridcolor='#f1ede4', tickprefix='£'),
-                      legend=dict(orientation='h', y=1.08, x=1, xanchor='right'))
-    return _panel('NBV by asset group', 'CURR against HIST book. Click a bar to see the assets behind it.', [
-        dcc.Graph(id={'type': 'nbv-chart', 'index': 'group'}, figure=fig, config={'displayModeBar': False}),
-    ], style={'flex': '1', 'minWidth': '420px'})
 
 
 def _band_chart(a):
@@ -252,131 +230,6 @@ def _origin_tiles(a):
     ])
 
 
-def _top_assets(a):
-    top = a[a['has_nbv_account']].sort_values('curr_nbv', ascending=False).head(15)
-    return _panel('Top 15 assets by CURR NBV', 'Use the inspector below to see how any asset\'s NBV is built up.', [
-        records_table(top[[c for c, _ in RECORD_COLUMNS if c in top.columns]], page_size=15),
-    ])
-
-
-# ── Asset inspector ───────────────────────────────────────────────────────────
-
-def asset_search_options(frames, search=None, keep=None, limit=50):
-    a = active_assets(frames)
-    if a.empty:
-        return []
-    a = a.sort_values('curr_nbv', ascending=False)
-    if search:
-        s = str(search).lower()
-        hit = a['asset_id'].astype(str).str.lower().str.contains(s, regex=False) | \
-              a['description'].astype(str).str.lower().str.contains(s, regex=False)
-        a = a[hit]
-    opts = [{'label': f'{r.asset_id} — {r.description if pd.notna(r.description) else ""} ({gbp(r.curr_nbv, True)})',
-             'value': r.asset_id} for r in a.head(limit).itertuples()]
-    if keep and keep not in {o['value'] for o in opts}:
-        opts.insert(0, {'label': str(keep), 'value': keep})
-    return opts
-
-
-def _book_pivot(rows, book):
-    b = rows[rows['depr_book_id'] == book]
-    if b.empty:
-        return html.Div(f'No {book} book postings for this asset.', style={'fontSize': '12px', 'color': UI['text_secondary']})
-    types = sorted(b['trans_type'].dropna().astype(str).unique())
-    p = b.pivot_table(index=['account', 'account_class'], columns='trans_type', values='total_amount',
-                      aggfunc='sum', fill_value=0).reindex(columns=types, fill_value=0)
-    p['Total'] = p.sum(axis=1)
-    p = p.reset_index()
-    order = {'cost': 0, 'depreciation': 1, 'reserve': 2, 'other': 3}
-    p = p.sort_values(['account_class', 'account'], key=lambda s: s.map(order) if s.name == 'account_class' else s)
-    names = rows.drop_duplicates('account').set_index('account')['account_description'].to_dict()
-    p['Account'] = [f'{acc} {names.get(acc) or ""}'.strip() for acc in p['account']]
-    p['Class'] = p['account_class'].map(ACCOUNT_CLASS_LABELS)
-    nbv = p.loc[p['account_class'].isin(['cost', 'depreciation']), 'Total'].sum()
-    footer = {'Account': 'NBV (cost + accumulated depreciation)', 'Class': '', **{t: '' for t in types},
-              'Total': nbv, 'account_class': 'nbv'}
-    net = {'Account': 'All accounts net (should be 0)', 'Class': '', **{t: '' for t in types},
-           'Total': p['Total'].sum(), 'account_class': 'net'}
-    table = pd.concat([p, pd.DataFrame([footer, net])], ignore_index=True)
-    for c in types + ['Total']:
-        table[c] = table[c].map(lambda v: gbp(v) if isinstance(v, (int, float, np.floating)) and v != '' else v)
-    cols = ['Account', 'Class'] + types + ['Total']
-    return dash_table.DataTable(
-        data=table[cols + ['account_class']].to_dict('records'),
-        columns=[{'name': c, 'id': c} for c in cols],
-        style_table={'overflowX': 'auto'},
-        style_cell={'padding': '7px 12px', 'fontSize': '12px', 'fontFamily': "'Source Sans Pro', sans-serif",
-                    'textAlign': 'right', 'borderColor': '#f0edf8', 'borderLeft': 'none', 'borderRight': 'none'},
-        style_cell_conditional=[{'if': {'column_id': c}, 'textAlign': 'left'} for c in ('Account', 'Class')],
-        style_header={'backgroundColor': _HDR, 'color': '#f8f0e0', 'fontWeight': '600', 'fontSize': '11px',
-                      'textTransform': 'uppercase', 'letterSpacing': '0.04em'},
-        style_data_conditional=[
-            {'if': {'filter_query': '{account_class} = "cost" || {account_class} = "depreciation"'},
-             'backgroundColor': '#eef7f1', 'fontWeight': '600'},
-            {'if': {'filter_query': '{account_class} = "reserve"'}, 'backgroundColor': '#eaf6f9'},
-            {'if': {'filter_query': '{account_class} = "nbv"'}, 'backgroundColor': _HDR, 'color': '#f8f0e0', 'fontWeight': '800'},
-            {'if': {'filter_query': '{account_class} = "net"'}, 'color': UI['text_secondary'], 'fontStyle': 'italic'},
-        ],
-    )
-
-
-def render_asset_detail(frames, asset_id):
-    if not asset_id:
-        return html.Div('Select an asset to see its postings.', style={'fontSize': '12px', 'color': UI['text_secondary']})
-    a = frames.get('asset_nbv', pd.DataFrame())
-    hit = a[a['asset_id'].astype(str) == str(asset_id)]
-    rows = asset_account_detail(frames, asset_id)
-    if hit.empty or rows.empty:
-        return html.Div(f'No postings found for {asset_id}.', style={'fontSize': '12px', 'color': UI['text_secondary']})
-    r = hit.iloc[0]
-
-    def fact(label, value):
-        return html.Div([
-            html.Div(label, style={'fontSize': '10px', 'fontWeight': '700', 'color': UI['text_secondary'],
-                                   'textTransform': 'uppercase', 'letterSpacing': '0.06em'}),
-            html.Div(value, style={'fontSize': '13px', 'fontWeight': '600', 'color': UI['text_primary'], 'marginTop': '2px'}),
-        ])
-
-    if pd.notna(r['reval_variance']):
-        ok = abs(r['reval_variance']) <= TOLERANCE
-        recon = html.Div(style={'fontSize': '12px', 'marginTop': '10px', 'color': _GREEN if ok else _NEG, 'fontWeight': '600'},
-                         children=f'Revaluation reserve {gbp(r["reval_reserve"])} vs CURR − HIST {gbp(r["reval_expected"])}: '
-                                  + ('reconciles' if ok else f'out by {gbp(r["reval_variance"])}'))
-    else:
-        recon = html.Div('Only one depreciation book, so the revaluation reserve check does not apply.',
-                         style={'fontSize': '12px', 'marginTop': '10px', 'color': UI['text_secondary']})
-
-    return html.Div([
-        html.Div(style={'display': 'flex', 'gap': '28px', 'flexWrap': 'wrap', 'marginBottom': '6px'}, children=[
-            fact('Asset', f'{r["asset_id"]} — {r["description"] if pd.notna(r["description"]) else ""}'),
-            fact('Group', r['asset_group']), fact('Status', r['status']), fact('Origin', r['origin']),
-            fact('CURR method', r['curr_depr_method'] if pd.notna(r['curr_depr_method']) else '—'),
-            fact('CURR NBV', gbp(r['curr_nbv'])), fact('HIST NBV', gbp(r['hist_nbv'])),
-        ]),
-        recon,
-        html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginTop': '14px'}, children=[
-            html.Div(style={'flex': '1', 'minWidth': '420px'}, children=[
-                html.Div(f'{book} book', style={'fontSize': '11px', 'fontWeight': '800', 'color': UI['text_primary'],
-                                                'textTransform': 'uppercase', 'marginBottom': '6px'}),
-                _book_pivot(rows, book),
-            ]) for book in ('CURR', 'HIST')
-        ]),
-    ])
-
-
-def _inspector(frames):
-    a = active_assets(frames)
-    valued = a[a['has_nbv_account']]
-    default = valued.sort_values('curr_nbv', ascending=False)['asset_id'].iloc[0] if not valued.empty else None
-    return _panel('Asset inspector', 'Every posting behind an asset\'s NBV, by account and transaction type, the same '
-                  'breakdown the asset team used to confirm the calculation. Search by asset ID or description.', [
-        dcc.Dropdown(id='nbv-asset-select', options=asset_search_options(frames, keep=default), value=default,
-                     searchable=True, clearable=False, placeholder='Search asset ID or description',
-                     style={'fontSize': '12px', 'marginBottom': '14px', 'maxWidth': '640px'}),
-        html.Div(id='nbv-asset-detail', children=render_asset_detail(frames, default)),
-    ])
-
-
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def render_nbv_section(frames, nbv_dq):
@@ -393,10 +246,8 @@ def render_nbv_section(frames, nbv_dq):
         _rule_banner(),
         _kpis(a, not_capitalised_count(frames)),
         html.Div(style={'display': 'flex', 'gap': '16px', 'flexWrap': 'wrap', 'marginBottom': '16px'},
-                 children=[_group_chart(a), _band_chart(a)]),
-        html.Div(style={'marginBottom': '16px'}, children=[_origin_tiles(a)]),
-        html.Div(style={'marginBottom': '16px'}, children=[_top_assets(a)]),
-        html.Div(style={'marginBottom': '20px'}, children=[_inspector(frames)]),
+                 children=[_band_chart(a)]),
+        html.Div(style={'marginBottom': '20px'}, children=[_origin_tiles(a)]),
         html.Div('NBV data quality', style={'fontSize': '12px', 'fontWeight': '800', 'color': UI['text_primary'],
                                             'textTransform': 'uppercase', 'margin': '8px 0 12px'}),
         render_dimension_scorecard(nbv_dq),

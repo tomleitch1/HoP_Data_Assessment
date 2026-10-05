@@ -350,57 +350,6 @@ def _card_depr(hoc, hol):
     )
 
 
-# ── Card 5: Balance History ────────────────────────────────────────────────────
-
-def _card_balances(hoc, hol):
-    _CONF_COLORS = {
-        'CA': '#1a7a4a', 'PC': '#3a7abf', 'ND': '#7c5cbf',
-        'ED': '#c07820', 'FD': '#c0392b', 'SA': '#94a3b8',
-        'VN': '#0891b2', 'CI': '#64748b',
-    }
-    _UNKN_COLOR = '#c07820'
-
-    def _col(house, b):
-        total_txns = b['confirmed_txns'] + b['unknown_txns']
-        conf_rows = [
-            _bar_row(t, b['conf_by_type'].get(t, 0), max(total_txns, 1),
-                     _CONF_COLORS.get(t, '#94a3b8'))
-            for t in ['CA', 'ND', 'SA', 'PC', 'FD', 'ED', 'VN']
-            if b['conf_by_type'].get(t, 0) > 0
-        ]
-        unkn_rows = [
-            _bar_row(t, b['unkn_by_type'].get(t, 0), max(total_txns, 1), _UNKN_COLOR)
-            for t in sorted(b['unkn_by_type'].keys())
-        ]
-        return _house_col(house, [
-            _kv('Confirmed transactions', b['confirmed_txns'], '#1a7a4a'),
-            _kv('Unconfirmed transactions', b['unknown_txns'], '#c07820'),
-            html.Div(style={
-                'fontSize': '10px', 'color': UI['text_secondary'],
-                'marginBottom': '10px', 'fontStyle': 'italic',
-            }, children='Numbers show individual transaction lines from aattrans before aggregation'),
-            html.Div(style={'marginTop': '6px'}, children=[
-                _section_label('Confirmed types'),
-                *(conf_rows if conf_rows else [html.Div('No data', style={'fontSize': '11px', 'color': UI['text_secondary']})]),
-            ]),
-            html.Div(style={'marginTop': '10px'}, children=[
-                _section_label('Unconfirmed types'),
-                *(unkn_rows if unkn_rows else [html.Div('None found', style={'fontSize': '11px', 'color': '#1a7a4a'})]),
-            ]),
-        ], border_right=(house == 'HOC'))
-
-    return _extract_card(
-        _card_header_row(
-            'Balance History', 'aattrans  (aggregated)', False,
-            'Lifetime financial transactions aggregated to one row per asset / book / transaction type / account. HoC NBV is derived from these by account (see Net Book Value below). Several transaction type codes are still unconfirmed.',
-        ),
-        [html.Div(style={'display': 'flex', 'gap': '16px'}, children=[
-            _col('HOC', hoc), _col('HOL', hol),
-        ])],
-        pending=True,
-    )
-
-
 # ── Known gaps panels ──────────────────────────────────────────────────────────
 
 def _known_gaps_section():
@@ -460,8 +409,6 @@ def _render_intro(intro_data):
     hol_g = intro_data['HOL']['groups']
     hoc_d = intro_data['HOC']['depr']
     hol_d = intro_data['HOL']['depr']
-    hoc_b = intro_data['HOC']['balances']
-    hol_b = intro_data['HOL']['balances']
     hoc_f = intro_data['HOC']['trans_flags']
     hol_f = intro_data['HOL']['trans_flags']
 
@@ -470,8 +417,7 @@ def _render_intro(intro_data):
         html.Div(style={'marginBottom': '16px'}, children=[_card_master(hoc_m, hol_m)]),
         html.Div(style={'marginBottom': '16px'}, children=[_card_groups(hoc_g, hol_g)]),
         html.Div(style={'marginBottom': '16px'}, children=[_card_trans_flags(hoc_f, hol_f)]),
-        html.Div(style={'marginBottom': '16px'}, children=[_card_depr(hoc_d, hol_d)]),
-        _card_balances(hoc_b, hol_b),
+        _card_depr(hoc_d, hol_d),
     ])
 
 

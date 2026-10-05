@@ -19,7 +19,6 @@ from dashboard.tabs.gl import render_tab as render_gl
 from dashboard.tabs.assets import render_tab as render_assets
 from dashboard.tabs.assets_nbv import (
     get_nbv_records, records_table as nbv_records_table,
-    render_asset_detail as render_nbv_asset_detail, asset_search_options as nbv_asset_search_options,
 )
 from dashboard.core.asset_nbv import COLUMN_LABELS as NBV_COLUMN_LABELS
 from dashboard.tabs.po import render_tab as render_po, _compute_metrics as _po_compute_metrics
@@ -1494,27 +1493,6 @@ def handle_asset_nbv_click(chart_clicks, origin_clicks):
         'padding': '20px', 'boxSizing': 'border-box',
     }
     return modal_style, title, content, {'type': 'asset_nbv', 'kind': kind, 'key': key}
-
-
-@app.callback(
-    Output('nbv-asset-detail', 'children'),
-    Input('nbv-asset-select', 'value'),
-    prevent_initial_call=True,
-)
-def update_nbv_asset_detail(asset_id):
-    return render_nbv_asset_detail(frames, asset_id)
-
-
-@app.callback(
-    Output('nbv-asset-select', 'options'),
-    Input('nbv-asset-select', 'search_value'),
-    State('nbv-asset-select', 'value'),
-    prevent_initial_call=True,
-)
-def update_nbv_asset_options(search, current):
-    if not search:
-        return dash.no_update
-    return nbv_asset_search_options(frames, search=search, keep=current)
 
 
 @app.callback(

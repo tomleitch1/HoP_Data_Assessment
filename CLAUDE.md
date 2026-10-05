@@ -890,14 +890,12 @@ Every other account is excluded — e.g. for `LB1PARLI`: `14005` (Freehold build
 Neither frame is added if `asset_balances` has no `account` column (an extract from before September 2026); the tab then shows a "re-run the extract" message. Tolerance for "zero" and reconciliation is £1 (`TOLERANCE`). `build_asset_nbv` and `nbv_population` are hashed into `_engine_sig()`; `run_dq_analysis` tracks `asset_balances`/`asset_master`/`asset_depreciation` as the per-check cache sources for `asset_nbv` checks.
 
 **Tab — `dashboard/tabs/assets_nbv.py`**, rendered by `assets.py` between the intro cards and the general DQ section. All figures are active assets (status `N`) with at least one NBV account:
-- Rule banner and KPI strip (CURR NBV, HIST NBV, revaluation reserve vs CURR − HIST, assets valued, nil NBV, negative NBV)
-- NBV by asset group (CURR vs HIST) and assets by NBV band — both clickable
-- Origin tiles (legacy OS vs Unit4-capitalised) — clickable
-- Top 15 assets by CURR NBV
-- Asset inspector: searchable dropdown (`nbv-asset-select`, options filtered server-side, top 50 matches) rendering the account × trans_type pivot per book — the same breakdown Parliament used to confirm the rule — with NBV rows highlighted, the NBV total, the all-accounts net, and the revaluation reserve reconciliation. Account descriptions come from `aglaccounts` when it's loaded (full dashboard mode only, not `run_dashboard.py assets`).
+- Rule banner and KPI strip (CURR NBV, HIST NBV, revaluation reserve vs CURR − HIST, assets valued, nil NBV)
+- Assets by NBV band (clickable) and origin tiles (legacy OS vs Unit4-capitalised, clickable)
+- **Removed October 2026, per direct request:** the negative NBV KPI card, the NBV by asset group chart, the top 15 assets table and the asset inspector (dropdown + account × trans_type pivot, with its two callbacks in `app.py`). The Balance History card was also removed from the Assets tab's volumetrics intro. Negative NBV is still covered by `DQ-NBV-V01`.
 - NBV data quality scorecard + grid (`render_dimension_grid(..., key_prefix='nbv-')`). The general asset DQ section below excludes `DQ-NBV-*` so they aren't shown twice.
 
-Chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origin-btn', ...}`) open the shared modal via `handle_asset_nbv_click` in `app.py` (export context type `asset_nbv`, handled in `export_modal_to_csv`); `close_modal` also resets `nbv-chart` clickData so the same bar can be clicked again. Verified with raw `_dash-update-component` round trips for every callback.
+Band chart bars (`{'type': 'nbv-chart', ...}`) and origin tiles (`{'type': 'nbv-origin-btn', ...}`) open the shared modal via `handle_asset_nbv_click` in `app.py` (export context type `asset_nbv`, handled in `export_modal_to_csv`); `close_modal` also resets `nbv-chart` clickData so the same bar can be clicked again. Verified with raw `_dash-update-component` round trips for every callback.
 
 **DQ checks — `DQ-NBV-*` in `asset_rules.py`, table `asset_nbv`, scope 19.** Populations live in `nbv_population()` (shared by `run_dq_analysis` and `get_failing_records`), not in the lambdas. Drill-down evidence always shows the same NBV columns (`NBV_EVIDENCE_COLS`, prefixed `ASSET_NBV.`), with CURR and HIST cost, accumulated depreciation and NBV side by side.
 
