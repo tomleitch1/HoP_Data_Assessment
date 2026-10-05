@@ -541,7 +541,7 @@ def _version_suffix() -> str:
     return f'__{v}' if v else ''
 
 # Bump when load-time parsing changes, so pickles parsed the old way are ignored
-_PARSE_VERSION = 2
+_PARSE_VERSION = 3
 
 
 def _excel_serial_to_dates(serials: pd.Series) -> pd.Series:
@@ -774,6 +774,15 @@ def _parse_dates(series: pd.Series) -> pd.Series:
         if not in_range.empty:
             converted = _excel_serial_to_dates(in_range)
             result[in_range.index] = converted
+
+    # 4. Anything else that's clearly a date (e.g. 3/31/2012 from a US-locale
+    #    Excel, 31-Mar-2012). Numbers are left alone so placeholders stay blank.
+    need = result.isna() & ~blank & pd.to_numeric(s, errors='coerce').isna()
+    if need.any():
+        other = pd.to_datetime(s[need], dayfirst=True, format='mixed', errors='coerce')
+        hit4 = other.notna()
+        if hit4.any():
+            result[need[need].index[hit4]] = other[hit4].dt.as_unit('us')
 
     return result
 
@@ -1046,6 +1055,9 @@ def load_data(tab=None):
                     df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
             _date_cols = [c for c in date_cols if c not in ('period', 'year')]
         elif table in ('asset_master', 'asset_depreciation'):
+            # status can arrive padded (e.g. 'N ') and would then never equal 'N'
+            if 'status' in df.columns:
+                df['status'] = df['status'].where(df['status'].isna(), df['status'].astype(str).str.strip())
             # cap_period_from and depr_period are YYYYPP integers, not dates
             _yypp = ('cap_period_from', 'depr_period')
             for col in _yypp:
