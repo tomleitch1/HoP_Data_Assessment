@@ -525,7 +525,10 @@ def _data_path(base_name: str, suffix: str = '') -> str:
     return os.path.join(DATA_DIR, subdir, filename)
 
 _EXCEL_ORIGIN = pd.Timestamp('1899-12-30')
-_EXCEL_MIN, _EXCEL_MAX = 20000, 55000  # approx year 1954 – 2050
+# Floor stays at 1954 so placeholders like 1 aren't read as dates. The ceiling
+# is Excel's own maximum (31/12/9999), so far-future dates such as 31/12/2099
+# parse the same way they do in ISO format, rather than silently becoming blank.
+_EXCEL_MIN, _EXCEL_MAX = 20000, 2958465
 
 _CACHE_DIR = os.path.join('data', '.cache')
 
@@ -537,8 +540,18 @@ def _version_suffix() -> str:
     v = os.environ.get('DASHBOARD_VERSION', '').strip()
     return f'__{v}' if v else ''
 
+# Bump when load-time parsing changes, so pickles parsed the old way are ignored
+_PARSE_VERSION = 2
+
+
+def _excel_serial_to_dates(serials: pd.Series) -> pd.Series:
+    # numpy day arithmetic, since a nanosecond timedelta overflows after ~2262
+    days = serials.astype('int64').to_numpy().astype('timedelta64[D]')
+    return pd.Series((_EXCEL_ORIGIN.to_datetime64().astype('datetime64[D]') + days).astype('datetime64[us]'),
+                     index=serials.index)
+
 def _cache_path(table: str) -> str:
-    return os.path.join(_CACHE_DIR, f'{table}{_version_suffix()}.pkl')
+    return os.path.join(_CACHE_DIR, f'{table}{_version_suffix()}_p{_PARSE_VERSION}.pkl')
 
 def _cache_fresh(table: str, source_paths: list) -> bool:
     """True if the cached pickle exists and is newer than all source CSVs."""
@@ -735,7 +748,7 @@ def _parse_dates(series: pd.Series) -> pd.Series:
         numeric = pd.to_numeric(non_blank, errors='coerce')
         in_range = numeric[numeric.between(_EXCEL_MIN, _EXCEL_MAX)]
         if not in_range.empty:
-            converted = (_EXCEL_ORIGIN + pd.to_timedelta(in_range.astype(int), unit='D')).dt.as_unit('us')
+            converted = _excel_serial_to_dates(in_range)
             result[in_range.index] = converted
         return result
 
@@ -759,7 +772,7 @@ def _parse_dates(series: pd.Series) -> pd.Series:
         numeric = pd.to_numeric(s[need], errors='coerce').dropna()
         in_range = numeric[numeric.between(_EXCEL_MIN, _EXCEL_MAX)]
         if not in_range.empty:
-            converted = (_EXCEL_ORIGIN + pd.to_timedelta(in_range.astype(int), unit='D')).dt.as_unit('us')
+            converted = _excel_serial_to_dates(in_range)
             result[in_range.index] = converted
 
     return result
