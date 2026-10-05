@@ -1239,8 +1239,8 @@ def run_dq_analysis(frames, tab=None):
             elif table == 'gl_journals':
                 # SQL already filters to status IS NULL OR status = '' (actual postings only)
                 h_df = df_table[df_table['house'] == house]
-            elif table == 'asset_master' and check_id == 'DQ-AB-V02':
-                # Every non-closed asset, matching the balances extract (and the original V02)
+            elif table == 'asset_master' and check_id in ('DQ-AB-V02', 'DQ-AM-K04'):
+                # Every non-closed asset (V02 matches the balances extract and the original V02)
                 h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
             elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
                 h_df = df_table[df_table['house'] == house]
@@ -1744,7 +1744,7 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = df_table[(df_table['house'] == house) & (df_table['status'] == 'N')]
     elif table == 'gl_journals':
         h_df = df_table[df_table['house'] == house]
-    elif table == 'asset_master' and check_id == 'DQ-AB-V02':
+    elif table == 'asset_master' and check_id in ('DQ-AB-V02', 'DQ-AM-K04'):
         h_df = df_table[(df_table['house'] == house) & (df_table['status'] != 'C')]
     elif table in ['asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags']:
         h_df = df_table[df_table['house'] == house]
@@ -2296,8 +2296,9 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             'asset_id':   'ASSET_MASTER.asset_id',
             'grant_flag': 'ASSET_MASTER.grant_flag',
             'dim_1':      'ASSET_MASTER.dim_1',
+            'status':     'ASSET_MASTER.status',
         })
-        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.grant_flag', 'ASSET_MASTER.dim_1']
+        cols = ['ASSET_MASTER.asset_id', 'ASSET_MASTER.status', 'ASSET_MASTER.grant_flag', 'ASSET_MASTER.dim_1']
         return failing[[c for c in cols if c in failing.columns]]
 
     if table == 'asset_master' and check_id == 'DQ-AM-D01':

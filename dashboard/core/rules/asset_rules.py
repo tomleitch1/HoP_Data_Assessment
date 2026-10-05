@@ -177,7 +177,7 @@ def get_asset_checks():
          'grant_flag = 1 but no grant dim value',
          'Finds assets flagged as grant-funded but missing the analytical dimension (dim_1) needed to track grant usage.',
          'Populate dim_1.', 'asset_master', None, 
-         'grant_flag = 1 AND dim_1 IS NULL',
+         'status != C AND grant_flag = 1 AND dim_1 IS NULL',
          lambda df: (pd.to_numeric(df['grant_flag'], errors='coerce') == 1) & df['dim_1'].isna()),
 
         ('DQ-AM-D01', 19, 'Asset Master', 'Uniqueness', 'Critical',
