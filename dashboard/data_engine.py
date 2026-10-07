@@ -1836,7 +1836,10 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         return out.rename(columns={c: f'ASSET_MASTER.{c}' for c in out.columns})
 
     if table == 'asset_master' and check_id == 'DQ-AB-X05':
-        books = (frames.get('asset_depreciation', pd.DataFrame(columns=['house', 'asset_id', 'depr_book_id', 'depr_method']))
+        ad = frames.get('asset_depreciation', pd.DataFrame(columns=['house', 'asset_id', 'depr_book_id', 'depr_method']))
+        # Only the flagged assets: summarising the whole table per asset is slow on real data
+        ad = ad[(ad['house'] == house) & ad['asset_id'].isin(failing['asset_id'])]
+        books = (ad[['house', 'asset_id', 'depr_book_id', 'depr_method']]
                  .groupby(['house', 'asset_id'])
                  .agg(books=('depr_book_id', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
                       methods=('depr_method', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))))
