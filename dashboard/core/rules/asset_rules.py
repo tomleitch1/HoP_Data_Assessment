@@ -454,6 +454,17 @@ def get_asset_checks():
          'asset_id NOT IN balances',
          lambda df, frames: (df['status'] == 'N') & ~df['asset_id'].isin(frames.get('asset_balances', pd.DataFrame())['asset_id']) if 'asset_balances' in frames else pd.Series(False, index=df.index)),
 
+        ('DQ-AB-X05', 19, 'Asset Balances', 'Referential Integrity', 'High',
+         'Active asset with a depreciation book but no postings',
+         'Every active asset with a depreciation book should have postings in the asset ledger. An asset that has been set up '
+         'with a book but has nothing posted against it has never been capitalised, so it carries no value. It should be '
+         'confirmed with the asset team and either capitalised or closed before migration.',
+         'Confirm with the asset team. Capitalise the asset or close it in Unit4.', 'asset_master', 'asset_balances',
+         'status = N AND asset_id IN depr AND asset_id NOT IN balances',
+         lambda df, frames: ((df['status'] == 'N')
+                             & df['asset_id'].isin(frames.get('asset_depreciation', pd.DataFrame(columns=['asset_id']))['asset_id'])
+                             & ~df['asset_id'].isin(frames.get('asset_balances', pd.DataFrame(columns=['asset_id']))['asset_id']))),
+
 
 
         # ======================================================================

@@ -1595,6 +1595,7 @@ def get_check_columns():
         'DQ-AB-K02': ['trans_type'],
         'DQ-AB-K03': ['trans_type'],
         'DQ-AB-X03': ['asset_id', 'status'],
+        'DQ-AB-X05': ['Asset', 'Status', 'Depreciation books', 'Postings in asset balances'],
 
         # Asset NBV (asset_nbv, HoC only)
         **{cid: [NBV_COLUMN_LABELS[c] for c in cols] for cid, cols in {
@@ -1830,6 +1831,22 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
                    'books': 'Books', 'trans_types': 'Trans types',
                    'nonzero_other': 'Non-zero rows (other trans types)', 'lines': 'Transaction lines'}
         out = failing[[c for c in renames if c in failing.columns]].rename(columns=renames)
+        if for_export:
+            return out
+        return out.rename(columns={c: f'ASSET_MASTER.{c}' for c in out.columns})
+
+    if table == 'asset_master' and check_id == 'DQ-AB-X05':
+        books = (frames.get('asset_depreciation', pd.DataFrame(columns=['house', 'asset_id', 'depr_book_id', 'depr_method']))
+                 .groupby(['house', 'asset_id'])
+                 .agg(books=('depr_book_id', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))),
+                      methods=('depr_method', lambda s: ', '.join(sorted(s.dropna().astype(str).unique()))))
+                 .reset_index())
+        out = failing.merge(books, on=['house', 'asset_id'], how='left')
+        out['postings'] = 0
+        labels = {'asset_id': 'Asset', 'description': 'Description', 'asset_group': 'Group', 'status': 'Status',
+                  'cap_date_from': 'Capitalisation date', 'books': 'Depreciation books',
+                  'methods': 'Depreciation methods', 'postings': 'Postings in asset balances'}
+        out = out[[c for c in labels if c in out.columns]].rename(columns=labels)
         if for_export:
             return out
         return out.rename(columns={c: f'ASSET_MASTER.{c}' for c in out.columns})
