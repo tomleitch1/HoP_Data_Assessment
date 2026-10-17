@@ -470,6 +470,13 @@ def get_asset_checks():
         # ======================================================================
         # --- ASSET TRANS FLAGS (asset_trans_flags) ---
         # ======================================================================
+        ('DQ-AF-X01', 19, 'Asset Trans Flags', 'Referential Integrity', 'High',
+         'SA transaction on active asset',
+         'Finds disposal (SA) transactions against assets still marked as active in the master. the asset should have been closed when the disposal was posted.',
+         'Update master.', 'asset_trans_flags', 'asset_master', 
+         'trans_type=SA AND master.status=N',
+         lambda df, frames: (df['trans_type'] == 'SA') & df['asset_id'].isin(frames.get('asset_master', pd.DataFrame()).query('status == "N"')['asset_id']) if 'asset_master' in frames else pd.Series(False, index=df.index)),
+
         ('DQ-AF-X02', 19, 'Asset Trans Flags', 'Referential Integrity', 'High',
          'Depreciation posted after date_to',
          'Identifies depreciation transactions (ND, ED, FD) posted after the asset ownership end date. charges should not be posted once the asset has been disposed of.',
