@@ -170,7 +170,45 @@ def _active(lines: pd.DataFrame) -> pd.Series:
     return (lines[['actuals', 'budget', 'committed']].abs() >= 0.005).any(axis=1)
 
 
-def _build_codes(lst: pd.DataFrame, lines: pd.DataFrame) -> pd.DataFrame:
+# Grain of project_summary: everything the views filter or group by, without the
+# account and period detail. Ben's file is ~440k rows; this is a small fraction.
+SUMMARY_KEYS = ['unit', 'unit_desc', 'hais_code', 'hais_desc', 'house', 'fiscal_year', 'project_type',
+                'is_income', 'on_list', 'mipck_l1_desc']
+
+
+def _summarise(lines: pd.DataFrame) -> pd.DataFrame:
+    """Lines rolled up to SUMMARY_KEYS, with the first and last period that had any activity."""
+    df = lines[SUMMARY_KEYS[:-1] + ['period', 'actuals', 'budget', 'committed']].copy()
+    df['mipck_l1_desc'] = lines['mipck_l1_desc'].fillna('(blank)')
+    df['unit_desc'] = df['unit_desc'].fillna(df['unit'])
+    df['hais_desc'] = df['hais_desc'].fillna('')
+    df['_p_act'] = df['period'].where(_active(df))
+    s = df.groupby(SUMMARY_KEYS, dropna=False, sort=False).agg(
+        actuals=('actuals', 'sum'), budget=('budget', 'sum'), committed=('committed', 'sum'),
+        first_active=('_p_act', 'min'), last_active=('_p_act', 'max')).reset_index()
+    s['fy_label'] = s['fiscal_year'].map(fy_label)
+    return s
+
+
+def unit_attributes(codes: pd.DataFrame) -> pd.DataFrame:
+    """One row per Unit: the most common value of each classification across its cost lines."""
+    if codes is None or codes.empty:
+        return pd.DataFrame(columns=['unit'])
+    cols = ['unit_desc', 'projcat', 'project_type', 'projgrp', 'projgrp_desc', 'costc', 'costc_desc',
+            'directorate', 'directorate_desc', 'department', 'department_desc']
+    out = pd.DataFrame({'unit': codes['unit'].dropna().unique()})
+    for c in cols:
+        if c not in codes.columns:
+            out[c] = np.nan
+            continue
+        top = (codes[['unit', c]].dropna().value_counts().reset_index(name='_n')
+               .sort_values(['unit', '_n', c], ascending=[True, False, True]).drop_duplicates('unit'))
+        out[c] = out['unit'].map(top.set_index('unit')[c])
+    out['hais_listed'] = out['unit'].map(codes.groupby('unit')['hais_code'].nunique()).fillna(0).astype(int)
+    return out
+
+
+def _build_codes(lst: pd.DataFrame, summary: pd.DataFrame, lines: pd.DataFrame) -> pd.DataFrame:
     codes = lst.copy()
     codes['dup_count'] = codes.groupby('hais_code')['hais_code'].transform('size')
     codes['prefix_ok'] = [bool(h) and bool(u) and str(h).startswith(str(u))
@@ -179,95 +217,85 @@ def _build_codes(lst: pd.DataFrame, lines: pd.DataFrame) -> pd.DataFrame:
     codes['do_not_use'] = text.str.contains('DO NOT USE') & (codes['status'] == 'N')
 
     # A project needs one classification: report every attribute that varies within the Unit
-    variants = []
-    for unit, g in codes.groupby('unit'):
-        parts = [f'{label}: {_join_unique(g[col])}' for col, label in
-                 [('projcat', 'Projcat'), ('projgrp', 'Projgrp'), ('costc', 'Cost centre'), ('directorate', 'Directorate')]
-                 if g[col].dropna().nunique() > 1]
-        variants.append((unit, '; '.join(parts)))
-    codes = codes.merge(pd.DataFrame(variants, columns=['unit', 'unit_class_variants']), on='unit', how='left')
-    codes['unit_class_variants'] = codes['unit_class_variants'].fillna('')
+    class_cols = [('projcat', 'Projcat'), ('projgrp', 'Projgrp'), ('costc', 'Cost centre'), ('directorate', 'Directorate')]
+    nun = codes.groupby('unit')[[c for c, _ in class_cols]].nunique()
+    multi = nun[(nun > 1).any(axis=1)].index
+    variants = {}
+    for unit, g in codes[codes['unit'].isin(multi)].groupby('unit'):
+        variants[unit] = '; '.join(f'{label}: {_join_unique(g[col])}' for col, label in class_cols
+                                   if g[col].dropna().nunique() > 1)
+    codes['unit_class_variants'] = codes['unit'].map(variants).fillna('')
 
     # Cloned cost lines: same description, active, under a different Unit
     norm = codes['hais_desc'].fillna('').str.upper().str.replace(r'^DO NOT USE\s*-?\s*', '', regex=True).str.strip()
     codes['_norm_desc'] = norm
-    by_desc = codes[codes['status'] == 'N'].groupby('_norm_desc')['unit'].apply(lambda s: set(s.dropna()))
+    active_units = codes[codes['status'] == 'N'].dropna(subset=['unit'])
+    shared_desc = active_units.groupby('_norm_desc')['unit'].nunique()
+    shared_desc = shared_desc[(shared_desc > 1) & (shared_desc.index != '')].index
+    by_desc = active_units[active_units['_norm_desc'].isin(shared_desc)].groupby('_norm_desc')['unit'] \
+        .agg(lambda s: set(s))
     codes['desc_dup_units'] = [
-        ', '.join(sorted(by_desc.get(d, set()) - {u})) if d else ''
+        ', '.join(sorted(by_desc[d] - {u})) if d in by_desc.index else ''
         for d, u in zip(codes['_norm_desc'], codes['unit'])
     ]
     codes = codes.drop(columns='_norm_desc')
 
     # Portfolio names used by more than one Projgrp code (two code schemes in use)
-    grp = codes.dropna(subset=['projgrp']).groupby(codes['projgrp_desc'].fillna('').str.upper())['projgrp'] \
-        .apply(lambda s: sorted(set(s)))
-    codes['projgrp_desc_codes'] = [
-        ', '.join(grp.get(str(d).upper(), [])) if len(grp.get(str(d).upper(), [])) > 1 else ''
-        for d in codes['projgrp_desc'].fillna('')
-    ]
+    pg = codes.dropna(subset=['projgrp']).assign(_d=lambda d: d['projgrp_desc'].fillna('').str.upper())
+    grp = pg.groupby('_d')['projgrp'].agg(lambda s: ', '.join(sorted(set(s))))
+    grp = grp[pg.groupby('_d')['projgrp'].nunique() > 1]
+    codes['projgrp_desc_codes'] = codes['projgrp_desc'].fillna('').str.upper().map(grp).fillna('')
 
-    on = lines[lines['on_list']]
-    act = on[_active(on)]
-    stats = act.groupby('hais_code').agg(
+    # Activity per listed cost line
+    on = summary[summary['on_list']]
+    stats = on.groupby('hais_code').agg(
         actuals_total=('actuals', 'sum'), budget_total=('budget', 'sum'), committed_total=('committed', 'sum'),
-        first_period=('period', 'min'), last_period=('period', 'max'),
-        _houses=('house', lambda s: _join_unique(s)),
-    ).reset_index()
-    stats['houses'] = stats['_houses'].map(lambda h: 'Shared' if ',' in h else h)
-    codes = codes.merge(stats.drop(columns='_houses'), on='hais_code', how='left')
+        first_period=('first_active', 'min'), last_period=('last_active', 'max')).reset_index()
+    act_houses = on[on['first_active'].notna()][['hais_code', 'house']].drop_duplicates()
+    n_houses = act_houses.groupby('hais_code')['house'].agg(['nunique', 'first'])
+    stats['houses'] = stats['hais_code'].map(
+        n_houses['first'].where(n_houses['nunique'] == 1, 'Shared'))
+    codes = codes.merge(stats, on='hais_code', how='left')
     codes['has_activity'] = codes['first_period'].notna()
     codes['houses'] = codes['houses'].fillna('—')
     for c in ('actuals_total', 'budget_total', 'committed_total'):
         codes[c] = codes[c].fillna(0.0)
 
     # List vs financials: the financials carry their own Unit / cost centre / directorate / department
-    mism = []
-    for code, g in on.groupby('hais_code'):
-        row = codes[codes['hais_code'] == code].iloc[0]
-        parts = []
-        for fin_col, list_col, label in [('fin_unit', 'unit', 'Unit'), ('fin_costc', 'costc', 'Cost centre'),
-                                         ('fin_directorate', 'directorate', 'Directorate'),
-                                         ('fin_department', 'department', 'Department')]:
-            fin_vals = set(g[fin_col].dropna())
-            if row[list_col] and fin_vals - {row[list_col]}:
-                parts.append(f'{label}: list {row[list_col]}, financials {_join_unique(g[fin_col])}')
-        mism.append((code, '; '.join(parts)))
-    codes = codes.merge(pd.DataFrame(mism, columns=['hais_code', 'attr_mismatch']), on='hais_code', how='left')
-    codes['attr_mismatch'] = codes['attr_mismatch'].fillna('')
+    pairs = [('fin_unit', 'unit', 'Unit'), ('fin_costc', 'costc', 'Cost centre'),
+             ('fin_directorate', 'directorate', 'Directorate'), ('fin_department', 'department', 'Department')]
+    combos = lines.loc[lines['on_list'], ['hais_code'] + [f for f, _, _ in pairs]].drop_duplicates()
+    ref = codes.drop_duplicates('hais_code').set_index('hais_code')
+    parts = []
+    for fin_col, list_col, label in pairs:
+        listed = combos['hais_code'].map(ref[list_col])
+        bad = combos[combos[fin_col].notna() & listed.notna() & (combos[fin_col] != listed)]
+        if bad.empty:
+            continue
+        fin_vals = combos[combos['hais_code'].isin(bad['hais_code'])].groupby('hais_code')[fin_col] \
+            .agg(lambda s: ', '.join(sorted(set(s.dropna()))))
+        parts.append(pd.Series({h: f'{label}: list {ref.at[h, list_col]}, financials {v}' for h, v in fin_vals.items()}))
+    mism = pd.concat(parts, axis=1).apply(lambda r: '; '.join(r.dropna()), axis=1) if parts else pd.Series(dtype=str)
+    codes['attr_mismatch'] = codes['hais_code'].map(mism).fillna('')
 
     # HoC / HoL split per year for shared codes (positive spend only)
     spend = on[on['actuals'] > 0].pivot_table(index=['hais_code', 'fiscal_year'], columns='house',
                                                values='actuals', aggfunc='sum', fill_value=0.0)
-    split_rows = []
     if {'HOC', 'HOL'} <= set(spend.columns):
-        both = spend[(spend['HOC'] > 0) & (spend['HOL'] > 0)].copy()
+        both = spend[(spend['HOC'] > 0) & (spend['HOL'] > 0)].copy().reset_index()
         both['share'] = both['HOC'] / (both['HOC'] + both['HOL']) * 100
-        for code, g in both.reset_index().groupby('hais_code'):
-            split_rows.append((code, round(g['share'].max() - g['share'].min(), 1),
-                               ' · '.join(f"{fy_label(fy)} {s:.0f}%" for fy, s in zip(g['fiscal_year'], g['share']))))
-    codes = codes.merge(pd.DataFrame(split_rows, columns=['hais_code', 'split_range_pp', 'split_by_year']),
-                        on='hais_code', how='left')
-    codes['split_by_year'] = codes['split_by_year'].fillna('')
+        both['_txt'] = both['fiscal_year'].map(fy_label) + ' ' + both['share'].round(0).astype(int).astype(str) + '%'
+        g = both.groupby('hais_code')
+        codes['split_range_pp'] = codes['hais_code'].map((g['share'].max() - g['share'].min()).round(1))
+        codes['split_by_year'] = codes['hais_code'].map(g['_txt'].agg(' · '.join)).fillna('')
+    else:
+        codes['split_range_pp'] = np.nan
+        codes['split_by_year'] = ''
     return codes
 
 
-def unit_attributes(codes: pd.DataFrame) -> pd.DataFrame:
-    """One row per Unit: the most common classification across its cost lines."""
-    if codes is None or codes.empty:
-        return pd.DataFrame(columns=['unit'])
-    cols = ['unit_desc', 'projcat', 'project_type', 'projgrp', 'projgrp_desc', 'costc', 'costc_desc',
-            'directorate', 'directorate_desc', 'department', 'department_desc']
-
-    def mode(s):
-        s = s.dropna()
-        return s.mode().iloc[0] if not s.empty else np.nan
-
-    attrs = codes.groupby('unit')[cols].agg(mode).reset_index()
-    attrs['hais_listed'] = codes.groupby('unit')['hais_code'].nunique().values
-    return attrs
-
-
 def filter_lines(lines, include_annual=True, expenditure_only=False, houses=None, on_list_only=True):
+    """Works on project_summary and on project_lines (both carry the filter columns)."""
     if lines is None or lines.empty:
         return lines
     m = pd.Series(True, index=lines.index)
@@ -282,24 +310,22 @@ def filter_lines(lines, include_annual=True, expenditure_only=False, houses=None
     return lines[m]
 
 
-def unit_positions(lines: pd.DataFrame, codes: pd.DataFrame, bounds: dict) -> pd.DataFrame:
-    """Opening position, one row per Unit x house, from already-filtered lines."""
+def unit_positions(summary: pd.DataFrame, attrs: pd.DataFrame, bounds: dict) -> pd.DataFrame:
+    """Opening position, one row per Unit x house, from already-filtered summary rows."""
     cols = ['unit', 'house', 'spend_to_date', 'commitments', 'budget_to_date', 'remaining_budget',
             'remaining_after_commitments', 'current_fy_actuals', 'current_fy_budget', 'first_period',
             'last_period', 'hais_count', 'truncated']
-    if lines is None or lines.empty:
+    if summary is None or summary.empty:
         return pd.DataFrame(columns=cols)
     cur = bounds.get('current_fy')
-    lines = lines.assign(_cur_act=np.where(lines['fiscal_year'] == cur, lines['actuals'], 0.0),
-                         _cur_bud=np.where(lines['fiscal_year'] == cur, lines['budget'], 0.0))
-    act = lines[_active(lines)]
-    pos = lines.groupby(['unit', 'house']).agg(
+    s = summary.assign(_cur_act=np.where(summary['fiscal_year'] == cur, summary['actuals'], 0.0),
+                       _cur_bud=np.where(summary['fiscal_year'] == cur, summary['budget'], 0.0),
+                       _act_code=summary['hais_code'].where(summary['first_active'].notna()))
+    pos = s.groupby(['unit', 'house']).agg(
         spend_to_date=('actuals', 'sum'), commitments=('committed', 'sum'), budget_to_date=('budget', 'sum'),
         current_fy_actuals=('_cur_act', 'sum'), current_fy_budget=('_cur_bud', 'sum'),
-    ).reset_index()
-    span = act.groupby(['unit', 'house']).agg(first_period=('period', 'min'), last_period=('period', 'max'),
-                                              hais_count=('hais_code', 'nunique')).reset_index()
-    pos = pos.merge(span, on=['unit', 'house'], how='left')
+        first_period=('first_active', 'min'), last_period=('last_active', 'max'),
+        hais_count=('_act_code', 'nunique')).reset_index()
     pos = pos[pos['first_period'].notna()]
     pos['remaining_budget'] = pos['budget_to_date'] - pos['spend_to_date']
     pos['remaining_after_commitments'] = pos['remaining_budget'] - pos['commitments']
@@ -308,8 +334,7 @@ def unit_positions(lines: pd.DataFrame, codes: pd.DataFrame, bounds: dict) -> pd
         pos['truncated'] = (period_index(pos['first_period']) - start) < TRUNCATED_WINDOW_MONTHS
     else:
         pos['truncated'] = False
-    pos = pos.merge(unit_attributes(codes), on='unit', how='left')
-    return pos
+    return pos.merge(attrs, on='unit', how='left')
 
 
 def unit_history(lines: pd.DataFrame) -> pd.DataFrame:
@@ -339,44 +364,79 @@ def _build_commitments(lines: pd.DataFrame, bounds: dict) -> pd.DataFrame:
     return c
 
 
+# Views are cached per filter combination (there are only 12), and coverage /
+# profile once, because the source frames never change while the app runs.
+# build_project_frames clears the cache whenever the data is (re)loaded.
+_CACHE: dict = {}
+
+
+def _cached(frames, key, fn):
+    k = (id(frames.get('project_summary')), key)
+    if k not in _CACHE:
+        _CACHE[k] = fn()
+    return _CACHE[k]
+
+
 def build_project_frames(frames: dict) -> None:
-    """Adds project_lines, project_codes, project_units and project_commitments.
-    Rebuilt on every load (never pickled), like the asset NBV frames."""
+    """Adds project_lines, project_summary, project_unit_attrs, project_codes,
+    project_units and project_commitments. Rebuilt on every load (never
+    pickled), like the asset NBV frames."""
     lst, fin = frames.get('project_list'), frames.get('project_financials')
     if lst is None and fin is None:
         return
+    _CACHE.clear()
     lst = _prepare_list(lst) if lst is not None else pd.DataFrame(columns=['hais_code', 'unit', 'status', 'house'])
     frames['project_list'] = lst
     lines = _prepare_lines(fin, lst) if fin is not None else None
     if lines is None:
         return
     bounds = extract_bounds(lines)
-    codes = _build_codes(lst, lines)
+    summary = _summarise(lines)
+    codes = _build_codes(lst, summary, lines)
+    attrs = unit_attributes(codes)
     frames['project_lines'] = lines
+    frames['project_summary'] = summary
+    frames['project_unit_attrs'] = attrs
     frames['project_codes'] = codes
-    frames['project_units'] = unit_positions(filter_lines(lines), codes, bounds)
+    frames['project_units'] = unit_positions(filter_lines(summary), attrs, bounds)
     frames['project_commitments'] = _build_commitments(lines, bounds)
 
 
 # ── Views used by the tab, the drill-downs and the SI extract ─────────────────
 
 def scope_view(frames: dict, include_annual=True, expenditure_only=False, houses=None) -> dict:
-    """Everything the scope sections need, for one set of filter choices."""
-    lines, codes = frames.get('project_lines'), frames.get('project_codes')
-    bounds = extract_bounds(lines)
-    f = filter_lines(lines, include_annual, expenditure_only, houses)
-    pos = unit_positions(f, codes, bounds)
-    hist = unit_history(f)
-    listed = unit_attributes(codes)
-    if not include_annual and not listed.empty:
-        listed = listed[listed['project_type'] != 'Annual Requirements']
-    return {'lines': f, 'positions': pos, 'history': hist, 'listed_units': listed, 'bounds': bounds,
-            'codes': codes if include_annual else codes[codes['project_type'] != 'Annual Requirements']}
+    """Everything the scope sections need, for one set of filter choices.
+    'lines' is the filtered project_summary (no account / period detail)."""
+    houses = tuple(houses) if houses else None
+
+    def build():
+        summary, codes = frames.get('project_summary'), frames.get('project_codes')
+        bounds = extract_bounds(frames.get('project_lines'))
+        attrs = frames.get('project_unit_attrs')
+        f = filter_lines(summary, include_annual, expenditure_only, houses)
+        listed = attrs if include_annual else attrs[attrs['project_type'] != 'Annual Requirements']
+        view = {'lines': f, 'positions': unit_positions(f, attrs, bounds), 'history': unit_history(f),
+                'listed_units': listed, 'bounds': bounds,
+                'codes': codes if include_annual else codes[codes['project_type'] != 'Annual Requirements']}
+        view['table'] = opening_table(view)
+        return view
+
+    return _cached(frames, ('view', include_annual, expenditure_only, houses), build)
+
+
+def raw_lines(frames: dict, unit=None, include_annual=True, expenditure_only=False, houses=None) -> pd.DataFrame:
+    """Account / period level lines (project_lines), optionally for one Unit, with the filters applied."""
+    lines = frames.get('project_lines')
+    if unit is not None:
+        lines = lines[lines['unit'] == unit]
+    return filter_lines(lines, include_annual, expenditure_only, houses)
 
 
 def opening_table(view: dict) -> pd.DataFrame:
     """One row per listed Unit: HoC / HoL / total opening position side by side.
     Units on the list with no activity are kept, with zeros, so scope is complete."""
+    if 'table' in view:
+        return view['table']
     pos, listed = view['positions'], view['listed_units']
     figs = ['spend_to_date', 'commitments', 'budget_to_date', 'remaining_budget']
     if listed.empty:
@@ -389,11 +449,15 @@ def opening_table(view: dict) -> pd.DataFrame:
     tot = pos.groupby('unit')[figs].sum() if not pos.empty else pd.DataFrame(columns=figs)
     for c in figs:
         out[c] = out['unit'].map(tot[c]).fillna(0.0) if not tot.empty else 0.0
-    span = pos.groupby('unit').agg(first_period=('first_period', 'min'), last_period=('last_period', 'max'),
-                                   houses=('house', lambda s: 'Shared' if s.nunique() > 1 else s.iloc[0])) \
-        if not pos.empty else pd.DataFrame(columns=['first_period', 'last_period', 'houses'])
-    for c in ('first_period', 'last_period', 'houses'):
-        out[c] = out['unit'].map(span[c]) if not span.empty else np.nan
+    if not pos.empty:
+        g = pos.groupby('unit')
+        n_house = g['house'].nunique()
+        span = pd.DataFrame({'first_period': g['first_period'].min(), 'last_period': g['last_period'].max(),
+                             'houses': g['house'].first().where(n_house == 1, 'Shared')})
+        for c in span.columns:
+            out[c] = out['unit'].map(span[c])
+    else:
+        out['first_period'] = out['last_period'] = out['houses'] = np.nan
     out['houses'] = out['houses'].fillna('No activity')
     out['signal'] = activity_signal(out['last_period'], view['bounds'])
     out['first_activity'] = out['first_period'].map(period_label)
@@ -420,15 +484,19 @@ def unit_detail(frames: dict, unit: str, include_annual=True, expenditure_only=F
     hist = unit_history(lines)
     tasks = lines.groupby(['hais_code', 'hais_desc', 'house']).agg(
         spend_to_date=('actuals', 'sum'), commitments=('committed', 'sum'), budget_to_date=('budget', 'sum'),
-        first_period=('period', 'min'), last_period=('period', 'max')).reset_index() if not lines.empty else pd.DataFrame()
+        first_period=('first_active', 'min'), last_period=('last_active', 'max')).reset_index() \
+        if not lines.empty else pd.DataFrame()
     if not tasks.empty:
+        tasks = tasks[tasks['first_period'].notna()]
         tasks['remaining_budget'] = tasks['budget_to_date'] - tasks['spend_to_date']
     listed = codes[['hais_code', 'hais_desc', 'status']].drop_duplicates('hais_code')
     idle = listed[~listed['hais_code'].isin(tasks['hais_code'] if not tasks.empty else [])]
-    by_type = lines.groupby(['mipck_l1', 'mipck_l1_desc', 'account', 'account_desc']).agg(
+    raw = raw_lines(frames, unit, include_annual, expenditure_only, houses)
+    by_type = raw.groupby(['mipck_l1', 'mipck_l1_desc', 'account', 'account_desc'], dropna=False).agg(
         actuals=('actuals', 'sum'), budget=('budget', 'sum'), committed=('committed', 'sum')).reset_index() \
-        if not lines.empty else pd.DataFrame()
-    attrs = unit_attributes(codes)
+        if not raw.empty else pd.DataFrame()
+    attrs = frames['project_unit_attrs']
+    attrs = attrs[attrs['unit'] == unit]
     return {'attrs': attrs.iloc[0].to_dict() if not attrs.empty else {'unit': unit},
             'positions': view['positions'][view['positions']['unit'] == unit],
             'history': hist, 'tasks': tasks, 'idle_codes': idle, 'by_account': by_type,
@@ -438,7 +506,7 @@ def unit_detail(frames: dict, unit: str, include_annual=True, expenditure_only=F
 def drill_records(frames: dict, kind: str, key, include_annual=True, expenditure_only=False, houses=None) -> pd.DataFrame:
     """Rows behind a clicked chart bar, tile or panel. Returns display-ready columns."""
     view = scope_view(frames, include_annual, expenditure_only, houses)
-    table = opening_table(view)
+    table = view['table']
     money = ['spend_to_date', 'commitments', 'budget_to_date', 'remaining_budget']
     unit_cols = ['unit', 'unit_desc', 'project_type', 'projgrp_desc', 'directorate', 'houses', 'signal'] + money + \
                 ['first_activity', 'last_activity']
@@ -492,54 +560,63 @@ def drill_records(frames: dict, kind: str, key, include_annual=True, expenditure
 
 
 def coverage(frames: dict) -> dict:
-    """How the two files line up, by HAIS code."""
-    lines, codes = frames.get('project_lines'), frames.get('project_codes')
+    """How the two files line up, by HAIS code. Cached: the frames don't change while the app runs."""
+    return _cached(frames, 'coverage', lambda: _coverage(frames))
+
+
+def _coverage(frames: dict) -> dict:
+    summary, codes = frames.get('project_summary'), frames.get('project_codes')
     listed = codes.drop_duplicates('hais_code')
-    fin = lines.groupby(['hais_code']).agg(
+    fin = summary.groupby('hais_code').agg(
         hais_desc=('hais_desc', 'first'), unit=('unit', 'first'), actuals=('actuals', 'sum'),
-        budget=('budget', 'sum'), committed=('committed', 'sum'),
-        active=('actuals', lambda s: bool((s.abs() >= 0.005).any()))).reset_index()
+        budget=('budget', 'sum'), committed=('committed', 'sum')).reset_index()
     on_fin = fin[fin['hais_code'].isin(listed['hais_code'])]
     off_fin = fin[~fin['hais_code'].isin(listed['hais_code'])]
     idle = listed[~listed['has_activity']]
+    cols = ['hais_code', 'hais_desc', 'unit', 'actuals_total', 'budget_total', 'committed_total']
     detail = pd.concat([
-        listed[listed['has_activity']][['hais_code', 'hais_desc', 'unit', 'actuals_total', 'budget_total',
-                                         'committed_total']].assign(bucket='matched'),
-        idle[['hais_code', 'hais_desc', 'unit', 'actuals_total', 'budget_total', 'committed_total']].assign(bucket='idle'),
+        listed[listed['has_activity']][cols].assign(bucket='matched'),
+        idle[cols].assign(bucket='idle'),
         off_fin.rename(columns={'actuals': 'actuals_total', 'budget': 'budget_total', 'committed': 'committed_total'})
-        [['hais_code', 'hais_desc', 'unit', 'actuals_total', 'budget_total', 'committed_total']].assign(bucket='off_list'),
+        [cols].assign(bucket='off_list'),
     ], ignore_index=True)
-    on_lines = lines[lines['on_list']]
+    on_actuals = float(summary.loc[summary['on_list'], 'actuals'].sum())
     pos = frames.get('project_units', pd.DataFrame())
-    invariant = abs(float(on_lines['actuals'].sum()) - float(pos['spend_to_date'].sum() if not pos.empty else 0)) < TOLERANCE
+    pos_actuals = float(pos['spend_to_date'].sum()) if not pos.empty else 0.0
     return {
         'matched': len(listed[listed['has_activity']]), 'idle': len(idle), 'off_list': len(off_fin),
         'matched_actuals': float(on_fin['actuals'].sum()), 'off_list_actuals': float(off_fin['actuals'].sum()),
-        'listed_codes': len(listed), 'fin_codes': len(fin), 'invariant_ok': invariant,
-        'on_list_actuals': float(on_lines['actuals'].sum()),
-        'position_actuals': float(pos['spend_to_date'].sum()) if not pos.empty else 0.0,
-        'detail': detail,
+        'listed_codes': len(listed), 'fin_codes': len(fin), 'invariant_ok': abs(on_actuals - pos_actuals) < TOLERANCE,
+        'on_list_actuals': on_actuals, 'position_actuals': pos_actuals, 'detail': detail,
     }
 
 
 def profile(frames: dict) -> dict:
-    """Data Profile panels: how Ben's file behaves (answers Q3-Q6)."""
+    """Data Profile panels: how Ben's file behaves (answers Q3-Q6). Cached."""
+    return _cached(frames, 'profile', lambda: _profile(frames))
+
+
+def _profile(frames: dict) -> dict:
     lines = frames.get('project_lines')
     on = lines[lines['on_list']]
+    summ = frames['project_summary']
+    summ = summ[summ['on_list']]
     bounds = extract_bounds(lines)
 
-    by_year = on.groupby('fiscal_year').agg(actuals=('actuals', 'sum'), budget=('budget', 'sum'),
+    by_year = summ.groupby('fiscal_year').agg(actuals=('actuals', 'sum'), budget=('budget', 'sum'),
                                             committed=('committed', 'sum')).reset_index()
     by_year['fy_label'] = by_year['fiscal_year'].map(fy_label)
     years_with_budget = int((by_year['budget'].abs() >= 0.005).sum())
 
-    by_type = on.groupby(on['mipck_l1_desc'].fillna('(blank)')).agg(
+    by_type = summ.groupby('mipck_l1_desc').agg(
         actuals=('actuals', 'sum'), budget=('budget', 'sum'), committed=('committed', 'sum'),
         is_income=('is_income', 'max')).reset_index().rename(columns={'mipck_l1_desc': 'cost_type'})
     by_type = by_type.sort_values('actuals', ascending=False)
 
+    absd = on[['hais_code', 'account', 'house', 'unit']].assign(a=on['actuals'].abs(), b=on['budget'].abs())
+
     def placement(keys):
-        g = on.groupby(keys).agg(a=('actuals', lambda s: s.abs().sum()), b=('budget', lambda s: s.abs().sum()))
+        g = absd.groupby(keys)[['a', 'b']].sum()
         has_a, has_b = g['a'] >= 0.005, g['b'] >= 0.005
         return {'Actuals only': int((has_a & ~has_b).sum()), 'Budget only': int((~has_a & has_b).sum()),
                 'Both': int((has_a & has_b).sum())}

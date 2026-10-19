@@ -35,7 +35,7 @@ from dashboard.tabs.projects import (
     drill_title as project_drill_title, drill_summary as project_drill_summary,
 )
 from dashboard.core.projects import (
-    drill_records as project_drill_records, scope_view as project_scope_view, COLUMN_LABELS as PROJECT_COLUMN_LABELS,
+    drill_records as project_drill_records, raw_lines as project_raw_lines, COLUMN_LABELS as PROJECT_COLUMN_LABELS,
 )
 from dashboard.core.projects_export import workbook_bytes as project_workbook_bytes
 
@@ -1785,8 +1785,7 @@ def export_modal_to_csv(n_clicks, export_context):
         pk, key, f = export_context.get('kind'), export_context.get('key'), export_context.get('filters') or {}
         args = project_filter_args(f)
         if pk == 'unit':
-            lines = project_scope_view(frames, **args)['lines']
-            lines = lines[lines['unit'] == key]
+            lines = project_raw_lines(frames, key, **args)
             df = lines.groupby(['unit', 'unit_desc', 'hais_code', 'hais_desc', 'house', 'fy_label', 'mipck_l1_desc',
                                 'account', 'account_desc']).agg(
                 actuals=('actuals', 'sum'), budget=('budget', 'sum'), committed=('committed', 'sum')).reset_index()
