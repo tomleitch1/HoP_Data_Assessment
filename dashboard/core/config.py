@@ -34,6 +34,7 @@ class Scope(IntEnum):
     ATAMIS_COMMITMENTS = 31
     ATAMIS_SPEND = 32
     ATAMIS_SUPPLIERS = 33
+    PROJECTS = 34          # Seq 22 in the migration scope (22 is already GL_BALANCES here)
 
 class SupplierConfig:
     BACS_PAYMENT_METHODS = ['BACS']
@@ -189,6 +190,13 @@ SCOPE_CONFIG = {
         'tables':    ['atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers'],
         'aging':     None,
     },
+    'projects': {
+        'label':     'Projects',
+        'tab_value': 'projects',
+        'scope_ids': [Scope.PROJECTS],
+        'tables':    ['project_codes', 'project_units', 'project_commitments'],
+        'aging':     None,
+    },
 }
 
 SCOPE_LABELS = {
@@ -208,6 +216,7 @@ SCOPE_LABELS = {
     Scope.ATAMIS_COMMITMENTS: 'Contract Commitments',
     Scope.ATAMIS_SPEND: 'Contract Spend',
     Scope.ATAMIS_SUPPLIERS: 'Atamis Suppliers',
+    Scope.PROJECTS: 'Projects',
 }
 
 SCOPE_TABLES = {
@@ -222,6 +231,7 @@ SCOPE_TABLES = {
     Scope.GL_TRANSACTIONS: 'gl_transact_dims',
     Scope.ASSETS: 'asset_master',
     Scope.PBF: 'budgets_report',
+    Scope.PROJECTS: 'project_units',
 }
 
 SCOPE_TO_TAB = {}
@@ -236,6 +246,7 @@ ALL_TABLES = [
     'asset_master', 'asset_depreciation', 'asset_balances', 'asset_trans_flags',
     'apoheader', 'apodetail', 'budgets_report',
     'atamis_contracts', 'unit4_commitments', 'unit4_spend', 'atamis_suppliers',
+    'project_codes', 'project_units', 'project_commitments',
 ]
 
 # Per-severity RAG thresholds (error rate %). Green = below first value, Amber = below second, Red = above.

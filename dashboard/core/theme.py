@@ -42,6 +42,7 @@ HOUSE_HEX = {
     'HOL_LIGHT': '#c0392b',
     'Joint':     '#1e3a5f',   # navy — spans both houses, used only by Atamis contracts (Organisation field)
     'Unknown':   '#64748b',   # slate — Atamis rows that couldn't be matched to a Unit4 house
+    'Parliament': '#4a3d6b',  # purple — Projects checks on the project list itself (not split by house)
 }
 
 # ── Parliament UI palette ─────────────────────────────────────────────────────

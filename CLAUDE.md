@@ -46,6 +46,7 @@ python run_dashboard.py suppliers    # suppliers + AP only
 python run_dashboard.py gl           # GL only
 python run_dashboard.py customers    # customers + AR only
 python run_dashboard.py assets       # assets only
+python run_dashboard.py projects     # projects only
 ```
 
 App starts at `http://127.0.0.1:8050`. No build step. Place CSV extracts in `data/` before launching.
@@ -153,7 +154,8 @@ data/
 ├── po/          po_header_HOC.csv, po_detail_HOC.csv                    ← HoC only, no HOL data
 ├── atamis/      contracts_report.csv, supplier_data_report.csv          ← Atamis — NOT split HOC/HOL
 │                contract_total_commitments.csv, contracts_spend_details.csv  ← Unit4 views, NOT split HOC/HOL
-└── budgets/     budgets_HOC.csv                                          ← HOC only; raw aaghocbud extract, current FY
+├── budgets/     budgets_HOC.csv                                          ← HOC only; raw aaghocbud extract, current FY
+└── projects/    project_list.csv, project_financials.csv                 ← Finance reports, NOT split HOC/HOL (Recharge = house)
 ```
 
 `data_engine.py` uses a `SUBDIR` map and `_data_path()` helper to resolve paths — adding a new file means registering it in `SUBDIR` and `split_files` in `load_data()`. There is no longer a `file_map` for single combined files — all tables use split files.
@@ -1323,6 +1325,28 @@ If this report is used as the data source instead of the raw SQL extract, the fi
 - Budget lines with no cost centre (`dim2` blank) (Completeness, Low)
 - `plb_amount` (CURR) zero where account has GL actuals — unbudgeted spend (Consistency, Medium)
 - Accounts in `aglaccounts` with no budget line at all — coverage gap (Completeness, Low)
+
+---
+
+## Navigation
+
+The horizontal tab bar was replaced (October 2026) by a menu button at the top left of the header that opens a drawer (`nav-drawer`) listing every section, grouped by migration area (`NAV_SECTIONS` in `app.py`). The selected section is a `dcc.Store` still called `master-tabs` (callbacks read `data`, not `value`). `handle_navigation` must pass the section through on first load: returning `no_update` there stops `render_tab_content` firing and the page loads blank. Adding a section = one entry in `NAV_SECTIONS` plus a branch in `render_tab_content`.
+
+---
+
+## Projects Domain (Seq 22) — Implementation Details
+
+Full design, open questions (Q1–Q8) and build notes: **`build_spec/projects_tab.md`**. Read it before changing this tab.
+
+- **Sources:** `data/projects/project_list.csv` (Krishna: one row per HAIS code with Department > Directorate > Cost Centre > Unit > HAIS hierarchy, Projcat, Projgrp, status) and `data/projects/project_financials.csv` (Ben: account × HAIS code × Recharge house × period, with Committed purchase / Actuals / Current Budget / Current Forecast, from April 2020). Single combined files loaded through `single_files` with `_PROJECT_RENAME`; `Year` is the start-year convention, `Period` YYYYPP (both numeric, never dates).
+- **A project is a Unit**; HAIS codes are its cost lines (confirmed by Krishna). Projcat: `F-MAJP` CAT A, `F-MINP` CAT B, `F-MNSP` Other (CAT C?), `F-ANRP` Annual Requirements. Whether Annual Requirements count as projects is undecided (Q1), so the tab has a Scope filter.
+- **Opening position** (per Unit × house): spend to date = Σ actuals; commitments = Σ committed purchase (confirmed on real data that it doesn't repeat across periods, so summing is safe); budget to date = Σ current budget rolled up to the Unit (budget can sit on different accounts or cost lines from spend); remaining = budget − spend.
+- **`dashboard/core/projects.py`** builds `project_lines`, `project_codes` (house `Parliament`), `project_units` and `project_commitments` at the end of `load_data()` (never pickled; the whole module is hashed into `_engine_sig()`). Views (`scope_view`, `opening_table`, `unit_detail`, `drill_records`, `coverage`, `profile`) are shared by the tab, drill-downs and the SI extract so the figures always agree. Aggregation lives here, not in the rule lambdas.
+- **17 checks** in `project_rules.py`, scope 34 (`Scope.PROJECTS`; 22 was taken). List checks run once under house `Parliament`; `run_dq_analysis` loops `[PROJECT_LIST_HOUSE]` for `project_codes`. Populations: `project_population()`. Evidence: `project_evidence()` (prefixed `PROJECTS.`).
+- **Tab** (`dashboard/tabs/projects.py`): hero, sticky filters (Scope / Cost types / House), headline, category and portfolio charts, opening position table, history chart, coverage and reconciliation, DQ, Data Profile (answers Q3–Q6 from the data), SI extract download. Callbacks in `app.py`: `update_projects_scope`, `handle_project_drill` (pattern-matching `prj-chart` / `prj-drill` / `prj-table`), `export_projects_si`, plus a `projects` branch in `export_modal_to_csv`; `close_modal` resets `prj-chart` clickData and `prj-table` active_cell.
+- **SI extract:** `python scripts/generate_projects_export.py [--projects-only] [--expenditure-only]` → `trackers/projects/projects_scope.xlsx` (same as the tab's button). Tracker: `python scripts/generate_tracker.py projects HOC|HOL|Parliament`.
+- **Dummy data:** `python scripts/generate_projects_dummy_data.py` writes both files with the real headers and prints one planted case per check.
+- **Status:** built and verified on dummy data only (October 2026). Run against the real files on the Parliament laptop before relying on any figure.
 
 ---
 

@@ -19,6 +19,12 @@ from dashboard.core.rules.gl_rules import get_gl_checks
 from dashboard.core.rules.po_rules import get_po_checks
 from dashboard.core.rules.atamis_rules import get_atamis_checks
 from dashboard.core.rules.budget_rules import get_budget_checks
+from dashboard.core.rules.project_rules import get_project_checks
+from dashboard.core import projects as _projects_mod
+from dashboard.core.projects import (
+    build_project_frames, project_population, project_evidence,
+    LIST_HOUSE as PROJECT_LIST_HOUSE, DERIVED_TABLES as PROJECT_TABLES,
+)
 
 DATA_DIR = 'data'
 CLIENTS = ['HOC', 'HOL']
@@ -152,6 +158,9 @@ SUBDIR = {
     # same pattern as Atamis — house derived post-load, not from filename.
     # Key is 'budgets' (the actual data/ subdirectory) not 'pbf' (the tab name).
     'budgets':   ['budgets_report'],
+    # Projects (Seq 22): Krishna's project list and Ben's financials dump.
+    # Single combined files like budgets_report; house comes from Recharge.
+    'projects':  ['project_list', 'project_financials'],
 }
 # Reverse lookup: base_name -> subdirectory
 _SUBDIR_MAP = {name: sub for sub, names in SUBDIR.items() for name in names}
@@ -266,6 +275,30 @@ _ATAMIS_RENAME = {
     'hol_unit4_spend': {
         'Contract Number': 'u4_contract_id',
         'Amount':          'amount',
+    },
+}
+
+# Projects files arrive with the report tool's own headers ("(T)" = description).
+_PROJECT_RENAME = {
+    'project_list': {
+        'Department': 'department', 'Department(T)': 'department_desc',
+        'Directorate': 'directorate', 'Directorate(T)': 'directorate_desc',
+        'Cost Centre': 'costc', 'Cost Centre(T)': 'costc_desc',
+        'Projcat': 'projcat', 'Projcat(T)': 'projcat_desc',
+        'Projgrp': 'projgrp', 'Projgrp(T)': 'projgrp_desc',
+        'Unit': 'unit', 'Unit(T)': 'unit_desc',
+        'HAIS Code': 'hais_code', 'HAIS Code(T)': 'hais_desc',
+        'S': 'status',
+    },
+    'project_financials': {
+        'Mipck-l1': 'mipck_l1', 'Mipck-l1(T)': 'mipck_l1_desc',
+        'Mipck-l2': 'mipck_l2', 'Mipck-l2(T)': 'mipck_l2_desc', 'Mipck-l3': 'mipck_l3',
+        'Account': 'account', 'Account(T)': 'account_desc',
+        'Department': 'department', 'Directorate': 'directorate', 'Costc': 'costc', 'Unit': 'unit',
+        'Haiscode': 'hais_code', 'Haiscode(T)': 'hais_desc',
+        'Recharge': 'recharge', 'Year': 'fiscal_year', 'Period': 'period',
+        'Committed purchase': 'committed', 'Actuals': 'actuals',
+        'Current Budget': 'budget', 'Current Forecast': 'forecast',
     },
 }
 
@@ -700,6 +733,8 @@ def _engine_sig() -> str:
                 + _inspect.getsource(nbv_population)
                 + _inspect.getsource(_apply_asset_client_scope)
                 + repr((AssetConfig.HOC_CLIENTS, AssetConfig.HOL_CLIENTS, AssetConfig.TABLES))
+                # Projects frames and populations are built outside run_dq_analysis
+                + _inspect.getsource(_projects_mod)
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))
@@ -796,6 +831,8 @@ _FORCE_STR_DTYPE = {col: str for col in [
     'Contract Reference', 'Contract Id', 'Contract', 'Supplier ID', 'Creditor Ref',
     'Supplier: ID', 'contract_ref', 'u4_contract_id', 'supplier_id', 'creditor_ref',
     'supplier_salesforce_id',
+    # Projects codes (raw headers) - keep leading zeros and letters as text
+    'Account', 'Haiscode', 'HAIS Code', 'Unit', 'Costc', 'Cost Centre',
 ]}
 
 
@@ -808,6 +845,7 @@ _SUBDIR_TO_SCOPE = {
     'po':        'po',
     'atamis':    'atamis',
     'pbf':       'pbf',
+    'projects':  'projects',
 }
 
 # User-friendly aliases accepted on the command line
@@ -936,6 +974,8 @@ def load_data(tab=None):
         'unit4_open_contracts':         'unit4_open_contracts',
         'hol_unit4_spend':              'hol_unit4_spend',
         'budgets_report':               'budgets_report',
+        'project_list':                 'project_list',
+        'project_financials':           'project_financials',
     }
     for base_name, table in single_files.items():
         if base_name not in names_to_load:
@@ -955,7 +995,12 @@ def load_data(tab=None):
             df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE)
         except UnicodeDecodeError:
             df = pd.read_csv(source_path, low_memory=False, dtype=_FORCE_STR_DTYPE, encoding='cp1252')
-        _rename_map = _ATAMIS_RENAME.get(table, {}) if table != 'budgets_report' else _BUDGET_RENAME
+        if table == 'budgets_report':
+            _rename_map = _BUDGET_RENAME
+        elif table in _PROJECT_RENAME:
+            _rename_map = _PROJECT_RENAME[table]
+        else:
+            _rename_map = _ATAMIS_RENAME.get(table, {})
         df = df.rename(columns=_rename_map)
         # Guard against a real export header not matching any key in the
         # rename map (report-tool prefixes vary, budget report column names may
@@ -1015,6 +1060,8 @@ def load_data(tab=None):
                         # Budget / PBF numeric columns
                         'gl_actuals', 'orig_budget', 'curr_budget', 'live_forecast',
                         'pfst_budget', 'q1_forecast', 'q2_forecast', 'q3_forecast',
+                        # Projects financials
+                        'actuals', 'budget', 'committed',
                         ]
         for col in numeric_cols:
             if col in df.columns:
@@ -1047,6 +1094,12 @@ def load_data(tab=None):
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
             _date_cols = date_cols
+        elif table == 'project_financials':
+            # period is YYYYPP and fiscal_year the start year: numbers, not dates
+            for col in ('period', 'fiscal_year'):
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col].astype(str).str.strip(), errors='coerce')
+            _date_cols = [c for c in date_cols if c not in ('period', 'fiscal_year')]
         elif table == 'budgets_report':
             # period (1–15) and year are plain integers, not dates — parse to
             # numeric, explicitly excluded from _parse_dates.
@@ -1103,6 +1156,11 @@ def load_data(tab=None):
     if 'asset_balances' in frames:
         build_asset_nbv(frames)
 
+    # Derived Projects frames (positions, list checks, commitments). Rebuilt
+    # every load, never pickled, same as the NBV frames.
+    if 'project_list' in frames or 'project_financials' in frames:
+        build_project_frames(frames)
+
     return frames
 
 def get_dq_checks():
@@ -1115,6 +1173,7 @@ def get_dq_checks():
     checks.extend(get_po_checks())
     checks.extend(get_atamis_checks())
     checks.extend(get_budget_checks())
+    checks.extend(get_project_checks())
     return checks
 
 def run_dq_analysis(frames, tab=None):
@@ -1163,9 +1222,17 @@ def run_dq_analysis(frames, tab=None):
         if table == 'asset_nbv':
             # Derived from these three, never pickled itself.
             rel_fps += [_cache_path(t) for t in ('asset_balances', 'asset_master', 'asset_depreciation')]
+        if table in PROJECT_TABLES:
+            # Derived from the two project files, never pickled itself.
+            rel_fps = [_cache_path(t) for t in ('project_list', 'project_financials')]
 
         _dq_version = os.environ.get('DASHBOARD_VERSION', '').strip()
-        _houses = ATAMIS_HOUSES if table in ATAMIS_TABLES else CLIENTS
+        if table in ATAMIS_TABLES:
+            _houses = ATAMIS_HOUSES
+        elif table == 'project_codes':
+            _houses = [PROJECT_LIST_HOUSE]      # the list itself isn't split by house
+        else:
+            _houses = CLIENTS
         for house in _houses:
             # Per-check cache — load if fresh, skip the run entirely.
             # Bypass cache entirely when a data version is active so versioned
@@ -1298,6 +1365,8 @@ def run_dq_analysis(frames, tab=None):
                     h_df = _atamis_filter_open_only(h_df, table, frames)
             elif table == 'budgets_report':
                 h_df = df_table[df_table['house'] == house]
+            elif table in PROJECT_TABLES:
+                h_df = project_population(df_table[df_table['house'] == house], check_id)
             else:
                 h_df = df_table[df_table['house'] == house]
 
@@ -1793,6 +1862,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
             h_df = _atamis_filter_open_only(h_df, table, frames)
     elif table == 'budgets_report':
         h_df = df_table[df_table['house'] == house]
+    elif table in PROJECT_TABLES:
+        h_df = project_population(df_table[df_table['house'] == house], check_id)
     else:
         h_df = df_table[df_table['house'] == house]
 
@@ -1807,6 +1878,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
     failing = h_df[mask].copy()
     if failing.empty:
         return failing
+    if table in PROJECT_TABLES:
+        return project_evidence(failing, table, check_id, for_export=for_export)
     if table == 'asset_nbv':
         cols =[c for c in NBV_EVIDENCE_COLS if c in failing.columns]
         out = failing[cols].copy()

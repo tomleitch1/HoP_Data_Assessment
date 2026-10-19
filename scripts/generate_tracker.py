@@ -12,8 +12,8 @@ Usage:
     python scripts/generate_tracker.py gl HOC
     python scripts/generate_tracker.py assets HOL
 
-Valid tabs: suppliers, customers, gl, assets
-Valid houses: HOC, HOL
+Valid tabs: suppliers, customers, gl, assets, projects
+Valid houses: HOC, HOL (and Parliament for the projects tab's list checks)
 
 Output: trackers/<tab>_tracker_<HOUSE>.xlsx
 """
@@ -39,6 +39,7 @@ TAB_ALIASES = {
     'ar':        'customers',
     'gl':        'gl',
     'assets':    'assets',
+    'projects':  'projects',
 }
 
 SCOPE_KEY = {
@@ -46,6 +47,7 @@ SCOPE_KEY = {
     'customers': 'ar',
     'gl':        'gl',
     'assets':    'assets',
+    'projects':  'projects',
 }
 
 SEV_FILL = {
@@ -77,8 +79,10 @@ def make_tracker(tab: str, house: str) -> None:
         sys.exit(1)
 
     house = house.upper()
-    if house not in ('HOC', 'HOL'):
-        print("House must be HOC or HOL.")
+    if house == 'PARLIAMENT':
+        house = 'Parliament'          # Projects: checks on the project list itself
+    if house not in ('HOC', 'HOL', 'Parliament'):
+        print("House must be HOC, HOL or Parliament (Projects list checks).")
         sys.exit(1)
 
     print(f"Loading data...")

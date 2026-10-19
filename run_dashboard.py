@@ -8,6 +8,7 @@ Run one tab only:     python run_dashboard.py suppliers
                       python run_dashboard.py gl
                       python run_dashboard.py customers
                       python run_dashboard.py assets
+                      python run_dashboard.py projects
 
 Versioned data run:   python run_dashboard.py suppliers v2
                       python run_dashboard.py assets v2
@@ -34,6 +35,7 @@ _VALID_TABS = {
     'po':        'po',
     'atamis':    'atamis',
     'pbf':       'pbf', 'budgets': 'pbf',
+    'projects':  'projects',
 }
 _tab_label = None
 _version    = None

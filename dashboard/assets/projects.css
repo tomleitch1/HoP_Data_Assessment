@@ -1,0 +1,15 @@
+/* Projects tab: segmented filter controls (dcc.RadioItems with className="prj-segmented").
+   Dash can't style the checked option inline, so the selected label is styled here. */
+.prj-segmented { display: flex; }
+.prj-segmented label { transition: background 0.15s ease, color 0.15s ease; }
+.prj-segmented label:first-child { border-radius: 8px 0 0 8px; }
+.prj-segmented label:last-child { border-radius: 0 8px 8px 0; }
+.prj-segmented label:hover { background: #f1f5f9 !important; }
+.prj-segmented label:has(input:checked) {
+  background: #14285a !important;
+  color: #ffffff !important;
+  border-color: #14285a !important;
+}
+
+/* Navigation drawer items */
+button[id*="nav-item"]:hover { background: #f1f5f9 !important; }

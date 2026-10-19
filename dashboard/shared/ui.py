@@ -79,18 +79,39 @@ def section_header(title, subtitle=''):
         html.Hr(style={'border': 'none', 'borderTop': '1px solid #E2E8F0', 'margin': '12px 0 20px'}),
     ])
 
-def header_bar():
+def header_bar(menu_button=None):
+    """Top bar. menu_button (optional) sits at the far left and opens the
+    navigation drawer; the element with id 'nav-current-label' shows the
+    section currently open."""
     return html.Div(style={
         'background': 'white',
         'borderBottom': '1px solid #E2E8F0', 'padding': '0',
         'boxShadow': '0 1px 2px rgba(0,0,0,0.03)',
+        'position': 'sticky', 'top': '0', 'zIndex': 900,
     }, children=[
         html.Div(style={
             'maxWidth': '1440px', 'margin': '0 auto',
-            'padding': '16px 32px',
+            'padding': '14px 32px',
             'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
         }, children=[
-            html.Div([
+            html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '18px'}, children=[
+                menu_button,
+                html.Div([
+                    html.Div('PARLIAMENT FINANCE SYSTEMS PROGRAMME', style={
+                        'fontSize': '11px', 'fontWeight': '700', 'color': '#64748B',
+                        'letterSpacing': '2px', 'marginBottom': '2px',
+                    }),
+                    html.Div(style={'display': 'flex', 'alignItems': 'baseline', 'gap': '12px'}, children=[
+                        html.Div('Data Quality Assessment', style={
+                            'fontSize': '22px', 'fontWeight': '700', 'color': '#0F172A',
+                            'letterSpacing': '-0.5px',
+                        }),
+                        html.Div(id='nav-current-label', style={
+                            'fontSize': '15px', 'fontWeight': '600', 'color': '#006548',
+                        }),
+                    ]),
+                ]),
+            ]) if menu_button is not None else html.Div([
                 html.Div('PARLIAMENT FINANCE SYSTEMS PROGRAMME', style={
                     'fontSize': '11px', 'fontWeight': '700', 'color': '#64748B',
                     'letterSpacing': '2px', 'marginBottom': '2px',

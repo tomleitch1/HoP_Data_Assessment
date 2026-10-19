@@ -29,6 +29,16 @@ from dashboard.tabs.atamis import (
     RELIABILITY_VERDICT_LABELS as ATAMIS_RELIABILITY_VERDICT_LABELS,
 )
 
+from dashboard.tabs.projects import (
+    render_tab as render_projects, render_scope_body as render_projects_scope, render_unit_modal as render_project_unit,
+    records_table as project_records_table, filters_from as project_filters_from, filter_args as project_filter_args,
+    drill_title as project_drill_title, drill_summary as project_drill_summary,
+)
+from dashboard.core.projects import (
+    drill_records as project_drill_records, scope_view as project_scope_view, COLUMN_LABELS as PROJECT_COLUMN_LABELS,
+)
+from dashboard.core.projects_export import workbook_bytes as project_workbook_bytes
+
 # Keep these in case they are needed for drill-downs or future features
 from dashboard.tabs.explorer import render_explorer_layout, render_explorer_summary
 from dashboard.tabs.findings import render_findings_log
@@ -62,46 +72,96 @@ app = dash.Dash(__name__, title='Parliament DQA | Veran Performance',
                 external_stylesheets=external_stylesheets,
                 suppress_callback_exceptions=True)
 
+# ── Navigation drawer ────────────────────────────────────────────────────────
+NAV_SECTIONS = [
+    ('Overview', [('exec-summary', 'Summary', 'lucide:layout-dashboard', 'Cross-domain overview')]),
+    ('Foundation', [('gl', 'General Ledger', 'lucide:book-open', 'Chart of accounts, dimensions, balances')]),
+    ('Master data', [('suppliers', 'Suppliers & AP', 'lucide:truck', 'Supplier master and open invoices'),
+                     ('customers', 'Customers & AR', 'lucide:users', 'Customer master and open items'),
+                     ('assets', 'Fixed Assets', 'lucide:building-2', 'Register, depreciation and NBV')]),
+    ('Open items', [('po', 'Purchase Orders', 'lucide:shopping-cart', 'Open POs and commitments')]),
+    ('Planning & projects', [('pbf', 'Budgets (PBF)', 'lucide:calculator', 'Budgets and forecasts'),
+                             ('projects', 'Projects', 'lucide:folder-kanban', 'Seq 22 scope and opening position')]),
+    ('Procurement', [('atamis', 'Atamis Contracts', 'lucide:file-signature', 'Contracts reconciled to Unit4')]),
+]
+NAV_LABELS = {v: (label, icon) for _, items in NAV_SECTIONS for v, label, icon, _d in items}
+
+_NAV_DRAWER_BASE = {
+    'position': 'fixed', 'top': 0, 'left': 0, 'height': '100vh', 'width': '330px', 'background': 'white',
+    'boxShadow': '8px 0 40px rgba(15,23,42,0.18)', 'zIndex': 1100, 'overflowY': 'auto',
+    'transition': 'transform 0.22s ease', 'fontFamily': "'Poppins', sans-serif",
+}
+_NAV_DRAWER_CLOSED = {**_NAV_DRAWER_BASE, 'transform': 'translateX(-105%)', 'boxShadow': 'none', 'visibility': 'hidden'}
+_NAV_DRAWER_OPEN = {**_NAV_DRAWER_BASE, 'transform': 'translateX(0)', 'visibility': 'visible'}
+_NAV_BACKDROP_CLOSED = {'display': 'none'}
+_NAV_BACKDROP_OPEN = {'display': 'block', 'position': 'fixed', 'inset': 0, 'background': 'rgba(15,23,42,0.35)',
+                      'backdropFilter': 'blur(2px)', 'zIndex': 1050}
+
+
+def _nav_item_style(selected):
+    return {
+        'display': 'flex', 'alignItems': 'center', 'gap': '12px', 'width': '100%', 'textAlign': 'left',
+        'padding': '10px 14px', 'margin': '2px 0', 'border': 'none', 'borderRadius': '10px', 'cursor': 'pointer',
+        'background': '#E8F5EE' if selected else 'transparent',
+        'boxShadow': 'inset 3px 0 0 #006548' if selected else 'none',
+        'fontFamily': "'Poppins', sans-serif",
+    }
+
+
+def _nav_drawer_children():
+    sections = []
+    for title, items in NAV_SECTIONS:
+        sections.append(html.Div(title.upper(), style={
+            'fontSize': '10px', 'fontWeight': '800', 'color': '#94A3B8', 'letterSpacing': '0.12em',
+            'margin': '18px 0 6px 14px'}))
+        for value, label, icon, desc in items:
+            sections.append(html.Button(id={'type': 'nav-item', 'value': value}, n_clicks=0,
+                                        style=_nav_item_style(value == 'exec-summary'), children=[
+                html.Div(DashIconify(icon=icon, width=18, color='#006548'), style={
+                    'width': '34px', 'height': '34px', 'borderRadius': '9px', 'background': '#F1F5F9',
+                    'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center', 'flexShrink': '0'}),
+                html.Div([
+                    html.Div(label, style={'fontSize': '13.5px', 'fontWeight': '600', 'color': '#0F172A'}),
+                    html.Div(desc, style={'fontSize': '11px', 'color': '#64748B', 'marginTop': '1px'}),
+                ]),
+            ]))
+    return [
+        html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center',
+                        'padding': '18px 18px 14px', 'borderBottom': '1px solid #E2E8F0'}, children=[
+            html.Div([
+                html.Div('NAVIGATE', style={'fontSize': '10px', 'fontWeight': '800', 'color': '#64748B',
+                                            'letterSpacing': '0.14em'}),
+                html.Div('Data Quality Assessment', style={'fontSize': '15px', 'fontWeight': '700', 'color': '#0F172A'}),
+            ]),
+            html.Button(DashIconify(icon='lucide:x', width=18, color='#475569'), id='btn-nav-close', n_clicks=0,
+                        title='Close', style={'background': '#F1F5F9', 'border': 'none', 'borderRadius': '8px',
+                                              'width': '34px', 'height': '34px', 'cursor': 'pointer',
+                                              'display': 'flex', 'alignItems': 'center', 'justifyContent': 'center'}),
+        ]),
+        html.Div(sections, style={'padding': '0 12px 24px'}),
+    ]
+
+
 app.layout = html.Div(style={
     'background': '#F4F7F9', 'minHeight': '100vh',
     'fontFamily': "'Poppins', sans-serif",
     'color': '#2C3E50',
 }, children=[
-    header_bar(),
-    
+    header_bar(menu_button=html.Button(
+        DashIconify(icon='lucide:menu', width=22, color='#0F172A'),
+        id='btn-nav-menu', n_clicks=0, title='Open navigation',
+        style={'background': '#F1F5F9', 'border': '1px solid #E2E8F0', 'borderRadius': '10px',
+               'width': '44px', 'height': '44px', 'display': 'flex', 'alignItems': 'center',
+               'justifyContent': 'center', 'cursor': 'pointer', 'padding': '0', 'flexShrink': '0'},
+    )),
+
     # ── MASTER NAVIGATION ─────────────────────────────────────────────────────
-    html.Div(style={
-        'background': 'white', 'borderBottom': '1px solid #E2E8F0', 'padding': '0 32px'
-    }, children=[
-        html.Div(style={'maxWidth': '1440px', 'margin': '0 auto'}, children=[
-            dcc.Tabs(id='master-tabs', value='exec-summary', style={'height': '60px'}, children=[
-                dcc.Tab(label='Summary', value='exec-summary',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='GL', value='gl',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='Suppliers', value='suppliers',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='Customers', value='customers',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='Assets', value='assets',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='POs', value='po',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='PBF', value='pbf',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-                dcc.Tab(label='Atamis', value='atamis',
-                        style={'background': 'transparent', 'border': 'none', 'color': '#64748B', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '600'},
-                        selected_style={'background': 'transparent', 'border': 'none', 'borderBottom': '3px solid #006548', 'color': '#006548', 'padding': '18px 24px', 'fontSize': '14px', 'fontWeight': '700'}),
-            ]),
-        ])
-    ]),
+    # The selected section lives in a Store (id kept as 'master-tabs' so every
+    # callback that reads it is unchanged apart from value -> data). The menu
+    # button opens a drawer listing every section, grouped by migration area.
+    dcc.Store(id='master-tabs', data='exec-summary'),
+    html.Div(id='nav-backdrop', n_clicks=0, style=_NAV_BACKDROP_CLOSED),
+    html.Div(id='nav-drawer', style=_NAV_DRAWER_CLOSED, children=_nav_drawer_children()),
 
     # ── SUB NAVIGATION & CONTENT ──────────────────────────────────────────────
     html.Div(style={'maxWidth': '1440px', 'margin': '0 auto', 'padding': '24px 32px'}, children=[
@@ -202,11 +262,48 @@ app.layout = html.Div(style={
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.callback(
+    [Output('master-tabs', 'data'),
+     Output('nav-drawer', 'style'),
+     Output('nav-backdrop', 'style'),
+     Output({'type': 'nav-item', 'value': dash.ALL}, 'style'),
+     Output('nav-current-label', 'children')],
+    [Input('btn-nav-menu', 'n_clicks'),
+     Input('btn-nav-close', 'n_clicks'),
+     Input('nav-backdrop', 'n_clicks'),
+     Input({'type': 'nav-item', 'value': dash.ALL}, 'n_clicks')],
+    State('master-tabs', 'data'),
+)
+def handle_navigation(_menu, _close, _backdrop, _items, current):
+    """Menu button opens the drawer; the close button or a click outside it
+    closes it; picking a section switches to it and closes the drawer."""
+    trig = dash.ctx.triggered_id
+    selected, open_ = current, False
+    if trig == 'btn-nav-menu':
+        open_ = True
+    elif isinstance(trig, dict) and trig.get('type') == 'nav-item' and dash.ctx.triggered[0]['value']:
+        selected = trig['value']
+    item_ids = [o['id']['value'] for o in dash.ctx.outputs_list[3]]
+    label, icon = NAV_LABELS.get(selected, (selected, 'lucide:layout-dashboard'))
+    crumb = html.Span(style={'display': 'flex', 'alignItems': 'center', 'gap': '6px'}, children=[
+        html.Span('/', style={'color': '#CBD5E1', 'fontWeight': '400'}),
+        DashIconify(icon=icon, width=16, color='#006548'), label,
+    ])
+    # On first load (no trigger) the section must be passed through: Dash skips
+    # render_tab_content if this returns no_update, leaving the page blank.
+    # Opening / closing the menu leaves it untouched so the page isn't re-rendered.
+    return (selected if trig is None or selected != current else dash.no_update,
+            _NAV_DRAWER_OPEN if open_ else _NAV_DRAWER_CLOSED,
+            _NAV_BACKDROP_OPEN if open_ else _NAV_BACKDROP_CLOSED,
+            [_nav_item_style(v == selected) for v in item_ids],
+            crumb)
+
+
+@app.callback(
     Output('main-tab-content', 'children'),
-    Input('master-tabs', 'value')
+    Input('master-tabs', 'data')
 )
 def render_tab_content(master_tab):
-    if master_tab not in ['suppliers', 'customers', 'exec-summary', 'gl', 'assets', 'po', 'pbf', 'atamis']:
+    if master_tab not in ['suppliers', 'customers', 'exec-summary', 'gl', 'assets', 'po', 'pbf', 'atamis', 'projects']:
         return html.Div(style={'padding': '100px', 'textAlign': 'center', 'color': '#94A3B8'}, children=[
             html.Div(f"{master_tab.upper()} Module Data Not Loaded", style={'fontSize': '18px', 'fontWeight': '600'}),
             html.Div("Please select 'Executive summary', 'General Ledger', 'Suppliers', or 'Customers' to view current migration data.", style={'marginTop': '8px'})
@@ -217,7 +314,9 @@ def render_tab_content(master_tab):
         filtered_dq = dq_results # All data for executive summary
         return render_summary(filtered_dq, frames, master_tab)
     elif master_tab == 'gl':
-        filtered_dq = dq_results[dq_results['scope_id'] >= 20]
+        # GL scopes only (20-23). This was scope_id >= 20, which also pulled in
+        # Atamis (30-33) and later scopes.
+        filtered_dq = dq_results[dq_results['scope_id'].between(20, 23)]
         return render_gl(filtered_dq, frames)
     elif master_tab == 'suppliers':
         filtered_dq = dq_results[dq_results['scope_id'].isin([10, 16, 18])]
@@ -237,6 +336,9 @@ def render_tab_content(master_tab):
     elif master_tab == 'atamis':
         filtered_dq = dq_results[dq_results['scope_id'].isin([30, 31, 32, 33])]
         return render_atamis(filtered_dq, frames)
+    elif master_tab == 'projects':
+        filtered_dq = dq_results[dq_results['scope_id'] == 34]
+        return render_projects(filtered_dq, frames)
 
     return html.Div("Tab not found")
 
@@ -244,7 +346,7 @@ def render_tab_content(master_tab):
     Output('summary-drill-down-container', 'children'),
     [Input('summary-dim-chart', 'clickData'),
      Input('summary-rag-chart', 'clickData')],
-    [State('master-tabs', 'value')]
+    [State('master-tabs', 'data')]
 )
 def drill_down_from_summary(dim_click, rag_click, master_tab):
     ctx = dash.callback_context
@@ -257,7 +359,7 @@ def drill_down_from_summary(dim_click, rag_click, master_tab):
     if master_tab == 'exec-summary':
         module_dq = dq_results
     elif master_tab == 'gl':
-        module_dq = dq_results[dq_results['scope_id'] >= 20]
+        module_dq = dq_results[dq_results['scope_id'].between(20, 23)]
     elif master_tab == 'suppliers':
         module_dq = dq_results[dq_results['scope_id'].isin([10, 16, 18])]
     elif master_tab == 'customers':
@@ -355,14 +457,20 @@ def close_summary_drill(n_clicks):
      Output('modal-content', 'children', allow_duplicate=True),
      Output('modal-export-context', 'data', allow_duplicate=True),
      Output({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
-     Output({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData')],
+     Output({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData'),
+     Output({'type': 'prj-chart', 'index': dash.ALL}, 'clickData'),
+     Output({'type': 'prj-table', 'index': dash.ALL}, 'active_cell')],
     Input('btn-close-modal', 'n_clicks'),
     State({'type': 'dim-widget-chart', 'index': dash.ALL}, 'clickData'),
     State({'type': 'nbv-chart', 'index': dash.ALL}, 'clickData'),
+    State({'type': 'prj-chart', 'index': dash.ALL}, 'clickData'),
+    State({'type': 'prj-table', 'index': dash.ALL}, 'active_cell'),
     prevent_initial_call=True
 )
-def close_modal(n_clicks, chart_clicks, nbv_clicks):
-    return {'display': 'none'}, "", "", None, [None] * len(chart_clicks), [None] * len(nbv_clicks)
+def close_modal(n_clicks, chart_clicks, nbv_clicks, prj_clicks, prj_cells):
+    # Clearing clickData / active_cell lets the same bar or row be clicked again.
+    return ({'display': 'none'}, "", "", None, [None] * len(chart_clicks), [None] * len(nbv_clicks),
+            [None] * len(prj_clicks), [None] * len(prj_cells))
 
 
 @app.callback(
@@ -680,7 +788,7 @@ def handle_modal_logic(chart_clicks, table_cells, tables_data):
                        'ASSET_GROUPS.', 'ASSET_TRANS_FLAGS.', 'SUPPLIER_MASTER.',
                        'AR_INVOICES.', 'CUSTOMER_MASTER.',
                        'AP_INVOICES.', 'AP_HISTORY.',
-                       'GL_BALANCES.', 'GL_ACCOUNTS.', 'GL_TRANSACTIONS.', 'GL_DIMENSIONS.']
+                       'GL_BALANCES.', 'GL_ACCOUNTS.', 'GL_TRANSACTIONS.', 'GL_DIMENSIONS.', 'PROJECTS.']
     is_prefixed = any(any(p in c for p in prefixed_tables) for c in df.columns)
 
     if not is_xhouse and not is_prefixed:
@@ -1521,6 +1629,108 @@ def handle_asset_nbv_click(chart_clicks, origin_clicks):
     return modal_style, title, content, {'type': 'asset_nbv', 'kind': kind, 'key': key}
 
 
+_PROJECT_MODAL_STYLE = {
+    'display': 'flex', 'zIndex': 1000, 'position': 'fixed', 'top': 0, 'left': 0,
+    'width': '100%', 'height': '100%', 'background': 'rgba(15, 23, 42, 0.6)',
+    'backdropFilter': 'blur(4px)', 'justifyContent': 'center', 'alignItems': 'center',
+    'padding': '20px', 'boxSizing': 'border-box',
+}
+
+
+def _project_modal_title(text, badge='PROJECTS'):
+    return html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '8px', 'minWidth': 0}, children=[
+        html.Span(badge, style={'background': '#14285a', 'color': '#ffd591', 'fontSize': '9px', 'fontWeight': '800',
+                                'letterSpacing': '0.12em', 'padding': '3px 8px', 'borderRadius': '4px', 'flexShrink': '0'}),
+        html.Span('/', style={'color': 'rgba(255,255,255,0.2)', 'fontSize': '14px'}),
+        html.Span(text, style={'fontSize': '13px', 'fontWeight': '500', 'color': 'rgba(255,255,255,0.85)',
+                               'overflow': 'hidden', 'textOverflow': 'ellipsis', 'whiteSpace': 'nowrap'}),
+    ])
+
+
+@app.callback(
+    Output({'type': 'prj-body', 'index': dash.ALL}, 'children'),
+    Input({'type': 'prj-filter', 'index': dash.ALL}, 'value'),
+    prevent_initial_call=True,
+)
+def update_projects_scope(_values):
+    """Projects tab: re-render the scope sections when a filter changes."""
+    f = project_filters_from(dash.ctx.inputs_list[0])
+    return [render_projects_scope(frames, f) for _ in dash.ctx.outputs_list]
+
+
+@app.callback(
+    [Output('modal-overlay', 'style', allow_duplicate=True),
+     Output('modal-title', 'children', allow_duplicate=True),
+     Output('modal-content', 'children', allow_duplicate=True),
+     Output('modal-export-context', 'data', allow_duplicate=True)],
+    [Input({'type': 'prj-chart', 'index': dash.ALL}, 'clickData'),
+     Input({'type': 'prj-drill', 'kind': dash.ALL, 'key': dash.ALL}, 'n_clicks'),
+     Input({'type': 'prj-table', 'index': dash.ALL}, 'active_cell')],
+    [State({'type': 'prj-table', 'index': dash.ALL}, 'derived_viewport_data'),
+     State({'type': 'prj-filter', 'index': dash.ALL}, 'value')],
+    prevent_initial_call=True,
+)
+def handle_project_drill(_charts, _drills, _cells, _tables, _filters):
+    """Projects tab drill-downs, shown in the shared modal. Chart bars, tiles
+    and readings open the records behind them; any table row with a Unit
+    (on the tab or in the modal) opens that project's own view."""
+    none = (dash.no_update,) * 4
+    trig = dash.ctx.triggered_id
+    value = dash.ctx.triggered[0]['value'] if dash.ctx.triggered else None
+    if not trig or not value:
+        return none
+    f = project_filters_from(dash.ctx.states_list[1])
+
+    if trig['type'] == 'prj-chart':
+        kind = trig['index']
+        point = value['points'][0]
+        key = point.get('customdata')
+        if isinstance(key, (list, tuple)):
+            key = key[0] if key else None
+        key = key if key is not None else (point.get('y') if kind in ('type', 'portfolio', 'cost_type') else point.get('x'))
+    elif trig['type'] == 'prj-drill':
+        kind, key = trig['kind'], trig['key']
+    else:
+        if trig['index'] in ('unit-tasks', 'unit-accounts'):
+            return none
+        rows = next((s.get('value') for s in dash.ctx.states_list[0] if s['id'] == trig), None) or []
+        row = rows[value['row']] if value.get('row') is not None and value['row'] < len(rows) else {}
+        kind, key = 'unit', row.get('unit')
+    if key is None:
+        return none
+
+    if kind == 'unit':
+        names = frames['project_codes'].drop_duplicates('unit').set_index('unit')['unit_desc']
+        title = _project_modal_title(f"{key} · {names.get(key, key)}", 'PROJECT')
+        content = render_project_unit(frames, key, f)
+    else:
+        df = project_drill_records(frames, kind, key, **project_filter_args(f))
+        title = _project_modal_title(project_drill_title(kind, key))
+        content = html.Div(style={'padding': '16px 20px 24px'}, children=[
+            html.Div(project_drill_summary(df), style={'fontSize': '12px', 'color': '#5c5470', 'marginBottom': '6px'}),
+            project_records_table(df, 'drill', page_size=20),
+        ])
+    return _PROJECT_MODAL_STYLE, title, content, {'type': 'projects', 'kind': kind, 'key': key, 'filters': f}
+
+
+@app.callback(
+    Output('download-prj-extract', 'data'),
+    Input('btn-prj-export', 'n_clicks'),
+    State({'type': 'prj-filter', 'index': dash.ALL}, 'value'),
+    prevent_initial_call=True,
+)
+def export_projects_si(n_clicks, _filters):
+    """Projects tab: the SI extract workbook, built with the Scope and Cost type filters."""
+    if not n_clicks:
+        return None
+    f = project_filters_from(dash.ctx.states_list[0])
+    args = project_filter_args(f)
+    data = project_workbook_bytes(frames, include_annual=args['include_annual'],
+                                  expenditure_only=args['expenditure_only'])
+    suffix = ('_projects_only' if not args['include_annual'] else '') + ('_expenditure' if args['expenditure_only'] else '')
+    return dcc.send_bytes(data, f'Projects_SI_extract{suffix}.xlsx')
+
+
 @app.callback(
     Output("download-modal-csv", "data"),
     Input("btn-export-modal", "n_clicks"),
@@ -1570,6 +1780,22 @@ def export_modal_to_csv(n_clicks, export_context):
         if df.empty:
             return None
         return dcc.send_data_frame(df.to_csv, 'PO_Untagged_Spend_Contracted_Suppliers.csv', index=False)
+
+    if kind == 'projects':
+        pk, key, f = export_context.get('kind'), export_context.get('key'), export_context.get('filters') or {}
+        args = project_filter_args(f)
+        if pk == 'unit':
+            lines = project_scope_view(frames, **args)['lines']
+            lines = lines[lines['unit'] == key]
+            df = lines.groupby(['unit', 'unit_desc', 'hais_code', 'hais_desc', 'house', 'fy_label', 'mipck_l1_desc',
+                                'account', 'account_desc']).agg(
+                actuals=('actuals', 'sum'), budget=('budget', 'sum'), committed=('committed', 'sum')).reset_index()
+        else:
+            df = project_drill_records(frames, pk, key, **args)
+        if df.empty:
+            return None
+        safe = re.sub(r'_+', '_', re.sub(r'[^\w\-]', '_', f'{pk}_{key}')).strip('_')
+        return dcc.send_data_frame(df.rename(columns=PROJECT_COLUMN_LABELS).to_csv, f'Projects_{safe}.csv', index=False)
 
     if kind == 'asset_nbv':
         df = get_nbv_records(frames, export_context.get('kind'), export_context.get('key'))
