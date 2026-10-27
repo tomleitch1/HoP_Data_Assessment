@@ -1271,6 +1271,9 @@ def run_dq_analysis(frames, tab=None):
                 elif house == 'HOL':
                     mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
                 h_df = df_table[mask]
+                if check_id == 'AR_EXT_REF_DUP' and house == 'HOL':
+                    # Not required for HoL (per direct request); empty population drops it
+                    h_df = h_df.iloc[0:0]
             elif table in ['asuhistr', 'acuhistr']:
                 mask = df_table['house'] == house
                 if house == 'HOC':
@@ -1787,6 +1790,8 @@ def get_failing_records(check_id, house, frames, base_cols=None, for_export=Fals
         elif house == 'HOL':
             mask &= df_table['client'].isin(SupplierConfig.HOL_CLIENTS)
         h_df = df_table[mask]
+        if check_id == 'AR_EXT_REF_DUP' and house == 'HOL':
+            h_df = h_df.iloc[0:0]
     elif table in ['asuhistr', 'acuhistr']:
         mask = df_table['house'] == house
         if house == 'HOC':

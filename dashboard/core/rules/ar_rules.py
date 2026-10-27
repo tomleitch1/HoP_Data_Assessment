@@ -119,10 +119,13 @@ def get_ar_checks():
 
         ('CUS_NAME_DUP', 11, 'Customers', 'Uniqueness', 'Medium',
          'Duplicate customer name exists within the same House',
-         'Each customer name should be unique within a House. Duplicate names indicate the same debtor may have been registered more than once, which can split receivables across multiple records and complicate reconciliation.',
+         'Each customer name should be unique within a House. Duplicate names indicate the same debtor may have been registered more than once, which can split receivables across multiple records and complicate reconciliation. For HoL, records named ALLOCATED are excluded.',
          'Consolidate records in acuheader.apar_name.', 'acuheader', None,
-         'COUNT(*) OVER(PARTITION BY house, apar_name) > 1',
-         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1)),
+         'COUNT(*) OVER(PARTITION BY house, apar_name) > 1 AND NOT (house = "HOL" AND apar_name = "ALLOCATED")',
+         lambda df: df.duplicated(subset=['house', 'apar_name'], keep=False) & (df['apar_name'].str.strip().str.len() > 1) & ~(
+             (df['house'] == 'HOL') &
+             (df['apar_name'].astype(str).str.strip().str.upper() == 'ALLOCATED')
+         )),
 
         ('CUS_CLIENT_APAR_DUP', 11, 'Customers', 'Uniqueness', 'Critical',
          'Duplicate (client, apar_id) combination found in customer master',
