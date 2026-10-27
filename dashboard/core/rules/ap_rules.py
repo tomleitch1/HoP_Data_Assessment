@@ -94,20 +94,25 @@ def get_ap_checks():
 
         ('SUP_SORT_IBAN_MISSING', 10, 'Suppliers', 'Completeness', 'Critical',
          'Active supplier missing both Sort Code AND IBAN',
-         'Every active supplier set to an electronic payment method must have either a sort code or an IBAN populated as a payment routing identifier. Without at least one of these fields, the system has no destination to send electronic payments. Cheque suppliers (pay method CH) are excluded as they do not require electronic routing details.',
+         'Every active supplier set to an electronic payment method must have either a sort code or an IBAN populated as a payment routing identifier. Without at least one of these fields, the system has no destination to send electronic payments. Cheque suppliers (pay method CH) are excluded as they do not require electronic routing details. For HoL, pay methods PO, BB and CC are also excluded.',
          'Required routing in asuheader.clearing_code or iban.', 'asuheader', None,
-         'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL AND pay_method != "CH"',
+         'asuheader.clearing_code IS NULL AND asuheader.iban IS NULL AND pay_method != "CH" AND NOT (house = "HOL" AND pay_method IN ("PO", "BB", "CC"))',
          lambda df: df['clearing_code'].isna() & df['iban'].isna() & ~(df['pay_method'] == 'CH') & ~(
              (df['house'] == 'HOC') &
              df['apar_id'].astype(str).str.strip().str.startswith(('1000', '741'))
+         ) & ~(
+             (df['house'] == 'HOL') &
+             df['pay_method'].astype(str).str.strip().str.upper().isin(['PO', 'BB', 'CC'])
          )),
 
         ('SUP_SWIFT_MISSING', 10, 'Suppliers', 'Completeness', 'High',
          'Supplier has an IBAN but is missing a SWIFT/BIC code',
-         'Suppliers with an IBAN must also have a SWIFT/BIC code populated. International payment systems require both fields to route cross-border payments correctly. An IBAN without a SWIFT code will cause international payment instructions to be rejected.',
+         'Suppliers with an IBAN must also have a SWIFT/BIC code populated. International payment systems require both fields to route cross-border payments correctly. An IBAN without a SWIFT code will cause international payment instructions to be rejected. For HoL, a supplier with a sort code populated is excluded, as the sort code already routes the payment.',
          'Required for international; populate asuheader.swift.', 'asuheader', None,
-         'asuheader.iban IS NOT NULL AND asuheader.swift IS NULL',
-         lambda df: df['swift'].isna() & df['iban'].notna()),
+         'asuheader.iban IS NOT NULL AND asuheader.swift IS NULL AND NOT (house = "HOL" AND asuheader.clearing_code IS NOT NULL)',
+         lambda df: df['swift'].isna() & df['iban'].notna() & ~(
+             (df['house'] == 'HOL') & df['clearing_code'].notna()
+         )),
 
         ('SUP_ADDR_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier has no address line populated',

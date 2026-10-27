@@ -1510,7 +1510,7 @@ def get_check_columns():
         'SUP_CURRENCY_MISSING': ['currency'],
         'SUP_BANK_MISSING': ['bank_account'],
         'SUP_SORT_IBAN_MISSING': ['clearing_code', 'iban', 'pay_method'],
-        'SUP_SWIFT_MISSING': ['swift', 'iban'],
+        'SUP_SWIFT_MISSING': ['swift', 'iban', 'clearing_code'],
         'SUP_ADDR_MISSING': ['address'],
         'SUP_PLACE_MISSING': ['place'],
         'SUP_ZIP_MISSING': ['zip_code'],
