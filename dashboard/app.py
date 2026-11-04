@@ -43,6 +43,7 @@ from dashboard.core.projects_export import workbook_bytes as project_workbook_by
 from dashboard.tabs.explorer import render_explorer_layout, render_explorer_summary
 from dashboard.tabs.findings import render_findings_log
 from dashboard.tabs.aging import render_aging
+from migration_scope.ui.callbacks import register as register_migration_scope, render as render_migration_scope
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATA INITIALIZATION
@@ -75,6 +76,7 @@ app = dash.Dash(__name__, title='Parliament DQA | Veran Performance',
 # ── Navigation drawer ────────────────────────────────────────────────────────
 NAV_SECTIONS = [
     ('Overview', [('exec-summary', 'Summary', 'lucide:layout-dashboard', 'Cross-domain overview')]),
+    ('Migration', [('scope', 'Migration Scope', 'lucide:filter', 'What we are migrating, record by record')]),
     ('Foundation', [('gl', 'General Ledger', 'lucide:book-open', 'Chart of accounts, dimensions, balances')]),
     ('Master data', [('suppliers', 'Suppliers & AP', 'lucide:truck', 'Supplier master and open invoices'),
                      ('customers', 'Customers & AR', 'lucide:users', 'Customer master and open items'),
@@ -261,6 +263,8 @@ app.layout = html.Div(style={
 # CALLBACKS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+register_migration_scope(app, frames)
+
 @app.callback(
     [Output('master-tabs', 'data'),
      Output('nav-drawer', 'style'),
@@ -303,6 +307,8 @@ def handle_navigation(_menu, _close, _backdrop, _items, current):
     Input('master-tabs', 'data')
 )
 def render_tab_content(master_tab):
+    if master_tab == 'scope':
+        return render_migration_scope()
     if master_tab not in ['suppliers', 'customers', 'exec-summary', 'gl', 'assets', 'po', 'pbf', 'atamis', 'projects']:
         return html.Div(style={'padding': '100px', 'textAlign': 'center', 'color': '#94A3B8'}, children=[
             html.Div(f"{master_tab.upper()} Module Data Not Loaded", style={'fontSize': '18px', 'fontWeight': '600'}),

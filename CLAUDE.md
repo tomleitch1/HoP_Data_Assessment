@@ -1351,6 +1351,20 @@ Full design, open questions (Q1–Q8) and build notes: **`build_spec/projects_ta
 
 ---
 
+## Migration Scope Engine (`migration_scope/`) — November 2026
+
+A separate, self-contained module answering "what are we migrating?" rather than "what is wrong?". Full design, rules, decisions workflow and how to extend: **`migration_scope/README.md`**. Read it before changing the module. Design decisions agreed with the user are listed there; don't re-ask them.
+
+- **Suppliers only** so far (both Houses); customers registered as "Planned".
+- Reached from **Menu → Migration → Migration Scope**. The only changes outside the folder: the nav entry, the `scope` route and `register_migration_scope(app, frames)` in `app.py`, and `dashboard/assets/migration_scope.css` (scoped to `.ms-root`).
+- Reuses the dashboard's loaded frames read-only on the Parliament laptop; on this laptop `data/migration_scope/settings.json` = `{"source": "dummy"}` points it at its own dummy set (`python -m migration_scope.dummy.generate`).
+- Reuses the existing DQA supplier tests from `ap_rules.py` unchanged, tagged by test ID.
+- Parameters and rules: `migration_scope/config.py`. Change only on this laptop; bump `RULESET_VERSION` + `CHANGELOG`.
+- Decisions and snapshots: SQLite at `data/migration_scope/scope.db` (gitignored, append-only, backed up before every upload).
+- Tests: `python -m pytest migration_scope/tests -q`. These are the repo's first automated tests.
+
+---
+
 ## Current State (as of June 2026)
 
 **Implemented and running against real data on Parliament laptop:**
