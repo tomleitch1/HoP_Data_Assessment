@@ -124,11 +124,20 @@ def load_inputs(frames=None, source='dashboard'):
     if source == 'dummy':
         return _load_dummy()
     frames = frames or {}
+    po = frames.get('apoheader')
+    if po is None:
+        # Tab-scoped runs (e.g. run_dashboard.py suppliers) don't load POs, but open POs keep a
+        # supplier in scope. Load them with the dashboard's own loader (honours the data version).
+        try:
+            from dashboard.data_engine import load_data
+            po = load_data(tab='po').get('apoheader')
+        except Exception as exc:
+            print(f'Migration Scope: could not load PO header ({exc}); open POs will not be counted')
     return {
         'master': frames.get('asuheader', pd.DataFrame()),
         'open_trans': frames.get('asutrans', pd.DataFrame()),
         'history': frames.get('asuhistr', pd.DataFrame()),
-        'po': frames.get('apoheader', pd.DataFrame()),
+        'po': po if po is not None else pd.DataFrame(),
         'source': 'Live extract (dashboard data)',
     }
 
