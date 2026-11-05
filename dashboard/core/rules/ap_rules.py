@@ -24,13 +24,14 @@ def get_ap_checks():
         
         ('SUP_VAT_MISSING', 10, 'Suppliers', 'Completeness', 'Medium',
          'Active supplier missing VAT registration number',
-         'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live. Specialist Adviser (SA) suppliers are excluded and assessed separately.',
+         'Every active supplier must have a VAT registration number populated. Without it, invoices posted against this supplier cannot be correctly reported to HMRC and the record will fail tax compliance checks at go-live. Specialist Adviser (SA) suppliers are excluded and assessed separately. HoC employees (supplier IDs starting 1000, from iTrent) are excluded: they are individuals, not VAT-registered businesses.',
          'Verify asuheader.vat_reg_no.', 'asuheader', None,
          'asuheader.vat_reg_no IS NULL WHERE status = "N"',
          lambda df: df['vat_reg_no'].isna() & ~(df['pay_method'] == 'FC') & ~(
              (df['house'] == 'HOC') & (
                  df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
-                 df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC', 'SA'])
+                 df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC', 'SA']) |
+                 df['apar_id'].astype(str).str.strip().str.startswith('1000')
              )
          ) & ~(
              (df['house'] == 'HOL') &
@@ -46,13 +47,14 @@ def get_ap_checks():
 
         ('SUP_COMP_REG_MISSING', 10, 'Suppliers', 'Completeness', 'Low',
          'Active supplier missing company registration number',
-         'Active suppliers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the supplier before migrating the record. Specialist Adviser (SA) suppliers are excluded and assessed separately.',
+         'Active suppliers should have a Companies House registration number on record. Without it, Parliament cannot verify the legal entity status of the supplier before migrating the record. Specialist Adviser (SA) suppliers are excluded and assessed separately. HoC employees (supplier IDs starting 1000, from iTrent) are excluded.',
          'Verify asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no IS NULL WHERE status = "N"',
          lambda df: df['comp_reg_no'].isna() & ~(
              (df['house'] == 'HOC') & (
                  df['apar_gr_id'].isin(['EM', 'ME', 'WI', 'IR', 'PY', 'SC', 'SA']) |
-                 df['apar_id'].astype(str).str[:2].isin(['71', '74', '89'])
+                 df['apar_id'].astype(str).str[:2].isin(['71', '74', '89']) |
+                 df['apar_id'].astype(str).str.strip().str.startswith('1000')
              )
          ) & ~(
              (df['house'] == 'HOL') &
@@ -155,7 +157,8 @@ def get_ap_checks():
              ~(
                  (df['house'] == 'HOC') & (
                      df['apar_id'].astype(str).str[:2].isin(['71', '74']) |
-                     df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC'])
+                     df['apar_gr_id'].isin(['ME', 'WI', 'EM', 'IR', 'PY', 'TI', 'TO', 'SC']) |
+                     df['apar_id'].astype(str).str.strip().str.startswith('1000')
                  )
              )
          )),
@@ -170,8 +173,10 @@ def get_ap_checks():
              ~company_no_valid(df['comp_reg_no']) &
              df['comp_reg_no'].notna() &
              ~(
-                 (df['house'] == 'HOC') &
-                 df['apar_id'].astype(str).str[:2].isin(['71', '74', '89'])
+                 (df['house'] == 'HOC') & (
+                     df['apar_id'].astype(str).str[:2].isin(['71', '74', '89']) |
+                     df['apar_id'].astype(str).str.strip().str.startswith('1000')
+                 )
              )
          )),
 

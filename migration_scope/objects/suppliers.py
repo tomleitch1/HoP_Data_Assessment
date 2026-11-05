@@ -301,9 +301,10 @@ def _issues(rows: pd.DataFrame, params):
     # CA and CM rows of the same supplier that disagree
     multi = rows[rows.duplicated('entity_key', keep=False)]
     if not multi.empty:
-        fields = {'k_bank': 'bank details', 'vat_std': 'VAT number', 'name_std': 'name', 'postcode_std': 'postcode'}
-        raw_of = {'k_bank': ['clearing_code', 'bank_account'], 'vat_std': ['vat_reg_no'], 'name_std': ['apar_name'],
-                  'postcode_std': ['zip_code']}
+        fields = {'k_bank': 'bank details', 'vat_std': 'VAT number', 'compno_std': 'company number',
+                  'name_std': 'name', 'postcode_std': 'postcode'}
+        raw_of = {'k_bank': ['clearing_code', 'bank_account'], 'vat_std': ['vat_reg_no'], 'compno_std': ['comp_reg_no'],
+                  'name_std': ['apar_name'], 'postcode_std': ['zip_code']}
         diff, shown = {}, {}
         for f, label in fields.items():
             n = multi.groupby('entity_key')[f].nunique()

@@ -50,6 +50,21 @@ def test_ca_cm_disagreement_is_a_consistency_issue(params):
     assert 'MS-DQ-CLIENT-DIFF' in set(r.issues[r.issues['entity_key'] == 'HOC|7']['test_id'])
 
 
+def test_ca_cm_different_company_numbers(params):
+    r = run(make_inputs([sup('8', client='CA', comp_reg_no='12345678'),
+                         sup('8', client='CM', comp_reg_no='87654321')], hist=[inv('8', 20)]), params)
+    diff = r.issues[(r.issues['entity_key'] == 'HOC|8') & (r.issues['test_id'] == 'MS-DQ-CLIENT-DIFF')]
+    assert 'company number' in diff.iloc[0]['description']
+    assert 'CA comp_reg_no: 12345678' in diff.iloc[0]['evidence']
+
+
+def test_hoc_employees_not_assessed_for_vat_or_company_number(params):
+    r = run(make_inputs([sup('10000099', apar_gr_id='TN', vat_reg_no=None, comp_reg_no='ABC')],
+                        hist=[inv('10000099', 10)]), params)
+    tests = set(r.issues[r.issues['entity_key'] == 'HOC|10000099']['test_id'])
+    assert not tests & {'SUP_VAT_MISSING', 'SUP_VAT_FORMAT', 'SUP_COMP_REG_MISSING', 'SUP_COMP_REG_FORMAT'}
+
+
 # ── Categorisation ───────────────────────────────────────────────────────────
 
 def test_cat01_noncommercial_groups(params):

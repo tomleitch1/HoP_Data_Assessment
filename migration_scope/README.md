@@ -44,7 +44,7 @@ name matching falls back to Python's `difflib`, which is much slower on the full
 
 Classification is made per **supplier**: House + supplier ID. In HoC the same supplier ID can sit under
 client CA and CM; those rows are one supplier, and any disagreement between them (bank details, VAT,
-name, postcode) is raised as a Consistency issue (`MS-DQ-CLIENT-DIFF`). Raw rows stay at
+company number, name, postcode) is raised as a Consistency issue (`MS-DQ-CLIENT-DIFF`). Raw rows stay at
 House + client + ID and are all shown in the record drawer.
 
 | Step | Rule | Outcome |
