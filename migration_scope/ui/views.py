@@ -581,7 +581,7 @@ def _mini_table(df, cols, highlight=None):
 
 def _no_invoice_note(r, items):
     """Why the tile is blank when the supplier has open items: they are of other types."""
-    other = items[~items['voucher_type'].astype(str).str.strip().isin(r.params['activity_voucher_types'])]
+    other = items[~items['voucher_type'].astype(str).str.strip().isin(list(r.params['activity_voucher_types']))]
     if other.empty:
         return ''
     types = ', '.join(sorted(other['voucher_type'].astype(str).str.strip().unique()))

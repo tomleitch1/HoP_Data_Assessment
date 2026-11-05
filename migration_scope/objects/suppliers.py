@@ -67,7 +67,9 @@ RULES = [
          OBJECT, 'Duplicates', ['cross_house_as_duplicate']),
     # Classification
     Rule('MS-CLS-01', 'Dormant', 'No invoice, credit note or PO in the last {dormancy_months} months, and nothing '
-         'open (no unpaid invoices, no open POs). Recommended Close.', OBJECT, 'Classification',
+         'open (no unpaid invoices, no open POs). Recommended Close. Transaction types that count as an invoice or '
+         'credit note: {activity_voucher_types}. Nothing else counts, e.g. manual matching (MM), journals (GI, JL), '
+         'payments (PY), reversals (RV, PR) or expenses (PE, RE).', OBJECT, 'Classification',
          ['dormancy_months', 'activity_voucher_types', 'open_po_statuses'], outcome=CLOSE),
     Rule('MS-CLS-02', 'Non-preferred, inactive', 'Non-preferred member of a duplicate group with no activity in the '
          'last {monitor_months} months and nothing open. Recommended Close.', OBJECT, 'Classification', ['monitor_months'],
@@ -405,7 +407,7 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
     pop_rows = m[m['row_in_pop']]
 
     # ── Activity: invoices / credit notes (history + open) and POs ───────────
-    act_types = set(params['activity_voucher_types'])
+    act_types = set(list(params['activity_voucher_types']))
     trans_parts = []
     for k in ('history', 'open_trans'):
         t = inputs.get(k, pd.DataFrame())

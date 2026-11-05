@@ -54,10 +54,16 @@ SUPPLIER_PARAMS = {
 
     # Activity
     'dormancy_months': 18,                   # no activity in this many months and nothing open = Close
-    'activity_voucher_types': [              # invoices and credit notes count as activity; payments, journals, reversals don't
-        'CP', 'ID', 'IF', 'II', 'IU', 'OP', 'PI', 'RD', 'RI', 'SI', 'SR', 'IB', 'BH',
-        'CN', 'IC', 'IN', 'RC',
-    ],
+    'activity_voucher_types': {              # invoices and credit notes count as activity; payments, journals, reversals don't
+        'CP': 'Contract Invoice Posting', 'ID': 'Incoming Invoices Purchase CRS',
+        'IF': 'Incoming Invoices Bank Funding', 'II': 'Incoming Invoices Registration',
+        'IU': 'Incoming Invoices Purchase Invoices', 'OP': 'Purchase Order Based Invoice Posting',
+        'PI': 'Purchase Invoices', 'RD': 'Purchasing Refreshment Department', 'RI': 'Registered Invoices',
+        'SI': 'Stock Purchasing CRS', 'SR': 'Speedy Registration of Supplier Invoices', 'IB': 'Invoices',
+        'BH': 'Catering invoices',
+        'CN': 'Purchase Credit Notes', 'IC': 'Incoming Invoices Registration Credit Notes',
+        'IN': 'Incoming Invoices Posting Credit Notes', 'RC': 'Registration Credit Notes',
+    },
     'open_po_statuses': ['O', 'N', 'A'],     # HoC only; HoL doesn't use POs
 
     # Open items
