@@ -107,7 +107,9 @@ def steward_frames(result, decisions, house=None):
     fx = e[e['recommended'] == FIX]
     df = base(fx)
     blk = issues[issues['blocking']].drop_duplicates(['entity_key', 'test_id'])
-    txt = (blk['test_id'] + ' (' + blk['description'].astype(str) + ')').groupby(blk['entity_key']).agg('; '.join)
+    ev = blk['evidence'].fillna('').astype(str) if 'evidence' in blk else pd.Series('', index=blk.index)
+    txt = (blk['test_id'] + ' (' + blk['description'].astype(str) + ev.map(lambda v: f'; held: {v}' if v else '')
+           + ')').groupby(blk['entity_key']).agg('; '.join)
     df['Blocking issues'] = fx['entity_key'].map(txt).fillna('').values
     df['Current decision'] = [_current(decisions, 'record', k, 'scope') for k in fx['entity_key']]
     out['Fix'] = df

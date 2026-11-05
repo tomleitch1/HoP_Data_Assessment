@@ -23,7 +23,7 @@ It is a page in the existing dashboard: `python run_dashboard.py`, then **Menu â
 
 ```bash
 python -m migration_scope.dummy.generate      # rebuild the dummy dataset (data/migration_scope/dummy/)
-python -m pytest migration_scope/tests -q     # run the tests (70)
+python -m pytest migration_scope/tests -q     # run the tests (71)
 ```
 
 Install `rapidfuzz` on the Parliament laptop (`pip install rapidfuzz`). Without it, possible-duplicate

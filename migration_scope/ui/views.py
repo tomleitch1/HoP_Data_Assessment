@@ -616,11 +616,26 @@ def _issues_block(r, key):
         rows.append(html.Div(className='ms-issue', children=[
             pill(i['dimension'], DIM_COLOUR.get(i['dimension'], MUTED)),
             html.Div([html.Div(i['description'], style={'fontSize': '13px', 'color': INK}),
+                      _evidence_chips(i.get('evidence', '')),
                       html.Span(f"{i['test_id']} · client {i['client']} · {i['source']}", className='ms-ruleid')],
                      style={'flex': '1'}),
             pill('Blocking', '#C2410C') if i['blocking'] else pill('Advisory', FAINT)]))
     return _section('Data quality issues', 'lucide:shield-alert', html.Div(rows),
                     right=html.Span(f"{len(iss)} issue(s)", className='ms-muted'))
+
+
+def _evidence_chips(evidence):
+    """'comp_reg_no: ABC123 · country_code: GB' as field/value chips: the values the test found."""
+    if not isinstance(evidence, str) or not evidence:
+        return None
+    chips = []
+    for part in evidence.split(' · '):
+        field, _, value = part.partition(': ')
+        chips.append(html.Span(className='ms-ev', children=[
+            html.Span(field, style={'color': MUTED}),
+            html.Span(value, style={'fontFamily': 'Consolas, monospace', 'fontWeight': '600',
+                                    'color': FAINT if value == '(blank)' else INK})]))
+    return html.Div(chips, style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '6px', 'margin': '6px 0 4px'})
 
 
 def _dups_block(r, e):

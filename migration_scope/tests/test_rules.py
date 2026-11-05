@@ -151,6 +151,13 @@ def test_prefixed_company_number_is_not_a_format_issue(params):
     fmt = r.issues[r.issues['test_id'] == 'SUP_COMP_REG_FORMAT']
     assert set(fmt['entity_key']) == {'HOC|2'}
     assert ent(r, 'HOC|1')['classification'] == KEEP and ent(r, 'HOC|2')['classification'] == FIX
+    assert fmt.iloc[0]['evidence'] == 'comp_reg_no: ABC123'
+
+
+def test_issue_evidence_shows_blanks(params):
+    r = run(make_inputs([sup('1', address=None)], hist=[inv('1', 10)]), params)
+    ev = r.issues[r.issues['test_id'] == 'SUP_ADDR_MISSING']['evidence']
+    assert ev.tolist() == ['address: (blank)']
 
 
 def test_cls05_keep(params):

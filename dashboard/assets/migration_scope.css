@@ -149,3 +149,6 @@
   .ms-root .ms-kpis { grid-template-columns:1fr 1fr; }
   .ms-root .ms-hero { flex-direction:column; }
 }
+
+.ms-root .ms-ev { display: inline-flex; gap: 6px; align-items: baseline; font-size: 11.5px; padding: 3px 8px;
+  background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; }

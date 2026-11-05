@@ -242,10 +242,28 @@ def standardise(master: pd.DataFrame, params) -> pd.DataFrame:
     return m
 
 
+_EVIDENCE_SKIP = {'status', 'house', 'apar_id', 'client'}
+
+
+def _evidence(hit: pd.DataFrame, fields) -> pd.Series:
+    """The values each failing row holds in the fields its test looks at,
+    e.g. 'comp_reg_no: ABC123 · country_code: GB'. Blanks show as '(blank)'."""
+    fields = [f for f in fields if f in hit.columns and f not in _EVIDENCE_SKIP]
+    if not fields or hit.empty:
+        return pd.Series('', index=hit.index, dtype=object)
+    parts = [f + ': ' + std.text(hit[f]).replace('', '(blank)') for f in fields]
+    out = parts[0]
+    for p in parts[1:]:
+        out = out + ' · ' + p
+    return out
+
+
 def _issues(rows: pd.DataFrame, params):
     """Existing DQA supplier tests (reused as-is, keyed by their test ID) plus
     the engine's own, run on the in-population client rows."""
     from dashboard.core.rules.ap_rules import get_ap_checks
+    from dashboard.data_engine import get_check_columns
+    check_cols = get_check_columns()
     out, errors = [], []
     blocking = set(params['blocking_tests'])
     test_df = rows.copy()
@@ -265,34 +283,46 @@ def _issues(rows: pd.DataFrame, params):
         out.append(pd.DataFrame({'record_key': hit['record_key'], 'entity_key': hit['entity_key'],
                                  'client': hit['client'], 'test_id': test_id,
                                  'dimension': 'Duplicate' if dim == 'Uniqueness' else dim,
-                                 'severity': sev, 'description': desc, 'source': 'DQA test'}))
+                                 'severity': sev, 'description': desc, 'source': 'DQA test',
+                                 'evidence': _evidence(rows.loc[hit.index], check_cols.get(test_id, []))}))
 
-    def own(mask, test_id, detail=None):
+    def own(mask, test_id, detail=None, fields=()):
         dim, sev, desc = _OWN_TESTS[test_id]
         hit = test_df[mask]
         out.append(pd.DataFrame({'record_key': hit['record_key'], 'entity_key': hit['entity_key'],
                                  'client': hit['client'], 'test_id': test_id, 'dimension': dim, 'severity': sev,
-                                 'description': desc if detail is None else detail[mask], 'source': 'Scope engine'}))
+                                 'description': desc if detail is None else detail[mask], 'source': 'Scope engine',
+                                 'evidence': _evidence(rows.loc[hit.index], fields)}))
 
-    own(std.blank(rows['apar_name']), 'MS-DQ-NAME')
+    own(std.blank(rows['apar_name']), 'MS-DQ-NAME', fields=['apar_name'])
     org = rows['name_std'].str.contains(r'\b(?:LTD|PLC|LLP)\b', regex=True)
-    own(org & (rows['compno_std'] == ''), 'MS-DQ-LTD-COMPNO')
+    own(org & (rows['compno_std'] == ''), 'MS-DQ-LTD-COMPNO', fields=['apar_name', 'comp_reg_no'])
 
     # CA and CM rows of the same supplier that disagree
     multi = rows[rows.duplicated('entity_key', keep=False)]
     if not multi.empty:
         fields = {'k_bank': 'bank details', 'vat_std': 'VAT number', 'name_std': 'name', 'postcode_std': 'postcode'}
-        diff = {}
+        raw_of = {'k_bank': ['clearing_code', 'bank_account'], 'vat_std': ['vat_reg_no'], 'name_std': ['apar_name'],
+                  'postcode_std': ['zip_code']}
+        diff, shown = {}, {}
         for f, label in fields.items():
             n = multi.groupby('entity_key')[f].nunique()
             for k in n[n > 1].index:
                 diff.setdefault(k, []).append(label)
+                shown.setdefault(k, []).extend(raw_of[f])
         mask = rows['entity_key'].isin(diff) & rows.duplicated('entity_key', keep='first').eq(False)
         detail = rows['entity_key'].map(lambda k: 'CA and CM hold different ' + ', '.join(diff.get(k, [])))
         own(mask, 'MS-DQ-CLIENT-DIFF', detail)
+        # Evidence: each client's value for every field that differs
+        sub = multi[multi['entity_key'].isin(diff)]
+        ev = {k: ' · '.join(f"{c} {f}: {std.text(pd.Series([r[f]])).iloc[0] or '(blank)'}"
+                            for f in shown[k] for c, r in zip(g['client'], g.to_dict('records')))
+              for k, g in sub.groupby('entity_key')}
+        out[-1]['evidence'] = out[-1]['entity_key'].map(ev).fillna('')
 
     issues = pd.concat(out, ignore_index=True) if out else pd.DataFrame(
-        columns=['record_key', 'entity_key', 'client', 'test_id', 'dimension', 'severity', 'description', 'source'])
+        columns=['record_key', 'entity_key', 'client', 'test_id', 'dimension', 'severity', 'description', 'source',
+                 'evidence'])
     issues['blocking'] = issues['test_id'].isin(blocking)
     return issues, errors
 
@@ -466,7 +496,9 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
         issues = pd.concat([issues, pd.DataFrame({
             'record_key': mm['record_key'], 'entity_key': mm['entity_key'], 'client': mm['client'],
             'test_id': 'MS-DQ-GROUP-ID', 'dimension': 'Consistency', 'severity': 'Medium', 'description': d,
-            'source': 'Scope engine', 'blocking': False})], ignore_index=True)
+            'source': 'Scope engine', 'blocking': False,
+            'evidence': 'apar_gr_id: ' + std.text(mm['apar_gr_id']) + ' · apar_id: ' + mm['apar_id'].astype(str)})],
+            ignore_index=True)
     per = issues.drop_duplicates(['entity_key', 'test_id'])
     ent['issues'] = ent['entity_key'].map(per.groupby('entity_key').size()).fillna(0).astype(int)
     ent['blocking'] = ent['entity_key'].map(per[per['blocking']].groupby('entity_key').size()).fillna(0).astype(int)
