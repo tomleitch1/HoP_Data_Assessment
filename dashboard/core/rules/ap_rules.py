@@ -11,7 +11,7 @@ _CREDIT_OR_REVERSAL = _CREDIT_NOTE_TYPES + _REVERSAL_TYPES
 # Invoice registration/posting types where a negative amount is definitively wrong.
 # Expenses, payments, journals, and departmental purchases are excluded because
 # their sign depends on context and cannot be asserted.
-_INVOICE_TYPES = ['PI', 'OP', 'CP', 'II', 'IU', 'ID', 'IF', 'SR', 'RI', 'SI']
+_INVOICE_TYPES = ['PI', 'OP', 'CP', 'II', 'IU', 'ID', 'IF', 'SR', 'RI', 'SI', 'IB', 'BH']  # not used by any live check (AP_NEG_INV was removed)
 
 def get_ap_checks():
     """Returns a list of Supplier and AP DQ check definitions."""

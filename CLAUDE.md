@@ -358,7 +358,7 @@ Three scope cards aligned to the migration programme:
   - **Reversals**: `IR`, `PR`, `RV`
 
   **Standard invoice types** (positive `amount` expected — a negative value here indicates wrong voucher type):
-  `CP`, `ID`, `IF`, `II`, `IU`, `OP`, `PI`, `RC`*\*, `RD`, `RI`, `SI`, `SR`
+  `CP`, `ID`, `IF`, `II`, `IU`, `OP`, `PI`, `RC`*\*, `RD`, `RI`, `SI`, `SR`, `IB`, `BH`
 
   DQ rules that test credit note types (`AP_CN_NO_REF`, `AP_ORPHANED_CREDITS`, `HIS_CN_NO_REF`, `AP_NEG_INV`) must use the full credit note set `['CN', 'IC', 'IN', 'RC']`, not just `'CN'`. Reversal types `['IR', 'PR', 'RV']` should also be excluded from `AP_NEG_INV` as negative amounts are expected there too.
 
