@@ -286,3 +286,11 @@ def test_dup03_steward_resolves_a_tie(params, store):
     r = run(inputs, params, store)
     assert ent(r, 'HOC|2')['preferred'] and ent(r, 'HOC|2')['classification'] == KEEP
     assert not ent(r, 'HOC|1')['preferred_tie'] and ent(r, 'HOC|1')['classification'] == MONITOR
+
+
+def test_ib_and_bh_count_as_activity_mm_and_gi_do_not(params):
+    r = run(make_inputs([sup('1'), sup('2'), sup('3')],
+                        hist=[inv('1', 10, vtype='IB'), inv('2', 10, vtype='BH'), inv('3', 10, vtype='MM'),
+                              inv('3', 20, vtype='GI')]), params)
+    assert ent(r, 'HOC|1')['classification'] == KEEP and ent(r, 'HOC|2')['classification'] == KEEP
+    assert ent(r, 'HOC|3')['classification'] == CLOSE

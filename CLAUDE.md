@@ -351,6 +351,8 @@ Three scope cards aligned to the migration programme:
   | WO | Debtors Write-Off | Debtors |
   | YE | Year end transfer | Journal |
 
+  Also seen in supplier transactions but not in the reference list above (confirmed by the user, November 2026): `MM` Manual matching (closing out transactions), `GI` Journal, `IB` Invoices, `BH` Catering invoices. The Migration Scope counts `IB` and `BH` as activity alongside the invoice and credit note types; `MM` and `GI` don't count.
+
   **Credit / reversal types** (negative `amount` and `rest_amount` are expected and normal):
   - **Credit notes**: `CN`, `IC`, `IN`, `RC`
   - **Reversals**: `IR`, `PR`, `RV`

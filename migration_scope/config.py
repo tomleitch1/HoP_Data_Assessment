@@ -9,12 +9,14 @@ traced to the exact rules in force when it was made.
 """
 from pathlib import Path
 
-RULESET_VERSION = '1.1'
+RULESET_VERSION = '1.2'
 
 CHANGELOG = [
     ('1.0', '2026-11-04', 'First ruleset for suppliers, agreed in design session with Tom Leitch.'),
     ('1.1', '2026-11-05', 'SA is Specialist Advisor; HoC 74 IDs are legacy employees; no lowest-ID tie-break '
             'for the preferred record (level records go to a steward).'),
+    ('1.2', '2026-11-05', 'IB (invoices) and BH (catering invoices) count as activity. Company numbers are '
+            'never zero-padded; HoC 1000 employees are not assessed for VAT or company number.'),
 ]
 
 # ── Storage ───────────────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ SUPPLIER_PARAMS = {
     # Activity
     'dormancy_months': 18,                   # no activity in this many months and nothing open = Close
     'activity_voucher_types': [              # invoices and credit notes count as activity; payments, journals, reversals don't
-        'CP', 'ID', 'IF', 'II', 'IU', 'OP', 'PI', 'RD', 'RI', 'SI', 'SR',
+        'CP', 'ID', 'IF', 'II', 'IU', 'OP', 'PI', 'RD', 'RI', 'SI', 'SR', 'IB', 'BH',
         'CN', 'IC', 'IN', 'RC',
     ],
     'open_po_statuses': ['O', 'N', 'A'],     # HoC only; HoL doesn't use POs

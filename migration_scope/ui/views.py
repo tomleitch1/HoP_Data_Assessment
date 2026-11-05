@@ -579,11 +579,22 @@ def _mini_table(df, cols, highlight=None):
     return html.Table([html.Thead(head), html.Tbody(rows)], className='ms-mini')
 
 
+def _no_invoice_note(r, items):
+    """Why the tile is blank when the supplier has open items: they are of other types."""
+    other = items[~items['voucher_type'].astype(str).str.strip().isin(r.params['activity_voucher_types'])]
+    if other.empty:
+        return ''
+    types = ', '.join(sorted(other['voucher_type'].astype(str).str.strip().unique()))
+    return (f"No invoice or credit note. {len(other)} open item(s) of other types ({types}), "
+            f"which don't count as activity")
+
+
 def _activity(r, e):
     items = r.items[r.items['entity_key'] == e['entity_key']].sort_values('trans_date')
     pos = r.open_pos[r.open_pos['entity_key'] == e['entity_key']] if not r.open_pos.empty else r.open_pos
     tiles = html.Div(className='ms-tiles', children=[
-        _tile('Last invoice / credit', fmt_date(e.get('last_invoice_date')), e.get('last_invoice_ref', '') or ''),
+        _tile('Last invoice / credit', fmt_date(e.get('last_invoice_date')),
+              e.get('last_invoice_ref', '') or _no_invoice_note(r, items)),
         _tile('Last PO raised', fmt_date(e.get('last_po_date')) if e['house'] == 'HOC' else 'n/a (HoL)',
               f"PO {e['last_po_ref']}" if e.get('last_po_ref') else ''),
         _tile('last_trans_date (supplier master)', fmt_date(e.get('last_movement')),
