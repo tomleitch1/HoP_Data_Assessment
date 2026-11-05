@@ -29,7 +29,7 @@ VIEWS = [('overview', 'Overview', 'lucide:filter'), ('records', 'Records', 'luci
          ('decisions', 'Decisions & uploads', 'lucide:clipboard-check'), ('rules', 'Rules', 'lucide:book-open')]
 
 CHIP_GROUPS = [
-    ('cls', 'Classification', [KEEP, FIX, MONITOR, CLOSE, 'Held', OUT_OF_SCOPE]),
+    ('cls', 'Recommended', [KEEP, FIX, MONITOR, CLOSE, 'Held', OUT_OF_SCOPE]),
     ('issue', 'Issues', ISSUE_TYPES + ['Cross-House']),
     ('status', 'Decision', [AWAITING, DECIDED, OVERRIDDEN, NO_DECISION_NEEDED]),
     ('house', 'House', ['HOC', 'HOL']),
@@ -350,7 +350,7 @@ def _trend_card(engine, obj):
 
 GRID_COLS = [
     ('house', 'House'), ('apar_id', 'Supplier ID'), ('apar_name', 'Name'), ('clients', 'Clients'),
-    ('classification', 'Classification'), ('recommended', 'Recommended'), ('decision_status', 'Decision'),
+    ('classification', 'Recommended'), ('reasons', 'Reason'), ('decision_status', 'Decision'),
     ('last_activity_txt', 'Last activity'), ('open_items', 'Open items'), ('open_balance_txt', 'Open £'),
     ('issues', 'Issues'), ('blocking', 'Blocking'), ('dup_group', 'Duplicate group'), ('xh', 'Cross-House'),
 ]
@@ -363,8 +363,7 @@ def records_shell():
               'color': col, 'fontWeight': '600'} for s, col in STATUS_COLOUR.items()]
     cond += [{'if': {'filter_query': '{blocking} > 0', 'column_id': 'blocking'}, 'color': '#C2410C',
               'fontWeight': '700'},
-             {'if': {'filter_query': '{recommended} != {classification}', 'column_id': 'recommended'},
-              'textDecoration': 'line-through', 'color': FAINT}]
+             {'if': {'column_id': 'reasons'}, 'color': MUTED, 'fontSize': '11.5px'}]
     return html.Div([
         html.Div(id='ms-rulecards', className='ms-rulecards'),
         card(style={'padding': '16px 18px', 'marginTop': '16px'}, children=[
@@ -474,8 +473,8 @@ def grid_rows(e):
 def export_frame(e):
     cols = {'entity_key': 'Record key', 'house': 'House', 'apar_id': 'Supplier ID', 'apar_name': 'Name',
             'clients': 'Clients', 'apar_gr_id': 'Group', 'client_statuses': 'Unit4 status',
-            'category': 'Category', 'category_detail': 'Category detail', 'classification': 'Classification',
-            'recommended': 'Recommended', 'recommended_rule': 'Rule', 'decision_status': 'Decision status',
+            'category': 'Category', 'category_detail': 'Category detail', 'classification': 'Recommended',
+            'reasons': 'Reason', 'recommended': 'Rules said', 'recommended_rule': 'Rule', 'decision_status': 'Decision status',
             'decision': 'Decision', 'decision_by': 'Decided by', 'decision_reason': 'Reason', 'pending': 'Outstanding',
             'last_activity': 'Last activity', 'last_invoice_ref': 'Last invoice', 'last_po_ref': 'Last PO',
             'open_items': 'Open items', 'open_balance': 'Open balance', 'open_pos': 'Open POs',
@@ -587,7 +586,8 @@ def _activity(r, e):
         _tile('Last invoice / credit', fmt_date(e.get('last_invoice_date')), e.get('last_invoice_ref', '') or ''),
         _tile('Last PO raised', fmt_date(e.get('last_po_date')) if e['house'] == 'HOC' else 'n/a (HoL)',
               f"PO {e['last_po_ref']}" if e.get('last_po_ref') else ''),
-        _tile('Last movement of any kind', fmt_date(e.get('last_movement')), 'incl. payments and journals'),
+        _tile('last_trans_date (supplier master)', fmt_date(e.get('last_movement')),
+              'Latest transaction of any type, incl. payments. Information only'),
         _tile('Open items', f"{int(e.get('open_items', 0)):,}", fmt_money(e.get('open_balance', 0))),
         _tile('Open POs', f"{int(e.get('open_pos', 0)):,}" if e['house'] == 'HOC' else 'n/a', ''),
     ])
@@ -641,7 +641,7 @@ def _dups_block(r, e):
         parts += [html.Div([pill(e['dup_group'], '#9333EA'), html.Span(status, className='ms-muted')],
                            style={'display': 'flex', 'gap': '8px', 'alignItems': 'center', 'marginBottom': '8px'}),
                   _mini_table(g, [('pref', ''), ('entity_key', 'Record'), ('name', 'Name'),
-                                  ('classification', 'Classification'), ('blocking', 'Blocking'),
+                                  ('classification', 'Recommended'), ('blocking', 'Blocking'),
                                   ('openx', 'Open items / POs'), ('act', 'Last activity'),
                                   ('completeness', 'Complete (of 8)')], highlight=lambda rw: rw['preferred']),
                   html.Div(e['match_reasons'], className='ms-muted', style={'marginTop': '6px'})]
@@ -674,7 +674,7 @@ _FIELD_LABELS = [
     ('clearing_code', 'Sort code', 'sort_std'), ('bank_account', 'Bank account', 'acct_std'),
     ('iban', 'IBAN', 'iban_std'), ('swift', 'SWIFT', None), ('address', 'Street', None), ('place', 'Town', None),
     ('zip_code', 'Postcode', 'postcode_std'), ('country_code', 'Country', None),
-    ('last_update', 'Last updated', None), ('last_trans_date', 'Last movement', None),
+    ('last_update', 'Last updated', None), ('last_trans_date', 'last_trans_date (supplier master)', None),
 ]
 
 

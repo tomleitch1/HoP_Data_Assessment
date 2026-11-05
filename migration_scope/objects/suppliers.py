@@ -730,6 +730,38 @@ def _trail(e, params, as_of):
     return steps
 
 
+def _reason_tags(ent):
+    """Short tags for what lies behind each record's position, e.g. 'Validity, Duplicate'."""
+    def tags(e):
+        if e['classification'] == NOT_IN_EXTRACT:
+            return ['Not in extract']
+        if not e['in_population']:
+            return ['Legacy exclusion' if e.get('legacy_excluded') is True else 'Closed in Unit4']
+        out = []
+        if e['category_rule'] in ('MS-CAT-01', 'MS-CAT-02'):
+            out.append('Non-commercial')
+        if e['category_rule'] == 'MS-CAT-03':
+            out.append('Policy')
+        if e['individual']:
+            out.append('Individual contractor')
+        if e['class_rule'] in ('MS-CLS-01', 'MS-TRN-02'):
+            out.append('Dormant')
+        if e['dup_group']:
+            out.append('Duplicate')
+        if e['possible_dup']:
+            out.append('Possible duplicate')
+        out += [d for d in ('Validity', 'Completeness', 'Consistency') if e[f'has_{d.lower()}']]
+        if e['stuck_items']:
+            out.append('Stuck item')
+        if e['cross_house']:
+            out.append('Cross-House')
+        return out or ['Active']
+    cols = ['classification', 'in_population', 'legacy_excluded', 'category_rule', 'individual', 'class_rule',
+            'dup_group', 'possible_dup', 'has_validity', 'has_completeness', 'has_consistency', 'stuck_items',
+            'cross_house']
+    return [', '.join(tags(e)) for e in ent.reindex(columns=cols).to_dict('records')]
+
+
 def run(inputs, params, decisions, as_of=None):
     """Run the pipeline twice: once on the rules alone (the recommendation) and
     once with steward decisions applied (the final position)."""
@@ -742,6 +774,7 @@ def run(inputs, params, decisions, as_of=None):
         .fillna(ent['classification'])
     ent['recommended_rule'] = ent['entity_key'].map(rec['entities'].set_index('entity_key')['class_rule']) \
         .fillna('')
+    ent['reasons'] = _reason_tags(ent)
     ent['fingerprint'] = [hashlib.md5(json.dumps([str(a), int(o), int(p), int(b), g, bool(i)]).encode()).hexdigest()[:12]
                           for a, o, p, b, g, i in zip(ent['last_activity'], ent['open_items'], ent['open_pos'],
                                                       ent['blocking'], ent['dup_group'], ent['in_population'])]
