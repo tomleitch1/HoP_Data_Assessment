@@ -611,31 +611,70 @@ def _issues_block(r, key):
     if iss.empty:
         return _section('Data quality issues', 'lucide:shield-check',
                         html.Div('No data quality issues.', className='ms-muted'))
-    rows = []
-    for _, i in iss.sort_values(['blocking', 'dimension'], ascending=[False, True]).iterrows():
-        rows.append(html.Div(className='ms-issue', children=[
-            pill(i['dimension'], DIM_COLOUR.get(i['dimension'], MUTED)),
-            html.Div([html.Div(i['description'], style={'fontSize': '13px', 'color': INK}),
-                      _evidence_chips(i.get('evidence', '')),
-                      html.Span(f"{i['test_id']} · client {i['client']} · {i['source']}", className='ms-ruleid')],
-                     style={'flex': '1'}),
-            pill('Blocking', '#C2410C') if i['blocking'] else pill('Advisory', FAINT)]))
-    return _section('Data quality issues', 'lucide:shield-alert', html.Div(rows),
-                    right=html.Span(f"{len(iss)} issue(s)", className='ms-muted'))
+    groups = []
+    for blocking, title, sub in ((True, 'Blocking', 'Must be fixed before this supplier can migrate'),
+                                 (False, 'Advisory', 'Worth fixing, but does not stop migration')):
+        part = iss[iss['blocking'] == blocking]
+        if part.empty:
+            continue
+        cards = [_issue_card(t, g, blocking) for t, g in part.groupby('test_id', sort=False)]
+        groups.append(html.Div(className='ms-iss-group', children=[
+            html.Div(className='ms-iss-grouphead', children=[
+                html.Span(f'{title} · {len(cards)}', className='ms-iss-grouptitle' + (' ms-blk' if blocking else '')),
+                html.Span(sub, className='ms-muted')]),
+            *cards]))
+    n_blk = iss[iss['blocking']]['test_id'].nunique()
+    return _section('Data quality issues', 'lucide:shield-alert', html.Div(groups),
+                    right=html.Span(f"{iss['test_id'].nunique()} issue(s), {n_blk} blocking", className='ms-muted'))
 
 
-def _evidence_chips(evidence):
-    """'comp_reg_no: ABC123 · country_code: GB' as field/value chips: the values the test found."""
-    if not isinstance(evidence, str) or not evidence:
-        return None
-    chips = []
-    for part in evidence.split(' · '):
-        field, _, value = part.partition(': ')
-        chips.append(html.Span(className='ms-ev', children=[
-            html.Span(field, style={'color': MUTED}),
-            html.Span(value, style={'fontFamily': 'Consolas, monospace', 'fontWeight': '600',
-                                    'color': FAINT if value == '(blank)' else INK})]))
-    return html.Div(chips, style={'display': 'flex', 'flexWrap': 'wrap', 'gap': '6px', 'margin': '6px 0 4px'})
+def _evidence_values(group):
+    """{field: {client: value}} from the issue rows' evidence ('CA bank_account: X' or 'zip_code: X')."""
+    vals, clients = {}, []
+    for _, i in group.iterrows():
+        ev = i.get('evidence', '')
+        if not isinstance(ev, str) or not ev:
+            continue
+        for part in ev.split(' · '):
+            field, _, value = part.partition(': ')
+            client = i['client']
+            if ' ' in field:
+                client, field = field.split(' ', 1)
+            vals.setdefault(field, {})[client] = value
+            if client not in clients:
+                clients.append(client)
+    return vals, clients
+
+
+def _issue_card(test_id, group, blocking):
+    i = group.iloc[0]
+    vals, clients = _evidence_values(group)
+    label = dict((f, l) for f, l, _ in _FIELD_LABELS) | _EXTRA_LABELS
+    table = None
+    if vals:
+        head = html.Tr([html.Th('Field')] + [html.Th(f'Held in {c}' if len(clients) > 1 else 'Value held')
+                                             for c in clients])
+        body = []
+        for f, by_client in vals.items():
+            cells = []
+            for c in clients:
+                v = by_client.get(c, '')
+                cells.append(html.Td(html.Span('Missing', className='ms-missing') if v in ('', '(blank)')
+                                     else html.Span(v, className='ms-held')))
+            body.append(html.Tr([html.Td([html.Div(label.get(f, f), className='ms-fl'),
+                                          html.Div(f, className='ms-ruleid')])] + cells))
+        table = html.Table([html.Thead(head), html.Tbody(body)], className='ms-mini ms-evtable')
+    return html.Div(className='ms-iss-card' + (' ms-iss-blk' if blocking else ''), children=[
+        html.Div(className='ms-iss-head', children=[
+            html.Div(i['description'], className='ms-iss-title'),
+            pill(i['dimension'], DIM_COLOUR.get(i['dimension'], MUTED))]),
+        table,
+        html.Div(f"{test_id} · {i['source']} · client {', '.join(sorted(group['client'].astype(str).unique()))}",
+                 className='ms-ruleid', style={'marginTop': '8px'})])
+
+
+_EXTRA_LABELS = {'province': 'County', 'apar_once': 'One-time supplier', 'tax_code': 'Tax code',
+                 'pay_delay': 'Payment delay', 'apar_id': 'Supplier ID'}
 
 
 def _dups_block(r, e):
@@ -697,7 +736,10 @@ def _fields_block(r, e):
     rows = r.raw[r.raw['entity_key'] == e['entity_key']].sort_values('client')
     if rows.empty:
         return _section('Fields', 'lucide:list', html.Div('Not in the latest extract.', className='ms-muted'))
-    head = html.Tr([html.Th('Field')] + [html.Th(f"Raw · {c}") for c in rows['client']] + [html.Th('Standardised')])
+    head = html.Tr([html.Th('Field')] + [html.Th(c) for c in rows['client']])
+    flagged = set()
+    for ev in r.issues[r.issues['entity_key'] == e['entity_key']]['evidence'].dropna():
+        flagged |= {p.partition(': ')[0].split(' ')[-1] for p in str(ev).split(' · ') if p}
 
     def show(v):
         if isinstance(v, pd.Timestamp):
@@ -708,10 +750,11 @@ def _fields_block(r, e):
     for f, label, stdcol in _FIELD_LABELS:
         vals = [show(rw.get(f)) for _, rw in rows.iterrows()]
         differs = len(set(vals)) > 1
-        body.append(html.Tr([html.Td(label, className='ms-fl')] + [html.Td(v or '—') for v in vals] +
-                            [html.Td(show(rows.iloc[0].get(stdcol)) if stdcol else '', className='ms-std')],
+        body.append(html.Tr([html.Td([label, html.Span(' ●', className='ms-flagdot', title='Has a data quality issue')
+                                       if f in flagged else None], className='ms-fl')] +
+                            [html.Td(v or '—') for v in vals],
                             className='ms-hl' if differs else ''))
-    return _section('Fields: raw and standardised', 'lucide:list',
+    return _section('Fields', 'lucide:list',
                     html.Div(html.Table([html.Thead(head), html.Tbody(body)], className='ms-mini ms-fields'),
                              style={'overflowX': 'auto'}))
 
