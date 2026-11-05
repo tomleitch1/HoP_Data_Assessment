@@ -15,7 +15,7 @@ def test_standardise_names_vat_postcode():
     assert std.name(names).tolist()[:2] == ['ACME FACILITIES LTD', 'ACME FACILITIES LTD']
     assert std.vat(pd.Series(['GB 123 4567 89', 'gb123456789'])).tolist() == ['123456789', '123456789']
     assert std.postcode(pd.Series(['sw1a 0aa', 'SW1A0AA'])).tolist() == ['SW1A0AA', 'SW1A0AA']
-    assert std.company_no(pd.Series(['1800000'])).tolist() == ['01800000']
+    assert std.company_no(pd.Series(['1800000', 'sc 123456'])).tolist() == ['1800000', 'SC123456']
 
 
 # ── Population ───────────────────────────────────────────────────────────────

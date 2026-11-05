@@ -55,9 +55,9 @@ def vat(s: pd.Series) -> pd.Series:
 
 
 def company_no(s: pd.Series) -> pd.Series:
-    v = text(s).str.upper().str.replace(r'[^A-Z0-9]', '', regex=True)
-    # Pad purely numeric numbers to 8 digits (leading zeros are often lost in Excel)
-    return v.where(~v.str.fullmatch(r'\d{1,7}'), v.str.zfill(8))
+    """Upper case, spaces and punctuation removed. Never padded: the extract holds
+    leading zeros correctly, so a short number is a real data issue."""
+    return text(s).str.upper().str.replace(r'[^A-Z0-9]', '', regex=True)
 
 
 def iban(s: pd.Series) -> pd.Series:

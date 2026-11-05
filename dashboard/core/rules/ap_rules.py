@@ -163,13 +163,11 @@ def get_ap_checks():
         ('SUP_COMP_REG_FORMAT', 10, 'Suppliers', 'Validity', 'Medium',
          'Company registration format is invalid (Expected a Companies House format)',
          'Company registration numbers must be in a Companies House format: ' + COMPANY_NO_DESCRIPTION + '. '
-         'Records that do not match cannot be verified against the Companies House register and may indicate data entry errors. '
-         '7-digit numbers are accepted, since the leading zero is often lost in Excel.',
+         'Records that do not match cannot be verified against the Companies House register and may indicate data entry errors.',
          'Correct asuheader.comp_reg_no.', 'asuheader', None,
          'asuheader.comp_reg_no NOT LIKE "________" (8 digits) AND NOT LIKE prefix + 6 digits (e.g. SC123456)',
          lambda df: (
              ~company_no_valid(df['comp_reg_no']) &
-             (~df['comp_reg_no'].str.match(r'^\d{7}$', na=False)) &
              df['comp_reg_no'].notna() &
              ~(
                  (df['house'] == 'HOC') &
