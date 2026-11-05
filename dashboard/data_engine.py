@@ -21,6 +21,7 @@ from dashboard.core.rules.atamis_rules import get_atamis_checks
 from dashboard.core.rules.budget_rules import get_budget_checks
 from dashboard.core.rules.project_rules import get_project_checks
 from dashboard.core import projects as _projects_mod
+from dashboard.core.rules import formats as _formats_mod
 from dashboard.core.projects import (
     build_project_frames, project_population, project_evidence,
     LIST_HOUSE as PROJECT_LIST_HOUSE, DERIVED_TABLES as PROJECT_TABLES,
@@ -735,6 +736,8 @@ def _engine_sig() -> str:
                 + repr((AssetConfig.HOC_CLIENTS, AssetConfig.HOL_CLIENTS, AssetConfig.TABLES))
                 # Projects frames and populations are built outside run_dq_analysis
                 + _inspect.getsource(_projects_mod)
+                # Shared identifier formats (company number) used inside rule lambdas
+                + _inspect.getsource(_formats_mod)
             )
         except Exception:
             src = str(os.path.getmtime(os.path.abspath(__file__)))

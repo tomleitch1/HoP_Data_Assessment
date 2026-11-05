@@ -472,6 +472,9 @@ Within-house checks on `asuheader` (Uniqueness dimension):
 Cross-house checks (lambda signature `df, frames`) — see Adding a Cross-House Uniqueness Check above:
 - `SUP_XHOUSE_VAT_DUP`, `SUP_XHOUSE_COMP_REG_DUP`, `SUP_XHOUSE_IBAN_DUP`, `SUP_XHOUSE_BANK_DUP`, `SUP_XHOUSE_NAME_DUP`
 
+### Company registration number format (shared, November 2026)
+`SUP_COMP_REG_FORMAT` and `CUS_COMP_REG_FORMAT` both use `company_no_valid()` in `dashboard/core/rules/formats.py` (also used by the Migration Scope, which runs the supplier rules unchanged). Valid: 8 digits (`01234567`), a Companies House 2-letter prefix + 6 digits (`SC123456`, `OC301234`, `NI012345`, `LP…`, `FC…`, `RC…`, full list in `COMPANY_NO_PREFIXES`), a registered society number (`RS12345C`), or old NI `R0000123`. Case and spaces are ignored. Previously digits only, so valid Scottish/LLP/NI numbers were flagged (found by the user on real data). Each test keeps its own extras: suppliers still accept 7 digits (leading zero lost in Excel) and the HoC 71/74/89 exemption; customers still skip blank and `0`. `formats.py` is hashed into `_engine_sig()`.
+
 ### SUP_DORMANT exemption
 `apar_id` values starting with `1000` are exempt from the dormant check for **both houses**.
 

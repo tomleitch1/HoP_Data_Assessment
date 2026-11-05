@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import date
 
+from .formats import company_no_valid, COMPANY_NO_DESCRIPTION
+
 # AR credit note / reversal types (Agresso AP-module codes — kept for HOL compatibility)
 _CREDIT_NOTE_TYPES  = ['CN', 'IC', 'IN', 'RC']
 _REVERSAL_TYPES     = ['IR', 'PR', 'RV']
@@ -70,17 +72,17 @@ def get_ar_checks():
          )),
 
         ('CUS_COMP_REG_FORMAT', 11, 'Customers', 'Validity', 'Medium',
-         'Company registration number format is invalid (Expected 8 digits)',
-         'Companies House registration numbers must be exactly 8 digits. '
-         'A number that does not match this format cannot be verified against the Companies House register and may indicate a data entry error or a foreign registration number. '
-         'Records where the field is blank or zero are not flagged — only meaningfully populated values that fail the format check.',
-         'Correct acuheader.comp_reg_no to 8 digits.', 'acuheader', None,
-         'acuheader.comp_reg_no NOT LIKE "________" AND comp_reg_no IS NOT NULL AND comp_reg_no != "0"',
+         'Company registration number format is invalid (Expected a Companies House format)',
+         'Company registration numbers must be in a Companies House format: ' + COMPANY_NO_DESCRIPTION + '. '
+         'A number that does not match cannot be verified against the Companies House register and may indicate a data entry error or a foreign registration number. '
+         'Records where the field is blank or zero are not flagged. Only meaningfully populated values that fail the format check are.',
+         'Correct acuheader.comp_reg_no to a Companies House format.', 'acuheader', None,
+         'acuheader.comp_reg_no NOT LIKE "________" AND NOT LIKE prefix + 6 digits (e.g. SC123456) AND comp_reg_no IS NOT NULL AND comp_reg_no != "0"',
          lambda df: (
              df['comp_reg_no'].notna() &
              (df['comp_reg_no'].str.strip().str.len() > 0) &
              (df['comp_reg_no'].str.strip() != '0') &
-             ~df['comp_reg_no'].str.match(r'^\d{8}$', na=False)
+             ~company_no_valid(df['comp_reg_no'])
          )),
 
         # ── Consistency ───────────────────────────────────────────────────────

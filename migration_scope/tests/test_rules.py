@@ -136,6 +136,23 @@ def test_ltd_without_company_number_is_fix(params):
     assert 'MS-DQ-LTD-COMPNO' in set(r.issues['test_id']) and ent(r, 'HOC|1')['classification'] == FIX
 
 
+def test_company_number_formats():
+    from dashboard.core.rules.formats import company_no_valid
+    valid = ['01234567', 'SC123456', 'sc 123456', 'OC301234', 'NI012345', 'LP012345', 'RS12345C', 'R0000123']
+    invalid = ['ABC123', 'XX123456', 'SC12345', 'SC1234567', '12345', None]
+    assert company_no_valid(pd.Series(valid)).all()
+    assert not company_no_valid(pd.Series(invalid)).any()
+
+
+def test_prefixed_company_number_is_not_a_format_issue(params):
+    r = run(make_inputs([sup('1', name='Highland Widgets Ltd', comp_reg_no='SC123456'),
+                         sup('2', name='Bad Number Ltd', comp_reg_no='ABC123')],
+                        hist=[inv('1', 10), inv('2', 10)]), params)
+    fmt = r.issues[r.issues['test_id'] == 'SUP_COMP_REG_FORMAT']
+    assert set(fmt['entity_key']) == {'HOC|2'}
+    assert ent(r, 'HOC|1')['classification'] == KEEP and ent(r, 'HOC|2')['classification'] == FIX
+
+
 def test_cls05_keep(params):
     r = run(make_inputs([sup('1')], hist=[inv('1', 10)]), params)
     assert ent(r, 'HOC|1')['classification'] == KEEP and ent(r, 'HOC|1')['class_rule'] == 'MS-CLS-05'
