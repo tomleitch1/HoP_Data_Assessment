@@ -63,7 +63,8 @@ with the rule ID. The drawer shows them as "Why it is classified this way".
 
 **Duplicates.** Confirmed matches (same VAT, company number, bank details, or name + postcode after
 standardising) form groups. The preferred record has the fewest blocking issues, then has open items
-or POs, then has the most recent activity, then is the most complete, then has the lowest ID.
+or POs, then has the most recent activity, then is the most complete. If two records are level on all of
+these, the rules don't pick one: they stay Monitor until a steward chooses the preferred record.
 Similar names are *possible* duplicates: shown for review, never reclassified on their own.
 **Cross-House** matches (HoC ↔ HoL) are tagged, not grouped, until the target design is decided
 (`cross_house_as_duplicate`).
@@ -104,7 +105,6 @@ push and pull on the Parliament laptop, as with code.
 
 1. Edit the parameter (e.g. `'stuck_item_months': 3`).
 2. Bump `RULESET_VERSION` and add a `CHANGELOG` line saying what changed and who agreed it.
-3. Try it first in **Rules & what-if** on the dashboard, which previews the impact without saving.
 
 To change wording or add a rule, edit `RULES` in `objects/suppliers.py`. A `Rule` has an ID, name,
 plain-English description (with `{parameter}` placeholders), layer, parameters, version, active flag
@@ -142,7 +142,7 @@ migration_scope/
     standardise.py     standardised layer (names, postcodes, VAT, company no, bank)
     duplicates.py      confirmed groups (union-find) and possible duplicates
     store.py           SQLite: append-only decisions, monthly snapshots, backups
-    engine.py          loads data, runs objects, what-if, snapshot comparison
+    engine.py          loads data, runs objects, snapshot comparison
     workbook.py        steward workbook export / upload preview / apply, governance summary
   objects/
     suppliers.py       supplier rules, loader and pipeline

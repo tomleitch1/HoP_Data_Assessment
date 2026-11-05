@@ -42,15 +42,15 @@ RULES = [
          ['legacy_excluded_id_prefixes', 'legacy_excluded_names']),
     # Categorisation
     Rule('MS-CAT-01', 'Non-commercial supplier group', 'Suppliers in these groups are people paid through AP, not '
-         'trading suppliers. They are held for a policy decision: {noncommercial_groups}.', OBJECT, 'Categorised',
+         'trading suppliers. They are held for a policy decision: {noncommercial_groups}.', OBJECT, 'Supplier type',
          ['noncommercial_groups'], outcome=HOLD_NONCOMMERCIAL),
     Rule('MS-CAT-02', 'Non-commercial ID range', 'Supplier IDs starting with these digits belong to people, not '
-         'trading suppliers: {noncommercial_id_prefixes}.', OBJECT, 'Categorised',
+         'trading suppliers: {noncommercial_id_prefixes}.', OBJECT, 'Supplier type',
          ['noncommercial_id_prefixes'], outcome=HOLD_NONCOMMERCIAL),
     Rule('MS-CAT-03', 'Card accounts', 'These groups are held separately for a policy decision: {policy_groups}.',
-         OBJECT, 'Categorised', ['policy_groups'], outcome=HOLD_POLICY),
-    Rule('MS-CAT-04', 'Individual contractor', 'Suppliers in groups {individual_groups} are commercial but are '
-         'individuals, so personal data rules apply.', OBJECT, 'Categorised', ['individual_groups']),
+         OBJECT, 'Supplier type', ['policy_groups'], outcome=HOLD_POLICY),
+    Rule('MS-CAT-04', 'Individual contractor', 'Suppliers in groups {individual_groups} are individual '
+         'contractors. A decision is needed on their treatment.', OBJECT, 'Supplier type', ['individual_groups']),
     # Duplicates
     Rule('MS-DUP-01', 'Confirmed duplicate', 'Two suppliers in the same House are the same company if they share '
          'any of: {duplicate_keys}. Placeholder bank accounts are ignored.', OBJECT, 'Duplicates',
@@ -59,26 +59,27 @@ RULES = [
          'not already confirmed. A steward confirms or rejects; classification is not changed.', OBJECT,
          'Duplicates', ['possible_duplicate_similarity']),
     Rule('MS-DUP-03', 'Preferred record', 'In each duplicate group the preferred record is the one with the fewest '
-         'blocking issues, then open items or POs, then most recent activity, then most complete, then lowest ID.',
+         'blocking issues, then open items or POs, then most recent activity, then most complete. If records are '
+         'level on all of these, the rules do not pick one: they stay Monitor until a steward chooses.',
          OBJECT, 'Duplicates'),
     Rule('MS-XH-01', 'Cross-House match', 'A HoC and a HoL supplier share a VAT number, company number, bank '
          'details or name and postcode. Tagged for tracking; not a duplicate until the target design is agreed.',
          OBJECT, 'Duplicates', ['cross_house_as_duplicate']),
     # Classification
     Rule('MS-CLS-01', 'Dormant', 'No invoice, credit note or PO in the last {dormancy_months} months, and nothing '
-         'open (no unpaid invoices, no open POs). Recommended Close.', OBJECT, 'Scoped',
+         'open (no unpaid invoices, no open POs). Recommended Close.', OBJECT, 'Classification',
          ['dormancy_months', 'activity_voucher_types', 'open_po_statuses'], outcome=CLOSE),
     Rule('MS-CLS-02', 'Non-preferred, inactive', 'Non-preferred member of a duplicate group with no activity in the '
-         'last {monitor_months} months and nothing open. Recommended Close.', OBJECT, 'Scoped', ['monitor_months'],
+         'last {monitor_months} months and nothing open. Recommended Close.', OBJECT, 'Classification', ['monitor_months'],
          outcome=CLOSE),
     Rule('MS-CLS-03', 'Non-preferred, still active', 'Non-preferred member of a duplicate group with activity in the '
-         'last {monitor_months} months or open items. Monitor until it can be closed.', OBJECT, 'Scoped',
+         'last {monitor_months} months or open items. Monitor until it can be closed.', OBJECT, 'Classification',
          ['monitor_months'], outcome=MONITOR),
-    Rule('MS-CLS-04', 'Blocking data issue', 'Kept, but has a data issue that stops it being paid or set up in the '
-         'new ERP (bank details, VAT, company number, terms, payment method, name, street or postcode).', OBJECT,
-         'Scoped', ['blocking_tests'], outcome=FIX),
+    Rule('MS-CLS-04', 'Data issue to fix', 'Data quality issue that must be fixed before migration: bank details, '
+         'VAT, company number, payment terms or method, name, street or postcode. Stays in scope.', OBJECT,
+         'Classification', ['blocking_tests'], outcome=FIX),
     Rule('MS-CLS-05', 'Keep', 'Active in the last {dormancy_months} months or has open items, no duplicates and no '
-         'blocking issues. Migrates as is.', OBJECT, 'Scoped', ['dormancy_months'], outcome=KEEP),
+         'blocking issues. Migrates as is.', OBJECT, 'Classification', ['dormancy_months'], outcome=KEEP),
     # Open items
     Rule('MS-TRN-01', 'Stuck open item', 'Open item more than {stuck_item_months} months past its transaction date. '
          'Likely stuck: a steward decides whether it migrates. Counted in scope until decided.', OBJECT,
@@ -86,9 +87,6 @@ RULES = [
     Rule('MS-TRN-02', "All open items won't migrate", "A dormant supplier whose open items are all marked "
          "don't migrate is closed.", OBJECT, 'Open items', outcome=CLOSE),
     # Data quality
-    Rule('MS-DQ', 'DQA data quality tests', 'The existing DQA supplier tests run on every in-scope supplier and are '
-         'tagged by their test ID. These make a supplier Fix: {blocking_tests}.', OBJECT, 'Data quality',
-         ['blocking_tests']),
 ]
 RULES_BY_ID = {r.id: r for r in RULES}
 
@@ -514,6 +512,7 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
     ent['group_confirmed'] = False
     ent['confirmed_at'] = pd.NaT
     ent['preferred_rank'] = 0
+    ent['preferred_tie'] = False
     confirm = dec[(dec['family'] == 'dup') & (dec['decision'] == 'CONFIRM_PREFERRED')]
     grouped = ent[ent['dup_group'] != ''].copy()
     if not grouped.empty:
@@ -521,7 +520,16 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
         grouped = grouped.sort_values(['dup_group', 'blocking', 'has_open', '_act', 'completeness', 'apar_id'],
                                       ascending=[True, True, False, False, False, True])
         grouped['preferred_rank'] = grouped.groupby('dup_group').cumcount() + 1
-        pref = grouped[grouped['preferred_rank'] == 1].set_index('dup_group')['entity_key'].to_dict()
+        # Records level with the best on every criterion: the rules don't choose, a steward does
+        crit = ['blocking', 'has_open', '_act', 'completeness']
+        best = grouped[grouped['preferred_rank'] == 1].set_index('dup_group')[crit]
+        level = (grouped[crit] == best.reindex(grouped['dup_group']).set_axis(grouped.index)).all(axis=1)
+        counts = grouped.loc[level, 'dup_group'].value_counts()
+        tied_groups = set(counts[counts > 1].index)
+        grouped.loc[level, 'preferred_rank'] = 1
+        pref = grouped[(grouped['preferred_rank'] == 1) & ~grouped['dup_group'].isin(tied_groups)] \
+            .set_index('dup_group')['entity_key'].to_dict()
+        tie_keys = set(grouped.loc[level & grouped['dup_group'].isin(tied_groups), 'entity_key'])
         for gid, rows in confirm[confirm['target_key'].isin(grouped['entity_key'])].assign(
                 g=lambda d: d['target_key'].map(group_of)).groupby('g'):
             latest = rows.sort_values('recorded_at').iloc[-1]
@@ -529,6 +537,8 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
             ent.loc[ent['dup_group'] == gid, 'group_confirmed'] = True
             ent.loc[ent['dup_group'] == gid, 'confirmed_at'] = pd.Timestamp(latest['recorded_at'])
         ent.loc[ent['entity_key'].isin(pref.values()), 'preferred'] = True
+        unresolved = tied_groups - set(confirm['target_key'].map(group_of).dropna())
+        ent['preferred_tie'] = ent['entity_key'].isin(tie_keys) & ent['dup_group'].isin(unresolved)
         ent['preferred_rank'] = ent['entity_key'].map(grouped.set_index('entity_key')['preferred_rank']).fillna(0) \
             .astype(int)
     ent['group_size'] = ent['dup_group'].map(ent[ent['dup_group'] != ''].groupby('dup_group').size()).fillna(0) \
@@ -559,21 +569,23 @@ def evaluate(inputs, params, decisions: pd.DataFrame, as_of, cache=None):
     monitor_cut = _months_ago(as_of, params['monitor_months'])
     active = ent['last_activity'] >= dormant_cut
     recent = ent['last_activity'] >= monitor_cut
-    for c in ('in_population', 'legacy_excluded', 'preferred', 'has_open'):   # keep bool dtype on empty extracts
+    for c in ('in_population', 'legacy_excluded', 'preferred', 'preferred_tie', 'has_open'):   # keep bool dtype on empty extracts
         ent[c] = ent[c].astype(bool)
-    in_grp_np = (ent['dup_group'] != '') & ~ent['preferred']
+    tie = ent['preferred_tie']
+    in_grp_np = (ent['dup_group'] != '') & ~ent['preferred'] & ~tie
     pop = ent['in_population']
     cls = np.select(
         [~pop & ent['legacy_excluded'], ~pop,
          ent['category'] == 'Non-commercial', ent['category'] == 'Policy',
-         ~active & ~ent['has_open'],
+         ~active & ~ent['has_open'], tie,
          in_grp_np & (recent | ent['has_open']), in_grp_np,
          ent['blocking'] > 0],
-        [OUT_OF_SCOPE, OUT_OF_SCOPE, HOLD_NONCOMMERCIAL, HOLD_POLICY, CLOSE, MONITOR, CLOSE, FIX], KEEP)
+        [OUT_OF_SCOPE, OUT_OF_SCOPE, HOLD_NONCOMMERCIAL, HOLD_POLICY, CLOSE, MONITOR, MONITOR, CLOSE, FIX], KEEP)
     rule = np.select(
         [~pop, ent['category'] != 'Commercial', ~active & ~ent['has_open'] & ent['all_items_dont_migrate'],
-         ~active & ~ent['has_open'], in_grp_np & (recent | ent['has_open']), in_grp_np, ent['blocking'] > 0],
-        ['MS-POP-01', ent['category_rule'], 'MS-TRN-02', 'MS-CLS-01', 'MS-CLS-03', 'MS-CLS-02', 'MS-CLS-04'],
+         ~active & ~ent['has_open'], tie, in_grp_np & (recent | ent['has_open']), in_grp_np, ent['blocking'] > 0],
+        ['MS-POP-01', ent['category_rule'], 'MS-TRN-02', 'MS-CLS-01', 'MS-DUP-03', 'MS-CLS-03', 'MS-CLS-02',
+         'MS-CLS-04'],
         'MS-CLS-05')
     ent['classification'] = cls
     ent['class_rule'] = rule
@@ -668,7 +680,8 @@ def _trail(e, params, as_of):
         add(e['category_rule'], 'stop', f"{e['category']}: {e['category_detail']}. Held for a policy decision, "
                                         'not classified.')
         return steps
-    add('MS-CAT-01', 'pass', 'Commercial supplier' + (' (individual: personal data rules apply)'
+    add('MS-CAT-01', 'pass', 'Commercial supplier' + (' (individual contractor: a decision is needed on their '
+                                                      'treatment)'
                                                       if e['individual'] else ''))
     cut = _months_ago(as_of, params['dormancy_months'])
     act = (f"Last activity {fmt(e['last_activity'])}"
@@ -687,6 +700,11 @@ def _trail(e, params, as_of):
     else:
         add('MS-CLS-01', 'pass', f"Active: {act}, within {params['dormancy_months']} months. {opens}.")
     if e['dup_group']:
+        if e.get('preferred_tie'):
+            add('MS-DUP-03', 'fail', f"Level with another record in duplicate group {e['dup_group']} on blocking "
+                                     'issues, open items, activity and completeness, so the rules do not pick a '
+                                     'preferred record. Monitor until a steward chooses.')
+            return steps
         if e['preferred']:
             how = 'confirmed by a steward' if e['group_confirmed'] else 'proposed by the engine'
             add('MS-DUP-03', 'pass', f"Preferred record of duplicate group {e['dup_group']} ({how}).")
@@ -743,7 +761,7 @@ def run(inputs, params, decisions, as_of=None):
                 fired.append((k, e.recommended_rule))
             if e.dup_group:
                 fired.append((k, 'MS-DUP-01'))
-                if e.preferred:
+                if e.preferred or e.preferred_tie:
                     fired.append((k, 'MS-DUP-03'))
             if e.possible_dup:
                 fired.append((k, 'MS-DUP-02'))
@@ -751,8 +769,6 @@ def run(inputs, params, decisions, as_of=None):
                 fired.append((k, 'MS-XH-01'))
             if e.stuck_items:
                 fired.append((k, 'MS-TRN-01'))
-            if e.issues:
-                fired.append((k, 'MS-DQ'))
         elif e.legacy_excluded is True:
             fired.append((k, 'MS-POP-03'))
     fired = pd.DataFrame(fired, columns=['entity_key', 'rule_id']).drop_duplicates()

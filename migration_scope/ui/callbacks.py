@@ -283,20 +283,3 @@ def register(app, frames):
         eng.version += 1
         return html.Span('Saved. Next month the overview will show what changed since this position.',
                          style={'color': '#15803D', 'fontWeight': '600'}), eng.version
-
-    # ── What-if ──────────────────────────────────────────────────────────────
-    @app.callback(Output('ms-wi-result', 'children'), Input('ms-wi-run', 'n_clicks'),
-                  State({'type': 'ms-wi', 'p': ALL}, 'value'), State({'type': 'ms-wi', 'p': ALL}, 'id'),
-                  State('ms-wi-xh', 'value'), prevent_initial_call=True)
-    def what_if(n, values, ids, xh):
-        if not n:
-            return no_update
-        eng = engine()
-        current = eng.result(OBJ).params
-        overrides = {i['p']: v for i, v in zip(ids, values) if v != current[i['p']]}
-        if bool(xh) != current['cross_house_as_duplicate']:
-            overrides['cross_house_as_duplicate'] = bool(xh)
-        if not overrides:
-            return html.Div('Every slider is at its current value. Move one to see the impact.', className='ms-empty')
-        _, changed = eng.what_if(OBJ, overrides)
-        return views.what_if_result(changed, overrides)

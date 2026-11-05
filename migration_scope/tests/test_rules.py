@@ -227,3 +227,23 @@ def test_trn01_stuck_items_by_age(params):
     assert not it.loc['A', 'stuck'] and it.loc['B', 'stuck']
     assert ent(r, 'HOC|1')['stuck_undecided'] == 1
     assert it.loc['B', 'fy'] == 'FY2026/27' or it.loc['B', 'fy'].startswith('FY')
+
+
+def test_dup03_level_records_go_to_a_steward(params):
+    # Same everything except ID: the rules must not pick one (no lowest-ID tie-break)
+    inputs = make_inputs([sup('1', vat_reg_no='GB123456789'), sup('2', vat_reg_no='GB123456789')],
+                         hist=[inv('1', 10), inv('2', 10)])
+    r = run(inputs, params)
+    for k in ('HOC|1', 'HOC|2'):
+        assert not ent(r, k)['preferred'] and ent(r, k)['preferred_tie']
+        assert ent(r, k)['classification'] == MONITOR and ent(r, k)['class_rule'] == 'MS-DUP-03'
+
+
+def test_dup03_steward_resolves_a_tie(params, store):
+    from migration_scope.tests.conftest import decide
+    inputs = make_inputs([sup('1', vat_reg_no='GB123456789'), sup('2', vat_reg_no='GB123456789')],
+                         hist=[inv('1', 10), inv('2', 10)])
+    decide(store, 'HOC|2', 'CONFIRM_PREFERRED')
+    r = run(inputs, params, store)
+    assert ent(r, 'HOC|2')['preferred'] and ent(r, 'HOC|2')['classification'] == KEEP
+    assert not ent(r, 'HOC|1')['preferred_tie'] and ent(r, 'HOC|1')['classification'] == MONITOR

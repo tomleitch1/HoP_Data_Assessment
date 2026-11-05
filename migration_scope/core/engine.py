@@ -2,7 +2,6 @@
 The engine service: owns the loaded inputs, the decision store and the latest
 result for each object, and recomputes when decisions change.
 """
-import copy
 import json
 
 import pandas as pd
@@ -47,18 +46,6 @@ class Engine:
         self._results.pop(obj, None)
         self.version += 1
         return self.result(obj)
-
-    # ── What-if: preview a parameter change without saving anything ──────────
-    def what_if(self, obj, overrides):
-        spec = OBJECTS[obj]
-        params = copy.deepcopy(spec['params'])
-        params.update(overrides)
-        trial = spec['module'].run(self.inputs(obj), params, self.store.effective_decisions(obj), self.as_of)
-        now = self.result(obj).entities.set_index('entity_key')['classification']
-        then = trial.entities.set_index('entity_key')['classification']
-        both = pd.DataFrame({'current': now, 'what_if': then}).dropna()
-        changed = both[both['current'] != both['what_if']].reset_index()
-        return trial, changed
 
     # ── Snapshots and change since last month ────────────────────────────────
     def summary(self, obj='suppliers'):

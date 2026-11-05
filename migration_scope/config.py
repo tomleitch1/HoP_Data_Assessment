@@ -9,10 +9,12 @@ traced to the exact rules in force when it was made.
 """
 from pathlib import Path
 
-RULESET_VERSION = '1.0'
+RULESET_VERSION = '1.1'
 
 CHANGELOG = [
     ('1.0', '2026-11-04', 'First ruleset for suppliers, agreed in design session with Tom Leitch.'),
+    ('1.1', '2026-11-05', 'SA is Specialist Advisor; HoC 74 IDs are legacy employees; no lowest-ID tie-break '
+            'for the preferred record (level records go to a steward).'),
 ]
 
 # ── Storage ───────────────────────────────────────────────────────────────────
@@ -37,11 +39,11 @@ SUPPLIER_PARAMS = {
 
     # Categorisation (non-commercial records are held for a policy decision)
     'noncommercial_groups': {
-        'HOC': {'EM': 'Employee', 'ME': 'Member', 'SA': 'Select Committee Advisor', 'WI': 'Witness'},
+        'HOC': {'EM': 'Employee', 'ME': 'Member', 'SA': 'Specialist Advisor', 'WI': 'Witness'},
         'HOL': {'05': 'Member (Peer)', '06': 'Employee'},
     },
     'noncommercial_id_prefixes': {
-        'HOC': {'1000': 'Employee (iTrent)', '74': 'Non-standard payee'},
+        'HOC': {'1000': 'Employee (iTrent)', '74': 'Legacy employee'},
         'HOL': {'1': 'Employee', '2': 'Employee (weekly payroll)', '3': 'Member (Peer)'},
     },
     'policy_groups': {'HOL': {'03': 'Card account'}},
@@ -83,11 +85,3 @@ SUPPLIER_PARAMS = {
         'SUP_CLIENT_APAR_DUP', 'SUP_DORMANT',
     ],
 }
-
-# Parameters shown in the What-if panel (key, label, min, max, step).
-WHATIF_PARAMS = [
-    ('dormancy_months', 'Dormant after (months)', 6, 36, 1),
-    ('monitor_months', 'Non-preferred duplicate closes after (months)', 1, 18, 1),
-    ('stuck_item_months', 'Open item needs review after (months)', 1, 24, 1),
-    ('possible_duplicate_similarity', 'Possible duplicate name similarity (%)', 70, 99, 1),
-]

@@ -6,7 +6,7 @@ Screens for the Migration Scope module.
   Records    rule cards, filter chips, one record grid, export
   Drawer     everything about one supplier, and recording a decision
   Decisions  upload steward workbooks (with preview), export, audit log, snapshots
-  Rules      every rule and parameter, ruleset version, and the What-if panel
+  Rules      every rule and its parameters, with the ruleset version and change log
 """
 import json
 
@@ -26,7 +26,7 @@ from migration_scope.ui.theme import (
 )
 
 VIEWS = [('overview', 'Overview', 'lucide:filter'), ('records', 'Records', 'lucide:table-2'),
-         ('decisions', 'Decisions & uploads', 'lucide:clipboard-check'), ('rules', 'Rules & what-if', 'lucide:sliders')]
+         ('decisions', 'Decisions & uploads', 'lucide:clipboard-check'), ('rules', 'Rules', 'lucide:book-open')]
 
 CHIP_GROUPS = [
     ('cls', 'Classification', [KEEP, FIX, MONITOR, CLOSE, 'Held', OUT_OF_SCOPE]),
@@ -629,10 +629,15 @@ def _dups_block(r, e):
         g = r.entities[r.entities['dup_group'] == e['dup_group']].sort_values('preferred_rank')
         g = g.assign(name=g.apply(lambda x: html.Button(x['apar_name'], id={'type': 'ms-open', 'k': x['entity_key']},
                                                         n_clicks=0, className='ms-link'), axis=1),
-                     pref=g['preferred'].map({True: '★ Preferred', False: ''}),
+                     pref=[('★ Preferred' if p else ('Level' if t else '')) for p, t in
+                           zip(g['preferred'], g['preferred_tie'])],
                      act=g['last_activity'].map(fmt_date), openx=g['open_items'].astype(str) + ' / ' + g['open_pos'].astype(str))
-        status = 'Preferred record confirmed by a steward' if e['group_confirmed'] else \
-            'Preferred record proposed by the engine: awaiting steward confirmation'
+        if e['group_confirmed']:
+            status = 'Preferred record confirmed by a steward'
+        elif g['preferred_tie'].any():
+            status = 'Records are level on every rule, so a steward needs to choose the preferred record'
+        else:
+            status = 'Preferred record proposed by the rules: awaiting steward confirmation'
         parts += [html.Div([pill(e['dup_group'], '#9333EA'), html.Span(status, className='ms-muted')],
                            style={'display': 'flex', 'gap': '8px', 'alignItems': 'center', 'marginBottom': '8px'}),
                   _mini_table(g, [('pref', ''), ('entity_key', 'Record'), ('name', 'Name'),
@@ -901,65 +906,17 @@ def rules_shell(engine, obj):
     r = engine.result(obj)
     params = spec['params']
     counts = r.fired['rule_id'].value_counts()
-    rows = [html.Tr([html.Td(html.Span(rule.id, className='ms-ruleid')), html.Td(html.B(rule.name)),
-                     html.Td(rule.layer), html.Td(rule.text(params), style={'whiteSpace': 'normal'}),
+    rows = [html.Tr([html.Td(html.B(rule.name)), html.Td(rule.layer),
+                     html.Td(rule.text(params), style={'whiteSpace': 'normal'}),
                      html.Td(class_pill(rule.outcome) if rule.outcome else ''),
-                     html.Td(f"{int(counts.get(rule.id, 0)):,}"), html.Td(f'v{rule.version}'),
-                     html.Td('Active' if rule.active else 'Off')]) for rule in r.rules]
-    sliders = []
-    for key, label, lo, hi, step in config.WHATIF_PARAMS:
-        sliders.append(html.Div(className='ms-slider', children=[
-            html.Div([html.Span(label), html.Span(f'now {params[key]}', className='ms-muted')],
-                     style={'display': 'flex', 'justifyContent': 'space-between', 'fontSize': '12.5px',
-                            'fontWeight': '600', 'color': INK}),
-            dcc.Slider(id={'type': 'ms-wi', 'p': key}, min=lo, max=hi, step=step, value=params[key],
-                       marks=None)]))
-    sliders.append(dcc.Checklist(id='ms-wi-xh', options=[{'label': ' Treat cross-House matches as duplicates',
-                                                          'value': 'on'}],
-                                 value=['on'] if params['cross_house_as_duplicate'] else [], className='ms-toggles'))
-    return html.Div([
-        html.Div(className='ms-grid2', style={'gridTemplateColumns': '1.1fr 1fr'}, children=[
-            card([
-                section_title('What-if', 'Try a different threshold and see which records would change '
-                              'classification. Nothing is saved: real changes are made in config.py and pushed '
-                              'through git.', ic='lucide:flask-conical'),
-                html.Div(sliders),
-                html.Button([icon('lucide:play', 15, 'white'), 'Show impact'], id='ms-wi-run', n_clicks=0,
-                            className='ms-btn ms-btn-primary', style={'marginTop': '10px'}),
-            ]),
-            card([html.Div(id='ms-wi-result', children=html.Div(className='ms-empty', children=[
-                icon('lucide:flask-conical', 28, FAINT),
-                html.Div('Move a slider and press Show impact', style={'fontWeight': '600', 'color': INK}),
-                html.Div('You will see how many records move between Keep, Fix, Monitor and Close, and which ones.',
-                         style={'fontSize': '12.5px'})]))]),
-        ]),
-        card(style={'marginTop': '20px'}, children=[
-            section_title(f'Ruleset v{config.RULESET_VERSION}', 'Every rule is configuration in '
-                          'migration_scope/config.py. Counts are records the rule fired on.', ic='lucide:book-open'),
-            html.Table([html.Thead(html.Tr([html.Th(h) for h in ('ID', 'Rule', 'Layer', 'What it does', 'Produces',
-                                                                 'Records', 'Version', 'Status')])),
-                        html.Tbody(rows)], className='ms-mini ms-rulestable'),
-            html.Div('Change log', className='ms-subhead'),
-            html.Div([html.Div(f'v{v} · {d} · {t}', className='ms-muted') for v, d, t in config.CHANGELOG]),
-        ]),
+                     html.Td(f"{int(counts.get(rule.id, 0)):,}")]) for rule in r.rules if rule.active]
+    return card([
+        section_title('Rules', f'Ruleset v{config.RULESET_VERSION}. Every rule and threshold is set in '
+                      'migration_scope/config.py. Records is how many suppliers each rule applies to.',
+                      ic='lucide:book-open'),
+        html.Table([html.Thead(html.Tr([html.Th(h) for h in ('Rule', 'Category', 'What it does', 'Produces',
+                                                             'Records')])),
+                    html.Tbody(rows)], className='ms-mini ms-rulestable'),
+        html.Div('Change log', className='ms-subhead'),
+        html.Div([html.Div(f'v{v} · {d} · {t}', className='ms-muted') for v, d, t in config.CHANGELOG]),
     ])
-
-
-def what_if_result(changed, overrides):
-    if changed.empty:
-        return html.Div(className='ms-empty', children=[
-            icon('lucide:equal', 28, FAINT), html.Div('No record would change classification',
-                                                      style={'fontWeight': '600', 'color': INK}),
-            html.Div(', '.join(f'{k} = {v}' for k, v in overrides.items()), style={'fontSize': '12px'})])
-    moves = changed.groupby(['current', 'what_if']).size().reset_index(name='n').sort_values('n', ascending=False)
-    flows = [html.Div(className='ms-row', children=[class_pill(m['current']), icon('lucide:arrow-right', 13, FAINT),
-                                                    class_pill(m['what_if']),
-                                                    html.Span(f"{m['n']:,} records", className='ms-row-meta')])
-             for _, m in moves.iterrows()]
-    sample = [html.Button(id={'type': 'ms-open', 'k': k}, n_clicks=0, className='ms-row ms-click', children=[
-        html.Span(k, className='ms-key'), class_pill(a), icon('lucide:arrow-right', 13, FAINT), class_pill(b)])
-        for k, a, b in changed[['entity_key', 'current', 'what_if']].head(15).itertuples(index=False)]
-    return html.Div([
-        section_title(f'{len(changed):,} records would change', ', '.join(f'{k} = {v}' for k, v in overrides.items()),
-                      ic='lucide:git-compare'),
-        html.Div(flows), html.Div('Examples (click to open)', className='ms-subhead'), html.Div(sample)])

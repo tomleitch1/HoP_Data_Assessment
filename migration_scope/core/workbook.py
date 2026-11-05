@@ -85,7 +85,8 @@ def steward_frames(result, decisions, house=None):
     g = e[e['dup_group'] != ''].sort_values(['dup_group', 'preferred_rank'])
     df = base(g)
     df.insert(0, 'Duplicate group', g['dup_group'].values)
-    df.insert(5, 'Proposed preferred', g['preferred'].map({True: 'Yes', False: ''}).values)
+    df.insert(5, 'Proposed preferred', [('Yes' if p else ('Level: steward to choose' if t else ''))
+                                        for p, t in zip(g['preferred'], g['preferred_tie'])])
     df['Why matched'] = g['match_reasons'].values
     df['Blocking issues'] = g['blocking'].values
     df['Completeness (of 8)'] = g['completeness'].values
